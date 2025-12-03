@@ -1,0 +1,9 @@
+*.o
+*.a
+*.so
+*.orig
+build/
+.DS_Store
+src/libos/target/
+tools/toolchains/dcap_lib/target/
+dcap_c_test
