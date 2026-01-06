@@ -11,6 +11,9 @@ ENV IS_DOCKERFILE=1
 
 WORKDIR /
 
+RUN apt-get update && apt-get install -y jq
+
+
 RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 RUN bash ./Miniconda3-latest-Linux-x86_64.sh -b -p /miniconda
 RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
@@ -22,7 +25,8 @@ RUN rm -rf /occlum-instance/image
 WORKDIR /occlum-instance
 COPY ./sgx/sentra-sbom.yaml /
 RUN mkdir /sentra
-COPY ./ml_training /sentra/
+RUN mkdir /sentra/ml_training
+COPY ./ml_training /sentra/ml_training/
 COPY ./run_training.py /sentra/
 RUN copy_bom -f /sentra-sbom.yaml --root image --include-dir /opt/occlum/etc/template
 #RUN mkdir /occlum-instance/image/var
@@ -30,6 +34,9 @@ RUN copy_bom -f /sentra-sbom.yaml --root image --include-dir /opt/occlum/etc/tem
 #RUN mkdir /occlum-instance/image/var/run/run
 
 WORKDIR /occlum-instance
+
+RUN new_json="$(jq '.resource_limits.user_space_size = "1MB" |.resource_limits.user_space_max_size = "5400MB" |.resource_limits.kernel_space_heap_size = "1MB" |.resource_limits.kernel_space_heap_max_size = "512MB" |.resource_limits.max_num_of_threads = 64 |.env.default += ["PYTHONHOME=/opt/python-occlum", "OMP_NUM_THREADS=1"]' Occlum.json)" && echo "${new_json}" > Occlum.json
+
 RUN ENABLE_EDMM=Y occlum build
 RUN occlum package --debug occlum-instance.tar.gz
 
@@ -63,4 +70,4 @@ COPY ./sgx/entrypoint.sh /
 RUN mkdir -p /var/run/aesmd
 
 WORKDIR /occlum-instance    
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/entrypoint.sh","/bin/sentra/run_training.py"]
