@@ -5,5 +5,9 @@ services:
   sentra:
     build:
       context: ../
-      dockerfile: ./SentraSGX.dockerfile
+      dockerfile: ./sgx/SentraSGX.dockerfile
+    devices:
+      - "/dev/sgx_enclave:/dev/sgx_enclave"
+      - "/dev/sgx_provision:/dev/sgx_provision"
+
 
