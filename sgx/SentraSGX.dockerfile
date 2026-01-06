@@ -50,8 +50,8 @@ COPY --from=yq-source /usr/bin/yq /usr/bin
 COPY --from=sentra-builder /occlum-instance/occlum-instance.tar.gz /
 
 WORKDIR /
-#RUN tar -xf occlum-instance.tar.gz
-#RUN rm occlum-instance.tar.gz
+RUN tar -xf occlum-instance.tar.gz
+RUN rm occlum-instance.tar.gz
 
 RUN echo 'deb [arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu jammy main' | tee /etc/apt/sources.list.d/intel-sgx.list
 
