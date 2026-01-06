@@ -7,3 +7,4 @@ build/
 src/libos/target/
 tools/toolchains/dcap_lib/target/
 dcap_c_test
+/ml_training/__pycache__/
