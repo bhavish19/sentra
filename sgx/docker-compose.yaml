@@ -1,0 +1,9 @@
+name: sentra
+
+services:
+
+  sentra:
+    build:
+      context: ../
+      dockerfile: ./SentraSGX.dockerfile
+
