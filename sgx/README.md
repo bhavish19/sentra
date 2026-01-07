@@ -29,4 +29,4 @@ Execute:
 
 ``docker compose up``
 
-This will automatically build the Docker image 8if it does not exist) and execute it afterwards. You should see relevant output on the terminal.
+This will automatically build the Docker image (if it does not exist) and execute it afterwards. You should see relevant output on the terminal.
