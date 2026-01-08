@@ -1,13 +1,20 @@
 name: sentra
 
-services:
-
-  sentra:
+x-sentra-core: &x-sentra-core
     build:
       context: ../
       dockerfile: ./sgx/SentraSGX.dockerfile
     devices:
       - "/dev/sgx_enclave:/dev/sgx_enclave"
       - "/dev/sgx_provision:/dev/sgx_provision"
+
+
+services:
+
+  sentra-simple-training:
+    <<: *x-sentra-core
+    command: run_training.py
+    profiles:
+      - test    
 
 

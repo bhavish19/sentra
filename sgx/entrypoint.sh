@@ -1,3 +1,3 @@
 #!/bin/bash
 /opt/occlum/start_aesm.sh
-occlum run /bin/python3 $1
+occlum run /bin/python3 "$@"
