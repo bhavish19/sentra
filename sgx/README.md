@@ -37,3 +37,6 @@ Runs: ``run_training.py``
 
 - ``docker compose up --profile dp-test``
 Runs: ``run_dp_training.py``
+
+- ``docker compose up --profile multi-node``
+Runs a multi node scenario with 5 nodes.
