@@ -14,6 +14,10 @@ services:
   sentra-simple-training:
     <<: *x-sentra-core
     command: run_training.py
+    container_name: sentra-run_training
+    deploy:
+      mode: replicated-job
+      replicas: 1
     profiles:
       - test    
 
