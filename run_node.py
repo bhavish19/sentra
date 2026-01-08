@@ -6,6 +6,7 @@ Usage: python run_node.py --node-id 1
 import argparse
 import sys
 import os
+import yaml
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ml_training import SentraTrainingPipeline, DPSGDConfig
@@ -19,6 +20,10 @@ def create_node_configs(n_nodes: int, base_port: int = 8000, host: str = 'localh
         for i in range(1, n_nodes + 1)
     }
 
+def read_node_configs(configFile:str):
+   """Read node configurations from a yaml file"""
+   config=yaml.load(open(configFile,'r'),yaml.Loader)
+   return config
 
 def main():
     parser = argparse.ArgumentParser(
@@ -60,6 +65,7 @@ Examples:
                        help='Privacy threshold (default: 1)')
     parser.add_argument('--s', type=int, default=1,
                        help='Adversarial share limit (default: 1)')
+    parser.add_argument('--config',type=str)
     
     args = parser.parse_args()
     
@@ -68,9 +74,11 @@ Examples:
         print(f"Error: node-id must be between 1 and {args.n_nodes}")
         sys.exit(1)
     
-    # Create node configurations
-    node_configs = create_node_configs(args.n_nodes, args.base_port, args.host)
-    
+    # Create or read node configurations
+    if(args.config is None):
+        node_configs = create_node_configs(args.n_nodes, args.base_port, args.host)
+    else:
+        node_configs=read_node_configs(args.config)
     print("=" * 70)
     print(f"SENTRA Node {args.node_id} Starting")
     print("=" * 70)
