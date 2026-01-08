@@ -75,7 +75,11 @@ class TrainingCoordinator:
         self.network = None
         self.reconstruction_manager = None
         if enable_network and node_configs:
-            self.network = create_mpc_network(node_id, node_configs, port=8000 + node_id)
+            #Take own port from node config, if available
+            iPort:int=8000 + node_id
+            if(node_id in node_configs):
+              iPort=node_configs[node_id]['port'] 
+            self.network = create_mpc_network(node_id, node_configs, port=iPort)
             self.reconstruction_manager = create_reconstruction_manager(self.network, t)
         
         # Initialize MPC engine
