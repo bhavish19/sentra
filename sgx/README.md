@@ -27,6 +27,13 @@ Declarative configuration file which describes which files should be copied into
 
 Execute:
 
-``docker compose up``
+``docker compose up --profile PROFLE``
 
-This will automatically build the Docker image (if it does not exist) and execute it afterwards. You should see relevant output on the terminal.
+This will automatically build the Docker image (if it does not exist) and execute it afterwards. You should see relevant output on the terminal. Note that you need to specify the profile you want to execute:
+
+- ``docker compose up --profile test``
+Runs: ``run_training.py``
+<br>
+
+- ``docker compose up --profile dp-test``
+Runs: ``run_dp_training.py``

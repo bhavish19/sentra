@@ -5,10 +5,17 @@ x-sentra-core: &x-sentra-core
       context: ../
       dockerfile: ./sgx/SentraSGX.dockerfile
     image: sentra-sgx
+    deploy:
+      mode: replicated-job
+      replicas: 1
     devices:
       - "/dev/sgx_enclave:/dev/sgx_enclave"
       - "/dev/sgx_provision:/dev/sgx_provision"
 
+x-sentra-multi-node: &x-sentra-multi-node
+  <<: *x-sentra-core
+  profiles:
+      - multi-node
 
 services:
 
@@ -16,9 +23,6 @@ services:
     <<: *x-sentra-core
     command: /bin/sentra/run_training.py
     container_name: sentra-test
-    deploy:
-      mode: replicated-job
-      replicas: 1
     profiles:
       - test
 
@@ -26,11 +30,25 @@ services:
     <<: *x-sentra-core
     command: /bin/sentra/run_dp_training.py
     container_name: sentra-dp-test
-    deploy:
-      mode: replicated-job
-      replicas: 1
     profiles:
       - dp-test
 
+  sentra-node-1:
+    <<: *x-sentra-multi-node
+    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node_id 1
 
+  sentra-node-2:
+    <<: *x-sentra-multi-node
+    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node_id 2
 
+  sentra-node-3:
+    <<: *x-sentra-multi-node
+    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node_id 3
+
+  sentra-node-4:
+    <<: *x-sentra-multi-node
+    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node_id 4
+ 
+  sentra-node-5:
+    <<: *x-sentra-multi-node
+    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node_id 5

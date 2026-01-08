@@ -29,6 +29,7 @@ RUN mkdir /sentra/ml_training
 COPY ./ml_training /sentra/ml_training/
 COPY ./run_training.py /sentra/
 COPY ./run_dp_training.py /sentra/
+COPY ./sgx/node_config.yaml /sentra/
 RUN copy_bom -f /sentra-sbom.yaml --root image --include-dir /opt/occlum/etc/template
 #RUN mkdir /occlum-instance/image/var
 #RUN mkdir /occlum-instance/image/var/run
