@@ -35,7 +35,7 @@ services:
 
   sentra-node-1:
     <<: *x-sentra-multi-node
-    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --auto-close -node-id 1
+    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --auto-close --node-id 1
 
   sentra-node-2:
     <<: *x-sentra-multi-node
