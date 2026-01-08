@@ -65,7 +65,9 @@ Examples:
                        help='Privacy threshold (default: 1)')
     parser.add_argument('--s', type=int, default=1,
                        help='Adversarial share limit (default: 1)')
-    parser.add_argument('--config',type=str)
+    parser.add_argument('--config',type=str,help="YAML node configuartion file")
+    parser.add_argument('--auto-close', action='store_true',
+                       help='Do not wait for key press to exit the process')
     
     args = parser.parse_args()
     
@@ -156,11 +158,12 @@ Examples:
         print("=" * 70)
         
         # Keep window open
-        print("\nPress Enter to close this window...")
-        try:
-            input()
-        except:
-            pass
+        if(not args.auto_close):
+            print("\nPress Enter to close this window...")
+            try:
+                input()
+            except:
+                pass
         
     except KeyboardInterrupt:
         print(f"\n\nNode {args.node_id}: Interrupted by user")
@@ -175,11 +178,12 @@ Examples:
         print(f"Error: {e}")
         import traceback
         traceback.print_exc()
-        print("\nPress Enter to close this window...")
-        try:
-            input()
-        except:
-            pass
+        if(not args.auto_close):
+            print("\nPress Enter to close this window...")
+            try:
+                input()
+            except:
+                pass
         sys.exit(1)
 
 
