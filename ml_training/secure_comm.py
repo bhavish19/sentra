@@ -112,7 +112,17 @@ class SecureChannel:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(5)
             # Connect first, then wrap with TLS if needed
-            sock.connect((host, port))
+            # Retry several times to allow for startup of all nodes...
+            i:int=0
+            while(True):
+                try:
+                    sock.connect((host, port))
+                    break
+                except Exception as e:
+                    i+=1
+                    if(i>5):
+                        raise e
+                    time.sleep(10)
             
             if self.use_tls:
                 try:
@@ -318,6 +328,7 @@ class SecureMPCNetwork:
         """
         self.node_id = node_id
         self.node_configs = node_configs
+
         self.channel = SecureChannel(node_id, port, use_tls)
         self.sss = ShamirSecretSharing()
         
