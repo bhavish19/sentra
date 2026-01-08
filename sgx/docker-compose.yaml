@@ -4,6 +4,7 @@ x-sentra-core: &x-sentra-core
     build:
       context: ../
       dockerfile: ./sgx/SentraSGX.dockerfile
+    image: sentra-sgx
     devices:
       - "/dev/sgx_enclave:/dev/sgx_enclave"
       - "/dev/sgx_provision:/dev/sgx_provision"
@@ -13,12 +14,23 @@ services:
 
   sentra-simple-training:
     <<: *x-sentra-core
-    command: run_training.py
-    container_name: sentra-run_training
+    command: /bin/sentra/run_training.py
+    container_name: sentra-test
     deploy:
       mode: replicated-job
       replicas: 1
     profiles:
-      - test    
+      - test
+
+  sentra-dp-training:
+    <<: *x-sentra-core
+    command: /bin/sentra/run_dp_training.py
+    container_name: sentra-dp-test
+    deploy:
+      mode: replicated-job
+      replicas: 1
+    profiles:
+      - dp-test
+
 
 

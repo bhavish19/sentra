@@ -28,6 +28,7 @@ RUN mkdir /sentra
 RUN mkdir /sentra/ml_training
 COPY ./ml_training /sentra/ml_training/
 COPY ./run_training.py /sentra/
+COPY ./run_dp_training.py /sentra/
 RUN copy_bom -f /sentra-sbom.yaml --root image --include-dir /opt/occlum/etc/template
 #RUN mkdir /occlum-instance/image/var
 #RUN mkdir /occlum-instance/image/var/run
@@ -70,4 +71,4 @@ COPY ./sgx/entrypoint.sh /
 RUN mkdir -p /var/run/aesmd
 
 WORKDIR /occlum-instance    
-ENTRYPOINT ["/entrypoint.sh","/bin/sentra/run_training.py"]
+ENTRYPOINT ["/entrypoint.sh"]
