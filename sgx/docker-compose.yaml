@@ -35,20 +35,20 @@ services:
 
   sentra-node-1:
     <<: *x-sentra-multi-node
-    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node_id 1
+    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node-id 1
 
   sentra-node-2:
     <<: *x-sentra-multi-node
-    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node_id 2
+    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node-id 2
 
   sentra-node-3:
     <<: *x-sentra-multi-node
-    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node_id 3
+    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node-id 3
 
   sentra-node-4:
     <<: *x-sentra-multi-node
-    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node_id 4
+    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node-id 4
  
   sentra-node-5:
     <<: *x-sentra-multi-node
-    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node_id 5
+    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --node-id 5
