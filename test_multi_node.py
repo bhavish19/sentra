@@ -12,7 +12,7 @@ from typing import Dict, Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from ml_training import SentraTrainingPipeline, DPSGDConfig
+from ml_training import SentraTrainingPipeline
 import numpy as np
 
 
@@ -28,7 +28,7 @@ def create_node_configs(n_nodes: int, base_port: int = 8000) -> Dict[int, Dict[s
 
 
 def run_node(node_id: int, n_nodes: int, t: int, s: int, 
-             enable_network: bool = True, use_dp_sgd: bool = False):
+             enable_network: bool = True):
     """Run a single node in the multi-node setup"""
     
     print(f"\n{'='*70}")
@@ -38,9 +38,7 @@ def run_node(node_id: int, n_nodes: int, t: int, s: int,
     # Create node configurations
     node_configs = create_node_configs(n_nodes)
     
-    # Create pipeline
-    dp_config = DPSGDConfig(clip_norm=1.0, noise_multiplier=1.0, learning_rate=0.01) if use_dp_sgd else None
-    
+    # Create pipeline (always plain SGD)
     pipeline = SentraTrainingPipeline(
         n_nodes=n_nodes,
         t=t,
@@ -48,8 +46,6 @@ def run_node(node_id: int, n_nodes: int, t: int, s: int,
         batch_size=16,
         learning_rate=0.01,
         num_epochs=2,
-        use_dp_sgd=use_dp_sgd,
-        dp_config=dp_config,
         enable_network=enable_network,
         node_id=node_id,
         node_configs=node_configs if enable_network else None
@@ -91,8 +87,7 @@ def test_single_node():
         n_nodes=5,
         t=1,
         s=1,
-        enable_network=False,
-        use_dp_sgd=True
+        enable_network=False
     )
     
     return success
@@ -120,8 +115,7 @@ def test_multi_node_simulation():
             n_nodes=n_nodes,
             t=t,
             s=s,
-            enable_network=True,  # Enable network for multi-node
-            use_dp_sgd=False  # Disable DP-SGD for simpler testing
+            enable_network=True  # Enable network for multi-node
         )
     
     # Start nodes with slight delay to allow network setup
@@ -157,8 +151,6 @@ def main():
                        help='Total number of nodes')
     parser.add_argument('--enable-network', action='store_true',
                        help='Enable network communication')
-    parser.add_argument('--use-dp-sgd', action='store_true',
-                       help='Enable DP-SGD')
     
     args = parser.parse_args()
     
@@ -177,8 +169,7 @@ def main():
                 n_nodes=args.n_nodes,
                 t=1,
                 s=1,
-                enable_network=True,
-                use_dp_sgd=args.use_dp_sgd
+                enable_network=True
             )
         else:
             # Run simulation

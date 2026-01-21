@@ -45,12 +45,6 @@ from ml_training.reconstruction import (
     MPCReconstructionManager,
     create_reconstruction_manager
 )
-from ml_training.dp_sgd_integration import (
-    DPSGDConfig,
-    SecureDPNoiseGenerator,
-    DPSGDMPCEngine,
-    VerifiableDPProofs
-)
 
 __all__ = [
     'Share',
@@ -71,10 +65,6 @@ __all__ = [
     'SecureClipper',
     'SecureDivider',
     'SecureAverager',
-    'DPSGDConfig',
-    'SecureDPNoiseGenerator',
-    'DPSGDMPCEngine',
-    'VerifiableDPProofs',
     'SecureMatrixMultiplier',
     'SecureMatrixOperations',
     'GPUMatrixAccelerator',

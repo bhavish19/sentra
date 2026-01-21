@@ -7,7 +7,6 @@ from typing import List, Tuple, Optional, Dict, Any
 import numpy as np
 from ml_training.coordinator import TrainingCoordinator
 from ml_training.kvs import KVSCluster
-from ml_training.dp_sgd_integration import DPSGDConfig
 
 
 class SentraTrainingPipeline:
@@ -17,8 +16,7 @@ class SentraTrainingPipeline:
     
     def __init__(self, n_nodes: int, t: int, s: int, 
                  batch_size: int = 32, learning_rate: float = 0.01,
-                 num_epochs: int = 10, use_dp_sgd: bool = False,
-                 dp_config: Optional[DPSGDConfig] = None,
+                 num_epochs: int = 10,
                  node_id: int = 1, node_configs: Optional[Dict[int, Dict[str, Any]]] = None,
                  enable_network: bool = False):
         """
@@ -30,8 +28,6 @@ class SentraTrainingPipeline:
             batch_size: Mini-batch size
             learning_rate: Learning rate
             num_epochs: Number of training epochs
-            use_dp_sgd: Whether to use DP-SGD
-            dp_config: DP-SGD configuration (required if use_dp_sgd=True)
             node_id: ID of this node
             node_configs: Dictionary mapping node_id to {host, port} for network
             enable_network: Whether to enable multi-node network communication
@@ -42,7 +38,6 @@ class SentraTrainingPipeline:
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.num_epochs = num_epochs
-        self.use_dp_sgd = use_dp_sgd
         self.node_id = node_id
         self.enable_network = enable_network
         
@@ -50,10 +45,9 @@ class SentraTrainingPipeline:
         node_ids = list(range(1, n_nodes + 1))
         self.kvs_cluster = KVSCluster(node_ids)
         
-        # Initialize coordinator with network support
+        # Initialize coordinator with network support (always plain SGD)
         self.coordinator = TrainingCoordinator(
             self.kvs_cluster, n_nodes, t, s, batch_size, learning_rate,
-            use_dp_sgd=use_dp_sgd, dp_config=dp_config,
             node_id=node_id, node_configs=node_configs,
             enable_network=enable_network
         )
@@ -78,9 +72,6 @@ class SentraTrainingPipeline:
             print(f"Multi-Node: Enabled (Network communication active)")
         else:
             print(f"Multi-Node: Disabled (Single-node mode)")
-        if self.use_dp_sgd:
-            print(f"DP-SGD: Enabled (clip_norm={self.coordinator.dp_config.clip_norm}, "
-                  f"noise_multiplier={self.coordinator.dp_config.noise_multiplier})")
         print("=" * 60)
         
         # Step 1: Ingest and secret-share dataset
@@ -96,8 +87,29 @@ class SentraTrainingPipeline:
         # Step 3: Training loop
         print("\n[Step 3] Starting training loop...")
         
+        training_suspended = False
+        
         for epoch in range(self.num_epochs):
             print(f"\n--- Epoch {epoch + 1}/{self.num_epochs} ---")
+            
+            # Check if training was suspended and if safety is restored
+            # Get the packing factor that would be used and check safety with it
+            # Use dynamic active node count if available
+            if self.coordinator.node_manager:
+                n_active = self.coordinator.node_manager.get_n_active()
+            else:
+                n_active = self.n_nodes  # Fallback to static count
+            if training_suspended:
+                # Check if safety is restored with the packing factor that would be used
+                potential_packing_factor = self.coordinator.safety_checker.get_max_packing_factor(n_active)
+                safety_bound = 2 * (self.coordinator.t + potential_packing_factor - 1)
+                if safety_bound < n_active:
+                    print(f"  [RESUME] Safety bound restored (2*(t+packing_factor-1)={safety_bound} < n_active={n_active}), resuming training")
+                    training_suspended = False
+                else:
+                    print(f"  [SUSPENDED] Safety bound still violated (2*(t+packing_factor-1)={safety_bound} >= n_active={n_active})")
+                    print(f"  Waiting for safety to be restored (e.g., node repair/join or reduce packing factor)")
+                    continue  # Skip this epoch
             
             # Select mini-batches
             num_batches = (len(dataset) + self.batch_size - 1) // self.batch_size
@@ -140,9 +152,15 @@ class SentraTrainingPipeline:
                 weight_shares = weight_value.data
                 
                 # Train mini-batch
-                packing_factor = self.coordinator.safety_checker.get_max_packing_factor(self.n_nodes)
+                # Use dynamic active node count if available
+                if self.coordinator.node_manager:
+                    n_active = self.coordinator.node_manager.get_n_active()
+                else:
+                    n_active = self.n_nodes  # Fallback to static count
+                
+                packing_factor = self.coordinator.safety_checker.get_max_packing_factor(n_active)
                 updated_weights, success = self.coordinator.train_mini_batch(
-                    sample_shares, label_shares, weight_shares, packing_factor, node_id=1
+                    sample_shares, label_shares, weight_shares, packing_factor, node_id=self.node_id
                 )
                 
                 if success:
@@ -153,9 +171,28 @@ class SentraTrainingPipeline:
                         print(f"Committed mini-batch {batch_indices}, v_theta={v_theta}")
                         print(f"  Batch {batch_idx + 1}/{num_batches}: [OK] Committed")
                     else:
-                        print(f"  Batch {batch_idx + 1}/{num_batches}: [FAIL] Failed")
+                        print(f"  Batch {batch_idx + 1}/{num_batches}: [FAIL] Commit failed")
                 else:
-                    print(f"  Batch {batch_idx + 1}/{num_batches}: [FAIL] Failed")
+                    # Mini-batch aborted (safety bound violated or other error)
+                    # Check if it's a safety bound violation with the actual packing factor
+                    # Use dynamic active node count if available
+                    if self.coordinator.node_manager:
+                        n_active = self.coordinator.node_manager.get_n_active()
+                    else:
+                        n_active = self.n_nodes  # Fallback to static count
+                    safety_bound = 2 * (self.coordinator.t + packing_factor - 1)
+                    if safety_bound >= n_active:
+                        print(f"  Batch {batch_idx + 1}/{num_batches}: [ABORT] Safety bound violated")
+                        print(f"    Condition: 2*(t+packing_factor-1) = 2*({self.coordinator.t}+{packing_factor}-1) = {safety_bound} >= n_active = {n_active}")
+                        print(f"    Packing factor s={packing_factor} does not satisfy safety bound")
+                        print(f"    Current mini-batch DISCARDED (model state unchanged)")
+                        print(f"  Training SUSPENDED until safety is restored")
+                        print(f"    (e.g., increase n_active via node repair/join, or reduce packing factor)")
+                        # Mark training as suspended and abort current epoch
+                        training_suspended = True
+                        break
+                    else:
+                        print(f"  Batch {batch_idx + 1}/{num_batches}: [FAIL] Training failed")
             
             print(f"Epoch {epoch + 1} completed, model version: v_theta={self.coordinator.v_theta}")
         

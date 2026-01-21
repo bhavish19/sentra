@@ -8,7 +8,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from ml_training import SentraTrainingPipeline, DPSGDConfig
+from ml_training import SentraTrainingPipeline
 import numpy as np
 
 
@@ -48,8 +48,6 @@ Examples:
                        help='Base port number (default: 8000, ports will be base+node_id)')
     parser.add_argument('--host', type=str, default='localhost',
                        help='Host address for all nodes (default: localhost)')
-    parser.add_argument('--use-dp-sgd', action='store_true',
-                       help='Enable DP-SGD')
     parser.add_argument('--batch-size', type=int, default=16,
                        help='Mini-batch size (default: 16)')
     parser.add_argument('--learning-rate', type=float, default=0.01,
@@ -78,21 +76,13 @@ Examples:
     print(f"Total nodes: {args.n_nodes}")
     print(f"Privacy threshold (t): {args.t}")
     print(f"Adversarial limit (s): {args.s}")
-    print(f"Safety check: 2*(t+s) = {2*(args.t+args.s)} < n_nodes = {args.n_nodes} {'✓' if 2*(args.t+args.s) < args.n_nodes else '✗'}")
+    # Safety bound: 2*(t+s-1) < n_active
+    safety_bound_value = 2 * (args.t + args.s - 1)
+    safety_ok = safety_bound_value < args.n_nodes
+    print(f"Safety check: 2*(t+s-1) = {safety_bound_value} < n_nodes = {args.n_nodes} {'✓' if safety_ok else '✗'}")
     print(f"Network: Enabled")
-    print(f"DP-SGD: {'Enabled' if args.use_dp_sgd else 'Disabled'}")
     print(f"Node configs: {node_configs}")
     print("=" * 70)
-    
-    # Create DP-SGD config if needed
-    dp_config = None
-    if args.use_dp_sgd:
-        dp_config = DPSGDConfig(
-            clip_norm=1.0,
-            noise_multiplier=1.0,
-            delta=1e-5,
-            learning_rate=args.learning_rate
-        )
     
     # Create pipeline
     try:
@@ -103,8 +93,6 @@ Examples:
             node_id=args.node_id,
             node_configs=node_configs,
             enable_network=True,
-            use_dp_sgd=args.use_dp_sgd,
-            dp_config=dp_config,
             batch_size=args.batch_size,
             learning_rate=args.learning_rate,
             num_epochs=args.num_epochs

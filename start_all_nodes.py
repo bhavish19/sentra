@@ -11,8 +11,6 @@ import argparse
 
 def main():
     parser = argparse.ArgumentParser(description='Start all SENTRA nodes')
-    parser.add_argument('--use-dp-sgd', action='store_true',
-                       help='Enable DP-SGD on all nodes')
     parser.add_argument('--n-nodes', type=int, default=5,
                        help='Number of nodes to start (default: 5)')
     parser.add_argument('--base-port', type=int, default=8000,
@@ -25,7 +23,6 @@ def main():
     print("=" * 70)
     print(f"Total nodes: {args.n_nodes}")
     print(f"Base port: {args.base_port}")
-    print(f"DP-SGD: {'Enabled' if args.use_dp_sgd else 'Disabled'}")
     print("=" * 70)
     print()
     
@@ -40,9 +37,6 @@ def main():
             '--n-nodes', str(args.n_nodes),
             '--base-port', str(args.base_port)
         ]
-        
-        if args.use_dp_sgd:
-            cmd.append('--use-dp-sgd')
         
         print(f"Starting Node {node_id}...")
         

@@ -7,7 +7,6 @@ from typing import List, Dict, Optional, Tuple, Any
 from ml_training.kvs import KVSCluster
 from ml_training.secret_sharing import Share, PackedShamirSecretSharing
 from ml_training.mpc_engine import PackedMPCEngine
-from ml_training.dp_sgd_integration import DPSGDConfig, DPSGDMPCEngine, VerifiableDPProofs
 from ml_training.beaver_triples import SecureMultiplier
 from ml_training.secure_comm import SecureMPCNetwork, create_mpc_network
 from ml_training.reconstruction import create_reconstruction_manager
@@ -16,22 +15,43 @@ import numpy as np
 
 
 class SafetyBoundChecker:
-    """Checks safety bound: 2*(t+s) < n_active"""
+    """
+    Checks safety bound: 2*(t+s-1) < n_active
+    
+    When violated:
+    - Abort current mini-batch (don't advance model state)
+    - Suspend training until safety is restored
+    - Resume when condition holds again
+    """
     
     def __init__(self, t: int, s: int):
         self.t = t
         self.s = s
     
     def check(self, n_active: int) -> bool:
-        """Check if safety bound is satisfied"""
-        return 2 * (self.t + self.s) < n_active
+        """
+        Check if safety bound is satisfied
+        Safety condition: 2*(t+s-1) < n_active
+        """
+        return 2 * (self.t + self.s - 1) < n_active
     
     def get_max_packing_factor(self, n_active: int) -> int:
-        """Get maximum safe packing factor"""
+        """
+        Get maximum safe packing factor s such that 2*(t+s-1) < n_active
+        Returns 1 if safety bound is violated (no packing)
+        """
         if not self.check(n_active):
             return 1  # No packing if bound violated
-        # Simplified: return safe packing factor
-        return min(4, n_active - 2 * (self.t + self.s))
+        
+        # Find maximum s such that 2*(t+s-1) < n_active
+        # 2*(t+s-1) < n_active
+        # 2t + 2s - 2 < n_active
+        # 2s < n_active - 2t + 2
+        # s < (n_active - 2t + 2) / 2
+        max_s = (n_active - 2 * self.t + 2) // 2
+        
+        # Ensure at least 1, and cap at reasonable maximum (e.g., 4)
+        return max(1, min(4, max_s))
 
 
 class TrainingCoordinator:
@@ -41,7 +61,6 @@ class TrainingCoordinator:
     
     def __init__(self, kvs_cluster: KVSCluster, n_nodes: int, t: int, s: int,
                  batch_size: int = 32, learning_rate: float = 0.01,
-                 use_dp_sgd: bool = False, dp_config: Optional[DPSGDConfig] = None,
                  node_id: int = 1, node_configs: Optional[Dict[int, Dict[str, Any]]] = None,
                  enable_network: bool = False):
         """
@@ -53,8 +72,6 @@ class TrainingCoordinator:
             s: Adversarial share limit
             batch_size: Mini-batch size
             learning_rate: Learning rate
-            use_dp_sgd: Whether to use DP-SGD
-            dp_config: DP-SGD configuration (required if use_dp_sgd=True)
             node_id: ID of this node
             node_configs: Dictionary mapping node_id to {host, port} for network
             enable_network: Whether to enable multi-node network communication
@@ -65,18 +82,36 @@ class TrainingCoordinator:
         self.s = s
         self.batch_size = batch_size
         self.learning_rate = learning_rate
-        self.use_dp_sgd = use_dp_sgd
         self.node_id = node_id
         self.enable_network = enable_network
         
         self.safety_checker = SafetyBoundChecker(t, s)
         
+        # Initialize PSS (needed for node manager)
+        self.pss = PackedShamirSecretSharing()
+        
         # Initialize network if enabled
         self.network = None
         self.reconstruction_manager = None
+        self.failure_detector = None
+        self.node_manager = None
         if enable_network and node_configs:
             self.network = create_mpc_network(node_id, node_configs, port=8000 + node_id)
             self.reconstruction_manager = create_reconstruction_manager(self.network, t)
+            
+            # Initialize node failure detection and management
+            from ml_training.node_failure_detector import NodeFailureDetector
+            from ml_training.node_manager import NodeManager
+            self.failure_detector = NodeFailureDetector(self.network, heartbeat_interval=2.0, failure_timeout=6.0)
+            self.failure_detector.start_monitoring()
+            self.node_manager = NodeManager(
+                self.network, 
+                self.failure_detector, 
+                self.safety_checker,
+                self.pss,
+                t,
+                resharing_enabled=True
+            )
         
         # Initialize MPC engine
         self.mpc_engine = PackedMPCEngine(n_nodes=n_nodes, t=t)
@@ -90,27 +125,6 @@ class TrainingCoordinator:
                 triple_pool, n_nodes, t,
                 reconstruction_manager=self.reconstruction_manager
             )
-        
-        self.pss = PackedShamirSecretSharing()
-        
-        # Initialize DP-SGD if enabled
-        self.dp_mpc_engine = None
-        self.dp_proofs = []
-        if use_dp_sgd:
-            if dp_config is None:
-                dp_config = DPSGDConfig(
-                    clip_norm=1.0,
-                    noise_multiplier=1.0,
-                    learning_rate=learning_rate
-                )
-            # Get multiplier from MPC engine
-            multiplier = self.mpc_engine.multiplier
-            self.dp_mpc_engine = DPSGDMPCEngine(dp_config, multiplier)
-            self.dp_config = dp_config
-            self.proof_generator = VerifiableDPProofs()
-        else:
-            self.dp_config = None
-            self.proof_generator = None
         
         # Track versions
         self.v_D = 0  # Dataset version
@@ -201,18 +215,33 @@ class TrainingCoordinator:
                         packing_factor: int, node_id: int) -> Tuple[List[List[List[Share]]], bool]:
         """
         Train on a mini-batch
+        
+        Safety bound check: 2*(t+s-1) < n_active (where s is the packing factor)
+        The packing_factor parameter must satisfy this bound for every mini-batch.
+        If violated:
+        - Abort current mini-batch (don't advance model state)
+        - Return original weights unchanged
+        - Training will suspend until safety is restored
+        
         Args:
             sample_shares: Sample shares for batch
             label_shares: Label shares for batch
             weight_shares: Current weight shares
-            packing_factor: Packing factor for PSS
+            packing_factor: Packing factor for PSS (must satisfy safety bound)
             node_id: Node ID
         Returns:
             Tuple of (updated_weights, success)
+            - If success=False: weights are unchanged (batch aborted)
+            - If success=True: weights are updated (batch committed)
         """
-        # Check safety bound
+        # Check safety bound with ACTUAL packing factor BEFORE any computation
+        # Safety condition: 2*(t + packing_factor - 1) < n_active
         n_active = self.n_nodes  # Simplified - would track active nodes
-        if not self.safety_checker.check(n_active):
+        safety_bound_value = 2 * (self.t + packing_factor - 1)
+        if safety_bound_value >= n_active:
+            # Safety bound violated with this packing factor: ABORT current mini-batch
+            # Return original weights unchanged (no model state advancement)
+            # Training will suspend until safety is restored
             return weight_shares, False
         
         # Pack shares (simplified - use first sample's shares)
@@ -258,57 +287,7 @@ class TrainingCoordinator:
             input_shares=input_shares  # Pass input for gradient computation
         )
         
-        # Apply DP-SGD if enabled
-        if self.use_dp_sgd and self.dp_mpc_engine:
-            # Convert gradients to per-sample format
-            # gradients is List[List[List[Share]]] (layers -> rows -> columns)
-            # For DP-SGD, we need per-sample gradients
-            # Since we're processing a batch, we'll treat the entire batch as one sample for now
-            # (In production, would compute per-sample gradients separately)
-            
-            # Flatten all gradients into a single list
-            flat_grads = []
-            for grad_layer in gradients:
-                for grad_row in grad_layer:
-                    flat_grads.extend(grad_row)  # Extend with all shares in the row
-            
-            # For per-sample DP-SGD, we'd have List[List[Share]] where each inner list is one sample
-            # For now, treat the batch as one sample
-            per_sample_grads = [flat_grads]  # List containing one sample's flattened gradients
-            
-            # Perform DP-SGD step
-            noisy_grads, tracking_info = self.dp_mpc_engine.dp_sgd_step_on_shares(
-                per_sample_grads, self.batch_size, node_id
-            )
-            
-            # Generate proof
-            if self.proof_generator:
-                proof = self.proof_generator.prove_dp_sgd_step(tracking_info)
-                self.dp_proofs.append(proof)
-            
-            # Convert noisy_grads back to gradient format
-            # noisy_grads is List[Share] (flattened), need to reshape to List[List[List[Share]]]
-            # For now, we'll reshape based on the original gradient structure
-            if noisy_grads:
-                # Reshape flattened noisy_grads back to original structure
-                grad_idx = 0
-                reshaped_gradients = []
-                for layer_idx, grad_layer in enumerate(gradients):
-                    reshaped_layer = []
-                    for grad_row in grad_layer:
-                        reshaped_row = []
-                        for _ in grad_row:
-                            if grad_idx < len(noisy_grads):
-                                reshaped_row.append(noisy_grads[grad_idx])
-                                grad_idx += 1
-                            else:
-                                # Fallback if mismatch
-                                reshaped_row.append(grad_row[0])
-                        reshaped_layer.append(reshaped_row)
-                    reshaped_gradients.append(reshaped_layer)
-                gradients = reshaped_gradients
-        
-        # Update weights
+        # Update weights using standard (non-DP) SGD
         updated_weights = self.mpc_engine.update_weights(
             weight_shares, gradients, self.learning_rate, node_id
         )
