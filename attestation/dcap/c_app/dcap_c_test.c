@@ -84,7 +84,9 @@ void main() {
     sgx_report_data_t *p_rep_data;
     int32_t ret;
     
+    printf("dcap_quote_open\n");
     handle = dcap_quote_open();
+    printf("dcap_get_quote_size\n");
     quote_size = dcap_get_quote_size(handle);
     printf("quote size = %d\n", quote_size);
 

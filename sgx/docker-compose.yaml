@@ -19,6 +19,13 @@ x-sentra-multi-node: &x-sentra-multi-node
 
 services:
 
+  sentra-attestation:
+    <<: *x-sentra-core
+    command: /bin/sentra/attestation.py
+    container_name: sentra-attestation
+    profiles:
+      - attestation
+
   sentra-simple-training:
     <<: *x-sentra-core
     command: /bin/sentra/run_training.py
@@ -52,3 +59,5 @@ services:
   sentra-node-5:
     <<: *x-sentra-multi-node
     command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --auto-close --node-id 5
+
+ # sentra-verifier:
