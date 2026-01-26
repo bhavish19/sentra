@@ -17,15 +17,13 @@ x-sentra-multi-node: &x-sentra-multi-node
   profiles:
       - multi-node
 
+#x-sentra-verifier: &x-sentra-verifier
+#  build:
+#    context: ../
+#    dockerfile: ./attestation/Dockerfile
+#  image: sentra-verifier 
+
 services:
-
-  sentra-attestation:
-    <<: *x-sentra-core
-    command: /bin/sentra/attestation.py
-    container_name: sentra-attestation
-    profiles:
-      - attestation
-
   sentra-simple-training:
     <<: *x-sentra-core
     command: /bin/sentra/run_training.py
@@ -60,4 +58,5 @@ services:
     <<: *x-sentra-multi-node
     command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --auto-close --node-id 5
 
- # sentra-verifier:
+#  sentra-verifier:
+#    <<: *x-sentra-verifier

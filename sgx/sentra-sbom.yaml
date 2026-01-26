@@ -16,24 +16,13 @@ targets:
       - dirs:
           - /sentra
   # dcap
-#  - target: /bin
-#    copy:
-#      - files:
-#        - /opt/occlum/toolchains/dcap_lib/glibc/dcap_test
-#        - /root/demos/remote_attestation/dcap/c_app/dcap_c_test
- # copy lib
-#  - target: /opt/occlum/glibc/lib
-#    copy:
-#      - files:
-#        - /opt/occlum/toolchains/dcap_lib/glibc/libocclum_dcap.so.0.1.0
-  # dcap musl
   - target: /bin
     copy:
       - files:
-        - /opt/occlum/toolchains/dcap_lib/musl/dcap_test
-        - /root/demos/remote_attestation/dcap/c_app/dcap_c_test
-  # copy lib
-  - target: /lib
+        - /opt/occlum/toolchains/dcap_lib/glibc/dcap_test
+
+ # copy lib
+  - target: /opt/occlum/glibc/lib
     copy:
       - files:
-        - /opt/occlum/toolchains/dcap_lib/musl/libocclum_dcap.so.0.1.0
+        - /opt/occlum/toolchains/dcap_lib/glibc/libocclum_dcap.so.0.1.0
