@@ -1,0 +1,18 @@
+includes:
+  - base.yaml
+targets:
+  - target: /bin
+    copy:
+      - dirs:
+          - /sentra
+  # dcap
+  - target: /bin
+    copy:
+      - files:
+        - /opt/occlum/toolchains/dcap_lib/glibc/dcap_test
+
+ # copy lib
+  - target: /opt/occlum/glibc/lib
+    copy:
+      - files:
+        - /opt/occlum/toolchains/dcap_lib/glibc/libocclum_dcap.so.0.1.0
