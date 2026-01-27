@@ -1,3 +1,6 @@
 #!/bin/bash
 /opt/occlum/start_aesm.sh
-occlum run /bin/python3 "$@"
+echo "extract attestation report"
+occlum run /bin/sentra/attester/attester
+echo "run training"
+occlum run /bin/python3 "$@" #&
