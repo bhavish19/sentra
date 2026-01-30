@@ -13,6 +13,9 @@ import time
 from dataclasses import dataclass, asdict
 from enum import Enum
 import struct
+import base64
+from array import array
+from typing import Sequence
 
 
 class MessageType(Enum):
@@ -23,6 +26,9 @@ class MessageType(Enum):
     HEARTBEAT = "heartbeat"
     ACK = "ack"
     SYNC = "sync"
+    BATCH_SHARE_EXCHANGE = "batch_share_exchange"
+    VECTOR_SHARE_EXCHANGE = "vector_share_exchange"
+    VECTOR_SHARE_EXCHANGE_BIN = "vector_share_exchange_bin"
 
 
 @dataclass
@@ -59,6 +65,9 @@ class SecureChannel:
         self.running = False
         self.message_handlers: Dict[str, Callable] = {}
         self.received_shares: Dict[str, List[Share]] = {}
+        self.received_sync: Dict[str, set] = {}
+        # context -> sender_id -> {'x': int, 'values': List[int]}
+        self.received_vectors: Dict[str, Dict[int, Dict[str, Any]]] = {}
         self.lock = threading.Lock()
         self.message_counter = 0
     
@@ -162,6 +171,43 @@ class SecureChannel:
         except Exception as e:
             print(f"Error sending message to node {target_node_id}: {e}")
             raise
+
+    def send_message_with_binary(
+        self,
+        target_node_id: int,
+        msg_type: MessageType,
+        data: Dict[str, Any],
+        payload: bytes,
+    ):
+        """
+        Send a message whose header is JSON (length-prefixed) followed by a raw binary payload.
+        This avoids base64/JSON for large vectors.
+        """
+        if target_node_id not in self.connections:
+            raise ValueError(f"No connection to node {target_node_id}")
+
+        self.message_counter += 1
+        # Include payload length in the JSON header so receiver knows how many bytes to read.
+        header_data = dict(data)
+        header_data["payload_len"] = len(payload)
+        message = Message(
+            msg_type=msg_type.value,
+            sender_id=self.node_id,
+            receiver_id=target_node_id,
+            data=header_data,
+            timestamp=time.time(),
+            message_id=f"{self.node_id}_{self.message_counter}",
+        )
+
+        try:
+            sock = self.connections[target_node_id]
+            message_json = json.dumps(asdict(message))
+            header_bytes = message_json.encode("utf-8")
+            header_len = struct.pack(">I", len(header_bytes))
+            sock.sendall(header_len + header_bytes + payload)
+        except Exception as e:
+            print(f"Error sending binary message to node {target_node_id}: {e}")
+            raise
     
     def send_share(self, target_node_id: int, share: Share, context: str = "default"):
         """
@@ -180,6 +226,49 @@ class SecureChannel:
             }
         }
         self.send_message(target_node_id, MessageType.SHARE_EXCHANGE, data)
+
+    def send_shares_batch(self, target_node_id: int, shares: List[Share], contexts: List[str]):
+        """
+        Send a batch of shares to another node in a single message.
+        This amortizes per-message overhead for high-throughput MPC (e.g. Beaver openings).
+        """
+        if len(shares) != len(contexts):
+            raise ValueError("shares and contexts length mismatch")
+        items = []
+        for share, context in zip(shares, contexts):
+            items.append({
+                'context': context,
+                'share': {'x': share.x, 'y': share.y, 'node_id': share.node_id}
+            })
+        self.send_message(target_node_id, MessageType.BATCH_SHARE_EXCHANGE, {'items': items})
+
+    def send_vector(self, target_node_id: int, context: str, x: int, values: Sequence[int]):
+        """
+        Send a vector of share values for a single context.
+        This is the SIMD-style primitive: open many secrets in one round.
+        """
+        # field_size in our training is 2^32-5, so share values fit in uint32.
+        # Accept lists, array('I'), or numpy arrays without materializing Python int lists.
+        buf: bytes
+        try:
+            import numpy as _np  # local import
+            if isinstance(values, _np.ndarray):
+                arr_u32 = _np.asarray(values, dtype=_np.uint32)
+                buf = arr_u32.tobytes(order="C")
+            elif isinstance(values, array) and values.typecode == "I":
+                buf = values.tobytes()
+            else:
+                buf = array("I", (int(v) & 0xFFFFFFFF for v in values)).tobytes()
+        except Exception:
+            buf = array("I", (int(v) & 0xFFFFFFFF for v in values)).tobytes()
+
+        # Send as binary payload (preferred)
+        self.send_message_with_binary(
+            target_node_id,
+            MessageType.VECTOR_SHARE_EXCHANGE_BIN,
+            {"context": context, "x": x, "n": len(values), "enc": "u32le"},
+            payload=buf,
+        )
     
     def _handle_client(self, client_socket: socket.socket):
         """Handle incoming client connection"""
@@ -206,7 +295,23 @@ class SecureChannel:
                     message_data += chunk
                 
                 if len(message_data) == length:
-                    self._process_message(json.loads(message_data.decode('utf-8')))
+                    msg_dict = json.loads(message_data.decode('utf-8'))
+                    # If this is a binary vector message, read the raw payload now
+                    try:
+                        if msg_dict.get("msg_type") == MessageType.VECTOR_SHARE_EXCHANGE_BIN.value:
+                            payload_len = int(msg_dict.get("data", {}).get("payload_len", 0))
+                            if payload_len > 0:
+                                payload = b""
+                                while len(payload) < payload_len:
+                                    chunk = client_socket.recv(payload_len - len(payload))
+                                    if not chunk:
+                                        break
+                                    payload += chunk
+                                # Attach bytes directly (not JSON-serialized)
+                                msg_dict.setdefault("data", {})["payload_bytes"] = payload
+                    except Exception:
+                        pass
+                    self._process_message(msg_dict)
         except (socket.error, OSError) as e:
             # Ignore socket errors when shutting down or client disconnects
             if self.running and e.errno not in (10038, 10054, 10053):  # WSAENOTSOCK, WSAECONNRESET, WSAEINTR
@@ -229,6 +334,14 @@ class SecureChannel:
         
         if msg_type == MessageType.SHARE_EXCHANGE.value:
             self._handle_share_exchange(sender_id, data)
+        elif msg_type == MessageType.BATCH_SHARE_EXCHANGE.value:
+            self._handle_batch_share_exchange(sender_id, data)
+        elif msg_type == MessageType.VECTOR_SHARE_EXCHANGE.value:
+            self._handle_vector_share_exchange(sender_id, data)
+        elif msg_type == MessageType.VECTOR_SHARE_EXCHANGE_BIN.value:
+            self._handle_vector_share_exchange(sender_id, data)
+        elif msg_type == MessageType.SYNC.value:
+            self._handle_sync(sender_id, data)
         elif msg_type == MessageType.RECONSTRUCTION_REQUEST.value:
             self._handle_reconstruction_request(sender_id, data)
         elif msg_type == MessageType.RECONSTRUCTION_RESPONSE.value:
@@ -237,6 +350,86 @@ class SecureChannel:
             self._handle_heartbeat(sender_id, data)
         elif msg_type in self.message_handlers:
             self.message_handlers[msg_type](sender_id, data)
+
+    def _handle_sync(self, sender_id: int, data: Dict):
+        """Handle barrier/sync message."""
+        tag = data.get("tag", "default")
+        with self.lock:
+            if tag not in self.received_sync:
+                self.received_sync[tag] = set()
+            self.received_sync[tag].add(sender_id)
+
+    def get_received_sync(self, tag: str) -> set:
+        with self.lock:
+            return set(self.received_sync.get(tag, set()))
+
+    def clear_sync(self, tag: str):
+        with self.lock:
+            if tag in self.received_sync:
+                del self.received_sync[tag]
+
+    def _handle_batch_share_exchange(self, sender_id: int, data: Dict):
+        """Handle a batch of received shares."""
+        items = data.get('items', [])
+        for item in items:
+            context = item.get('context')
+            share_dict = item.get('share')
+            if not context or not share_dict:
+                continue
+            share = Share(x=share_dict['x'], y=share_dict['y'], node_id=share_dict['node_id'])
+            with self.lock:
+                if context not in self.received_shares:
+                    self.received_shares[context] = []
+                self.received_shares[context].append(share)
+
+    def _handle_vector_share_exchange(self, sender_id: int, data: Dict):
+        """Handle a received vector payload."""
+        context = data.get("context")
+        x = data.get("x")
+        if not context or x is None:
+            return
+
+        values_obj = None
+        # Preferred: raw bytes attached by _handle_client for VECTOR_SHARE_EXCHANGE_BIN
+        if "payload_bytes" in data and data.get("enc") == "u32le":
+            raw = data.get("payload_bytes")
+            if not isinstance(raw, (bytes, bytearray)):
+                return
+            arr = array("I")
+            try:
+                arr.frombytes(raw)
+            except Exception:
+                return
+            n = data.get("n")
+            if isinstance(n, int) and n >= 0 and len(arr) != n:
+                return
+            values_obj = arr
+        else:
+            # Legacy JSON formats
+            if "payload" in data:
+                try:
+                    enc = data.get("enc")
+                    if enc != "u32le_b64":
+                        return
+                    raw = base64.b64decode(data["payload"].encode("ascii"))
+                    arr = array("I")
+                    arr.frombytes(raw)
+                    n = data.get("n")
+                    if isinstance(n, int) and n >= 0 and len(arr) != n:
+                        return
+                    values_obj = arr
+                except Exception:
+                    return
+            else:
+                values = data.get("values")
+                if values is None:
+                    return
+                values_obj = values
+
+        with self.lock:
+            if context not in self.received_vectors:
+                self.received_vectors[context] = {}
+            self.received_vectors[context][sender_id] = {"x": x, "values": values_obj}
     
     def _handle_share_exchange(self, sender_id: int, data: Dict):
         """Handle received share"""
@@ -286,6 +479,15 @@ class SecureChannel:
         with self.lock:
             if context in self.received_shares:
                 del self.received_shares[context]
+
+    def get_received_vector(self, context: str) -> Dict[int, Dict[str, Any]]:
+        with self.lock:
+            return dict(self.received_vectors.get(context, {}))
+
+    def clear_vector(self, context: str):
+        with self.lock:
+            if context in self.received_vectors:
+                del self.received_vectors[context]
     
     def stop(self):
         """Stop the server and close connections"""
@@ -365,6 +567,24 @@ class SecureMPCNetwork:
                     self.send_share(node_id, share, context)
                 except Exception as e:
                     print(f"Warning: Could not broadcast to node {node_id}: {e}")
+
+    def broadcast_shares_batch(self, shares: List[Share], contexts: List[str]):
+        """Broadcast a batch of shares to all nodes."""
+        for node_id in self.node_configs.keys():
+            if node_id != self.node_id:
+                try:
+                    self.channel.send_shares_batch(node_id, shares, contexts)
+                except Exception as e:
+                    print(f"Warning: Could not batch-broadcast to node {node_id}: {e}")
+
+    def broadcast_vector(self, context: str, x: int, values: List[int]):
+        """Broadcast a vector payload to all nodes."""
+        for node_id in self.node_configs.keys():
+            if node_id != self.node_id:
+                try:
+                    self.channel.send_vector(node_id, context, x, values)
+                except Exception as e:
+                    print(f"Warning: Could not broadcast vector to node {node_id}: {e}")
     
     def get_received_shares(self, context: str) -> List[Share]:
         """Get received shares for a context"""
@@ -373,6 +593,30 @@ class SecureMPCNetwork:
     def stop(self):
         """Stop the network"""
         self.channel.stop()
+
+    def barrier(self, tag: str, timeout: float = 120.0):
+        """
+        Simple multi-node barrier: each node broadcasts a SYNC(tag) and waits until
+        it has received SYNC(tag) from all other nodes.
+        """
+        # Broadcast our presence for this tag
+        for other_id in self.node_configs.keys():
+            if other_id != self.node_id:
+                try:
+                    self.channel.send_message(other_id, MessageType.SYNC, {"tag": tag})
+                except Exception as e:
+                    raise RuntimeError(f"Failed to send SYNC to node {other_id}: {e}")
+
+        start = time.time()
+        expected_peers = {i for i in self.node_configs.keys() if i != self.node_id}
+        while time.time() - start < timeout:
+            got = self.channel.get_received_sync(tag)
+            if expected_peers.issubset(got):
+                self.channel.clear_sync(tag)
+                return
+            time.sleep(0.05)
+
+        raise RuntimeError(f"Barrier timed out for tag={tag}; got={sorted(list(got))}, expected={sorted(list(expected_peers))}")
 
 
 def create_mpc_network(node_id: int, node_configs: Dict[int, Dict[str, Any]],

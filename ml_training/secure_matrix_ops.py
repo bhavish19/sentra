@@ -111,26 +111,27 @@ class SecureMatrixMultiplier:
                 v_shares = v_shares + [zero_share] * (A_n - n)
             n = A_n
         
-        result = []
-        
-        for i in range(m):
-            # Compute dot product: y[i] = sum(A[i][j] * v[j])
-            dot_product = Share(x=v_shares[0].x, y=0, node_id=node_id)
-            
-            for j in range(n):
-                if j < len(A_shares[i]) and j < len(v_shares):
-                    # Generate unique context for each multiplication
-                    mult_context = f"{context}_v{i}_{j}" if context else None
-                    product = self.multiplier.multiply(A_shares[i][j], v_shares[j], node_id, context=mult_context)
-                    dot_product = Share(
-                        x=dot_product.x,
-                        y=(dot_product.y + product.y) % self.field_size,
-                        node_id=node_id
-                    )
-            
-            result.append(dot_product)
-        
-        return result
+        # Stage-2 speedup: use array-based multiply_batch_values to avoid per-element Share objects.
+        x0 = v_shares[0].x
+        A_y = np.array([[A_shares[i][j].y for j in range(n)] for i in range(m)], dtype=np.uint64)
+        v_y = np.array([v_shares[j].y for j in range(n)], dtype=np.uint64)
+
+        # Build (m*n) elementwise products in one go: flatten A and tile v
+        y1 = A_y.reshape(-1)
+        y2 = np.tile(v_y, m)
+
+        base = context if context else "matvec"
+        chunk = 16384
+        prod = np.empty_like(y1, dtype=np.uint64)
+        for start in range(0, y1.size, chunk):
+            end = min(start + chunk, y1.size)
+            prod[start:end] = self.multiplier.multiply_batch_values(
+                y1[start:end], y2[start:end], x=x0, node_id=node_id, context_prefix=f"{base}_mv_{start}"
+            )
+        prod = prod.reshape(m, n)
+        out = (prod.sum(axis=1) % self.field_size)
+
+        return [Share(x=x0, y=int(out[i] % self.field_size), node_id=node_id) for i in range(m)]
     
     def secure_matrix_add(self, A_shares: List[List[Share]], 
                          B_shares: List[List[Share]]) -> List[List[Share]]:
