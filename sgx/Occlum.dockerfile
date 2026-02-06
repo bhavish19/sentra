@@ -1,13 +1,13 @@
 FROM alpine:3.11 AS alpine
 
-LABEL maintainer="Qing Li <geding.lq@antgroup.com>"
+LABEL maintainer="Qi Zheng <huaiqing.zq@antgroup.com>"
 
 RUN apk update && \
     apk --no-cache add openjdk11 openjdk8 --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community
 
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
-LABEL maintainer="Qing Li <geding.lq@antgroup.com>"
+LABEL maintainer="Qi Zheng <huaiqing.zq@antgroup.com>"
 
 #The default shell for the RUN instruction is ["/bin/sh", "-c"], which sometimes cause unexpected error
 #for example "source a_file". Use bash as default shell instead.
@@ -67,7 +67,7 @@ RUN apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get install -y --no-i
     rm -rf /var/lib/apt/lists/*
 
 RUN echo "ca_directory=/etc/ssl/certs" >> /etc/wgetrc && \
-    echo 'deb [arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu focal main' | tee /etc/apt/sources.list.d/intel-sgx.list &&\
+    echo 'deb [arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu jammy main' | tee /etc/apt/sources.list.d/intel-sgx.list &&\
     wget -qO - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key --no-check-certificate | apt-key add -
 
 # Install cpuid tool for tests
@@ -79,7 +79,7 @@ RUN echo "ca_directory=/etc/ssl/certs" >> /etc/wgetrc && \
 
 # Install Rust
 ENV PATH="/root/.cargo/bin:$PATH"
-ENV OCCLUM_RUST_VERSION=nightly-2023-06-01
+ENV OCCLUM_RUST_VERSION=nightly-2022-10-22
 RUN curl https://sh.rustup.rs -sSf | \
         sh -s -- --default-toolchain ${OCCLUM_RUST_VERSION} -y && \
     rm -rf /root/.cargo/registry && rm -rf /root/.cargo/git && \
@@ -89,35 +89,35 @@ RUN curl https://sh.rustup.rs -sSf | \
 ARG PSW_VERSION=2.21.100.1
 ARG DCAP_VERSION=1.18.100.1
 RUN apt-get update && aptitude install -y \
-        libsgx-launch-dev=$PSW_VERSION-focal1 \
-        libsgx-epid-dev=$PSW_VERSION-focal1 \
-        libsgx-quote-ex-dev=$PSW_VERSION-focal1 \
-        libsgx-urts=$PSW_VERSION-focal1 \
-        libsgx-enclave-common=$PSW_VERSION-focal1 \
-        libsgx-uae-service=$PSW_VERSION-focal1 \
-        libsgx-ae-epid=$PSW_VERSION-focal1 \
-        libsgx-ae-le=$PSW_VERSION-focal1 \
-        libsgx-ae-pce=$PSW_VERSION-focal1 \
-        libsgx-aesm-launch-plugin=$PSW_VERSION-focal1 \
-        sgx-aesm-service=$PSW_VERSION-focal1 \
-        libsgx-aesm-launch-plugin=$PSW_VERSION-focal1 \
-        libsgx-aesm-pce-plugin=$PSW_VERSION-focal1 \
-        libsgx-aesm-ecdsa-plugin=$PSW_VERSION-focal1 \
-        libsgx-aesm-epid-plugin=$PSW_VERSION-focal1 \
-        libsgx-aesm-quote-ex-plugin=$PSW_VERSION-focal1 \
-        libsgx-ae-id-enclave=$DCAP_VERSION-focal1 \
-        libsgx-ae-qe3=$DCAP_VERSION-focal1 \
-        libsgx-ae-qve=$DCAP_VERSION-focal1 \
-        libsgx-dcap-quote-verify=$DCAP_VERSION-focal1 \
-        libsgx-dcap-quote-verify-dev=$DCAP_VERSION-focal1 \
-        libsgx-dcap-ql=$DCAP_VERSION-focal1 \
-        libsgx-dcap-ql-dev=$DCAP_VERSION-focal1 \
-        libsgx-epid=$PSW_VERSION-focal1 \
-        libsgx-quote-ex=$PSW_VERSION-focal1 \
-        libsgx-pce-logic=$DCAP_VERSION-focal1 \
-        libsgx-qe3-logic=$DCAP_VERSION-focal1 \
-        libsgx-launch=$PSW_VERSION-focal1 \
-        libsgx-dcap-default-qpl=$DCAP_VERSION-focal1 \
+        libsgx-launch-dev=$PSW_VERSION-jammy1 \
+        libsgx-epid-dev=$PSW_VERSION-jammy1 \
+        libsgx-quote-ex-dev=$PSW_VERSION-jammy1 \
+        libsgx-urts=$PSW_VERSION-jammy1 \
+        libsgx-enclave-common=$PSW_VERSION-jammy1 \
+        libsgx-uae-service=$PSW_VERSION-jammy1 \
+        libsgx-ae-epid=$PSW_VERSION-jammy1 \
+        libsgx-ae-le=$PSW_VERSION-jammy1 \
+        libsgx-ae-pce=$PSW_VERSION-jammy1 \
+        libsgx-aesm-launch-plugin=$PSW_VERSION-jammy1 \
+        sgx-aesm-service=$PSW_VERSION-jammy1 \
+        libsgx-aesm-launch-plugin=$PSW_VERSION-jammy1 \
+        libsgx-aesm-pce-plugin=$PSW_VERSION-jammy1 \
+        libsgx-aesm-ecdsa-plugin=$PSW_VERSION-jammy1 \
+        libsgx-aesm-epid-plugin=$PSW_VERSION-jammy1 \
+        libsgx-aesm-quote-ex-plugin=$PSW_VERSION-jammy1 \
+        libsgx-ae-id-enclave=$DCAP_VERSION-jammy1 \
+        libsgx-ae-qe3=$DCAP_VERSION-jammy1 \
+        libsgx-ae-qve=$DCAP_VERSION-jammy1 \
+        libsgx-dcap-quote-verify=$DCAP_VERSION-jammy1 \
+        libsgx-dcap-quote-verify-dev=$DCAP_VERSION-jammy1 \
+        libsgx-dcap-ql=$DCAP_VERSION-jammy1 \
+        libsgx-dcap-ql-dev=$DCAP_VERSION-jammy1 \
+        libsgx-epid=$PSW_VERSION-jammy1 \
+        libsgx-quote-ex=$PSW_VERSION-jammy1 \
+        libsgx-pce-logic=$DCAP_VERSION-jammy1 \
+        libsgx-qe3-logic=$DCAP_VERSION-jammy1 \
+        libsgx-launch=$PSW_VERSION-jammy1 \
+        libsgx-dcap-default-qpl=$DCAP_VERSION-jammy1 \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
@@ -148,7 +148,7 @@ ENV PATH="/opt/occlum/build/bin:/usr/local/occlum/bin:$PATH"
 
 # Install glibc
 WORKDIR /root/occlum/tools/toolchains
-RUN cd glibc && ./build.sh && cd .. && rm -rf glibc && rm -rf /tmp/glibc*
+RUN cd glibc && ./build.sh occlum-glibc-2.35 && cd .. && rm -rf glibc && rm -rf /tmp/glibc*
 
 # Install Occlum Golang toolchain
 WORKDIR /root/occlum/tools/toolchains
@@ -186,9 +186,6 @@ COPY --from=alpine /etc/ssl/certs/java/cacerts $JDK8_PATH/jre/lib/security/cacer
 
 # Install DCAP library
 WORKDIR /root/occlum/tools/toolchains
-#RUN for f in ./rust-toolchain; do \
-#        [ -f "$f" ] && sed -i 's/nightly-2022-10-22/nightly-2024-01-01/g' "$f"; \
-#    done
 RUN cd dcap_lib && ./build.sh && cd .. && rm -rf dcap_lib
 
 # Install AECS Client library
@@ -199,15 +196,12 @@ RUN cd aecs_client && ./build.sh && cd .. && rm -rf aecs_client
 WORKDIR /root/occlum/tools/toolchains
 RUN cd grpc_ratls && ./build.sh && cd .. && rm -rf grpc_ratls && rm -rf /tmp/grpc*
 
-
-
 # Install Occlum
 WORKDIR /root
 RUN cd occlum && \
     source /opt/intel/sgxsdk/environment && \
     make submodule && \
-    OCCLUM_RELEASE_BUILD=1 make && \
-    make install && \
+    OCCLUM_RELEASE_BUILD=1 make install && \
     cp -r demos /root/demos && \
     rm -rf /root/occlum
 
