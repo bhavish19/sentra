@@ -1,17 +1,7 @@
 # Attestation using Occlum
 
-The C program for attestation using dcap can be found under `dcap/`. It is based on [this](https://github.com/occlum/occlum/tree/master/demos/remote_attestation/dcap) example provided by Occlum.
 
-The program currently retrieves and prints the following fields:
-- **SGX ISV Family ID** (not important)
-- **SGX ISV EXT Product ID** (not important)
-- **SGX CONFIG ID** (not important)
-- **SGX CONFIG SVN**: (not important)
-- **MRENCLAVE**: measurement of the target.
-- **MRSIGNER**: The Enclave Author’s Public Key – After an enclave is successfully initialized, the CPU records a hash of the enclave author’s public key in the MRSIGNER register. 
-- **Extracted QE_ID**: unique identifier inserted by the Quoting Enclave derived from the platform's unique hardware sealing key. Note: if the platform owner wipes the SGX provisioning data or re-installs the Quoting Enclave, this ID might change. In the final version, it might make sense to check the 
-
-## Running (using occlum container)
+## Running the default occlum example
 
 Launch occlum container by using:
 
