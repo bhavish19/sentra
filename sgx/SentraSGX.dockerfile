@@ -48,7 +48,7 @@ WORKDIR /occlum-instance
 RUN mkdir -p image/bin
 RUN copy_bom -f /sentra-sbom.yaml --root image --include-dir /opt/occlum/etc/template 
 
-RUN new_json="$(jq '.resource_limits.user_space_size = "1MB" |.resource_limits.user_space_max_size = "5400MB" |.resource_limits.kernel_space_heap_size = "1MB" |.resource_limits.kernel_space_heap_max_size = "512MB" |.resource_limits.max_num_of_threads = 64 |.env.default += ["PYTHONHOME=/opt/python-occlum", "OMP_NUM_THREADS=1"]' Occlum.json)" && echo "${new_json}" > Occlum.json
+RUN new_json="$(jq '.metadata.debuggable=false |.feature.enable_edmm=true |.resource_limits.user_space_size = "1MB" |.resource_limits.user_space_max_size = "5400MB" |.resource_limits.kernel_space_heap_size = "1MB" |.resource_limits.kernel_space_heap_max_size = "512MB" |.resource_limits.max_num_of_threads = 64 |.env.default += ["PYTHONHOME=/opt/python-occlum", "OMP_NUM_THREADS=1"]' Occlum.json)" && echo "${new_json}" > Occlum.json
 
 RUN ENABLE_EDMM=Y occlum build
 RUN occlum package --debug occlum-instance.tar.gz
