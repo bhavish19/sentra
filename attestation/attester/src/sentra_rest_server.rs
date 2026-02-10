@@ -1,3 +1,5 @@
+use crate::sentra_attester;
+
 use axum::{
     routing::get,
     Router,
@@ -14,12 +16,12 @@ async fn attest_handler() -> impl IntoResponse {
     (
         StatusCode::OK,
         [("Content-Type", "application/octet-stream")],
-        blob
+        attestation_report
     )
 }
 
 #[tokio::main]
-async fn start_rest_server() {
+pub async fn start_rest_server() {
     let app = Router::new()
         .route("/attest", get(attest_handler));
 
