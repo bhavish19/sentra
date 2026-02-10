@@ -8,6 +8,8 @@ x-sentra-core: &x-sentra-core
     deploy:
       mode: replicated-job
       replicas: 1
+    ports:
+      - 3000:3000
     devices:
       - "/dev/sgx_enclave:/dev/sgx_enclave"
       - "/dev/sgx_provision:/dev/sgx_provision"

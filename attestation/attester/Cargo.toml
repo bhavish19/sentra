@@ -5,11 +5,22 @@ edition = "2021"
 
 [dependencies]
 occlum-sgx = "0.1.13"
-axum = "=0.7.0"
-tokio = { version = "=1.47.1", features = ["full"] }
+axum = "=0.7.7"
+tokio = { version = "=1.38.1",features = ["rt-multi-thread"] }
 indexmap="=2.11.0"
 syn = "=2.0.106"
 log="=0.4.28"
+serde="=1.0.219"
+quote="=1.0.40"
+parking_lot="=0.12.4"
+proc-macro2="=1.0.103"
+ryu="=1.0.20"
+parking_lot_core="=0.9.11"
+unicode-ident="=1.0.22"
+tokio-util="=0.7.11"
+lock_api="=0.4.13"
+itoa="=1.0.15"
+
 
 [[bin]]
 name = "sentra_attester"

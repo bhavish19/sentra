@@ -16,11 +16,12 @@ targets:
       - dirs:
           - /sentra
 
-  #Attester
+  #Attester and run script
   - target: /bin
     copy:
      - files:
         - /attester/target/release/sentra_attester
+        - /enclave_run_script.sh
 
 # Shell
   - target: /bin

@@ -20,7 +20,7 @@ async fn attest_handler() -> impl IntoResponse {
     )
 }
 
-#[tokio::main]
+//#[tokio::main]
 pub async fn start_rest_server() {
     let app = Router::new()
         .route("/attest", get(attest_handler));

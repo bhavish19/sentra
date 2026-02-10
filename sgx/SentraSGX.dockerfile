@@ -28,19 +28,24 @@ COPY ./run_dp_training.py /sentra/
 COPY ./run_node.py /sentra/
 COPY ./sgx/node_config.yaml /sentra/
 
+#Build attester
+#Just update crates.io (and cache it...)
+RUN cargo search tokio >/dev/null
+
 COPY ./attestation/attester /attester
 WORKDIR /attester
-RUN cargo build --release; exit 0
-RUN cargo update -p log@0.4.29 --precise 0.4.28
+RUN rm rust-toolchain.toml
+#RUN cargo build --release; exit 0
+#RUN cargo update -p log@0.4.29 --precise 0.4.28
 RUN cargo build --release
 
+COPY ./sgx/enclave_run_script.sh /
 
 RUN occlum new /occlum-instance
 RUN rm -rf /occlum-instance/image
 WORKDIR /occlum-instance
 
 RUN mkdir -p image/bin
-RUN cp /bin/ls image/bin/
 RUN copy_bom -f /sentra-sbom.yaml --root image --include-dir /opt/occlum/etc/template 
 
 RUN new_json="$(jq '.resource_limits.user_space_size = "1MB" |.resource_limits.user_space_max_size = "5400MB" |.resource_limits.kernel_space_heap_size = "1MB" |.resource_limits.kernel_space_heap_max_size = "512MB" |.resource_limits.max_num_of_threads = 64 |.env.default += ["PYTHONHOME=/opt/python-occlum", "OMP_NUM_THREADS=1"]' Occlum.json)" && echo "${new_json}" > Occlum.json
