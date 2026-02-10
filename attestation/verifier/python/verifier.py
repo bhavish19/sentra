@@ -13,3 +13,4 @@ collateral =  asyncio.run( dcap_qvl.get_collateral_from_pcs(quote_bytes))
 result =  dcap_qvl.verify(quote_bytes,collateral,now_timestamp)
 
 print(result)
+print(result.status)
