@@ -30,7 +30,7 @@ COPY ./sgx/node_config.yaml /sentra/
 
 COPY ./attestation/attester /attester
 WORKDIR /attester
-RUN cargo build --release
+RUN cargo build --release; exit 0
 RUN cargo update -p log@0.4.29 --precise 0.4.28
 RUN cargo build --release
 
