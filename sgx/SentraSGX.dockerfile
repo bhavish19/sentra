@@ -23,10 +23,7 @@ RUN bash ./Miniconda3-latest-Linux-x86_64.sh -b -p /miniconda
 RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
 RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 RUN /miniconda/bin/conda create --prefix /python-occlum -y  python=3.10.0 numpy==1.26.4 pyyaml==6.0.3
-RUN occlum new /occlum-instance
-RUN rm -rf /occlum-instance/image
 
-WORKDIR /occlum-instance
 COPY ./sgx/sentra-sbom.yaml /
 RUN mkdir /sentra
 RUN mkdir /sentra/ml_training
@@ -34,24 +31,19 @@ COPY ./ml_training /sentra/ml_training/
 COPY ./run_training.py /sentra/
 COPY ./run_dp_training.py /sentra/
 COPY ./run_node.py /sentra/
-COPY ./attestation/attester/ /sentra/attester/
-
-WORKDIR /sentra/
-
-RUN CC=$CC LD=$LD LIBPATH=$LIBPATH make -C attester clean
-RUN CC=$CC LD=$LD LIBPATH=$LIBPATH INCPATH=$INCPATH make -C attester
-
-RUN rm -rf occlum-instance && occlum new occlum-instance
-
-WORKDIR /occlum-instance
-
 COPY ./sgx/node_config.yaml /sentra/
-RUN copy_bom -f /sentra-sbom.yaml --root image --include-dir /opt/occlum/etc/template 
 
+COPY ./attestation/attester /attester
+WORKDIR /attester
+RUN cargo build --release
+
+RUN occlum new /occlum-instance
+RUN rm -rf /occlum-instance/image
 WORKDIR /occlum-instance
 
 RUN mkdir -p image/bin
 RUN cp /bin/ls image/bin/
+RUN copy_bom -f /sentra-sbom.yaml --root image --include-dir /opt/occlum/etc/template 
 
 RUN new_json="$(jq '.resource_limits.user_space_size = "1MB" |.resource_limits.user_space_max_size = "5400MB" |.resource_limits.kernel_space_heap_size = "1MB" |.resource_limits.kernel_space_heap_max_size = "512MB" |.resource_limits.max_num_of_threads = 64 |.env.default += ["PYTHONHOME=/opt/python-occlum", "OMP_NUM_THREADS=1"]' Occlum.json)" && echo "${new_json}" > Occlum.json
 

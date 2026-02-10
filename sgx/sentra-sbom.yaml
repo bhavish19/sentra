@@ -15,14 +15,22 @@ targets:
     copy:
       - dirs:
           - /sentra
-  # dcap
+
+  #Attester
   - target: /bin
     copy:
-      - files:
-        - /opt/occlum/toolchains/dcap_lib/glibc/dcap_test
+     - files:
+        - /attester/target/release/sentra_attester
+
+# Shell
+  - target: /bin
+    copy:
+     - files:
+        - /opt/occlum/toolchains/bash/glibc/bash
+        - /opt/occlum/toolchains/busybox/glibc/busybox
 
  # copy lib
-  - target: /opt/occlum/glibc/lib
-    copy:
-      - files:
-        - /opt/occlum/toolchains/dcap_lib/glibc/libocclum_dcap.so.0.1.0
+#  - target: /opt/occlum/glibc/lib
+#    copy:
+ #     - files:
+ #       - /opt/occlum/toolchains/dcap_lib/glibc/libocclum_dcap.so.0.1.0

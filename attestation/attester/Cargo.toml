@@ -1,0 +1,13 @@
+[package]
+name = "Sentra Attester"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+occlum-sgx = "0.1.13"
+log="0.4.28"
+
+[[bin]]
+name = "sentra_attester"
+path = "src/sentra_attester.rs"
+
