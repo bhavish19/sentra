@@ -1,6 +1,6 @@
 use occlum_sgx::SGXQuote;
 
- fn main() -> Result<(), Box<dyn std::error::Error>> {
+ fn generate_attestation_report() ->  Vec<u8> {
 
     // 1. Define your 64-byte report data
    let report_data = [0u8; 64];
@@ -13,8 +13,7 @@ use occlum_sgx::SGXQuote;
     println!("MrSigner:  {:?}", quote.mrsigner());
     // 4. Convert to bytes for transmission to a remote verifier
 
-    let _quote_raw = quote.as_slice();
-    Ok(())
-
+    let quote = quote.as_slice();
+    return quote;
 }
 
