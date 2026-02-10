@@ -13,11 +13,6 @@ WORKDIR /
 
 RUN apt-get update && apt-get install -y jq
 
-ARG CC=gcc
-ARG LD=ld
-ARG LIBPATH="/opt/occlum/toolchains/dcap_lib/glibc"
-ARG INCPATH="/opt/occlum/toolchains/dcap_lib/inc"
-
 RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 RUN bash ./Miniconda3-latest-Linux-x86_64.sh -b -p /miniconda
 RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
@@ -75,7 +70,7 @@ sgx-aesm-service=2.21.100.1-jammy1
 
 COPY --from=sentra-builder /opt/occlum/start_aesm.sh /opt/occlum/
 COPY ./sgx/entrypoint.sh /
-COPY ./attestation/sgx_sentra_qcnl.conf /etc/sgx_default_qcnl.conf
+COPY ./sgx/sgx_sentra_qcnl.conf /etc/sgx_default_qcnl.conf
 RUN mkdir -p /var/run/aesmd
 
 WORKDIR /occlum-instance    
