@@ -7,7 +7,7 @@ edition = "2021"
 occlum-sgx = "0.1.13"
 log="=0.4.28"
 #axum = "=0.7.7"
-#tokio = { version = "=1.38.1",features = ["rt-multi-thread"] }
+tokio = { version = "=1.38.1",features = ["rt-multi-thread"] }
 #indexmap="=2.11.0"
 #syn = "=2.0.106"
 #serde="=1.0.219"
@@ -21,6 +21,8 @@ log="=0.4.28"
 #lock_api="=0.4.13"
 #itoa="=1.0.15"
 
+tonic = "=0.12.3"
+prost = "=0.12.3"
 
 [[bin]]
 name = "sentra_attester"
