@@ -3,6 +3,7 @@ from flask import Flask, jsonify, request
 from flask import send_file
 
 import grpc
+import threading
 import SentraBackend_GRPC_Services_pb2
 import SentraBackend_GRPC_Services_pb2_grpc
 from concurrent import futures
@@ -52,13 +53,19 @@ class Backend:
     def __init__(self):
         pass
     
+
+    def runGRPCServer(self):
+        self.server.wait_for_termination()
+
     def createGRPCServer(self):
-        server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+        self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         servicer = NodeRegistrationServicer()
-        SentraBackend_GRPC_Services_pb2_grpc.add_NodeRegistrationServicer_to_server(servicer, server)
-        server.add_insecure_port(f'[::]:8000')    
+        SentraBackend_GRPC_Services_pb2_grpc.add_NodeRegistrationServicer_to_server(servicer, self.server)
+        self.server.add_insecure_port('127.0.0.1:8000')    
         print(f"Starting gRPC server on port 8000...")
-        server.start()
+        self.server.start()
+        grpc_thread = threading.Thread(target=self.runGRPCServer, args=(), daemon=True)
+        grpc_thread.start()
 
 
     def create(self,cmdlineargs:CommandLineOptions)->Flask:

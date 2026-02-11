@@ -1,8 +1,11 @@
 FROM python:3.14.3-slim-trixie AS sentra-backend
-
+RUN pip install --upgrade pip
 RUN mkdir /sentra-backend
-COPY ./backend /sentra-backend
+
+COPY ./demonstrator/backend /sentra-backend
 COPY ./demonstrator/ci/docker/scripts/entrypoint.sh /
-RUN pip install -r requirements
+
+WORKDIR /sentra-backend
+RUN pip install -r requirements.txt
 
 ENTRYPOINT ["/entrypoint.sh"]
