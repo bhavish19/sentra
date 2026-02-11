@@ -1,3 +1,4 @@
+/* 
 use crate::sentra_attester;
 
 use axum::{
@@ -32,3 +33,4 @@ pub async fn start_rest_server() {
     println!("Server running on http://0.0.0.0:3000");
     axum::serve(listener, app).await.unwrap();
 }
+*/
