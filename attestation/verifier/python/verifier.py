@@ -18,7 +18,7 @@ print(result.status)
 parsed_quote = dcap_qvl.parse_quote(quote_bytes) 
 print(parsed_quote.header.version)
 print(parsed_quote.header.attestation_key_type)
-print(parsed_quote.header.user_data)
+print(parsed_quote.header.user_data.hex())
 
 enclave_report = parsed_quote.report
 

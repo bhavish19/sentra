@@ -19,18 +19,6 @@ x-sentra-multi-node: &x-sentra-multi-node
   profiles:
       - multi-node
 
-x-sentra-verifier: &x-sentra-verifier
-  build:
-    context: ../
-    dockerfile: ./attestation/verifier/Dockerfile
-  image: sentra-verifier 
-  deploy:
-    mode: replicated-job
-    replicas: 1
-  devices:
-    - "/dev/sgx_enclave:/dev/sgx_enclave"
-    - "/dev/sgx_provision:/dev/sgx_provision"
-
 services:
   sentra-simple-training:
     <<: *x-sentra-core
@@ -66,8 +54,17 @@ services:
     <<: *x-sentra-multi-node
     command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --auto-close --node-id 5
 
-  sentra-verifier:
-    <<: *x-sentra-verifier
-    command: /bin/attestation/verifier
+  sentra-backend:
+    build:
+      context: ../
+      dockerfile: ./demonstrator/ci/docker/SentraBackend.dockerfile
+    image: sentra-backend
+    deploy:
+      mode: replicated-job
+      replicas: 1
+    container_name: sentra-backend
+    ports:
+      - 8888:8888
     profiles:
       - test
+

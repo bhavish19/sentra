@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package sentra_backend_grpc_services;
+
+// Service definition for node registration
+service NodeRegistration {
+    rpc RegisterNode (RegisterRequest) returns (RegisterResponse);
+}
+
+// Request message containing node information
+message RegisterRequest {
+    string node_id = 1;
+}
+
+// Response message confirming registration
+message RegisterResponse {
+    bool success = 1;
+    string message = 2;
+}
