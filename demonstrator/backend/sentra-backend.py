@@ -1,5 +1,5 @@
 import argparse
-from flask import Flask, jsonify, request
+from flask import Flask
 from flask import send_file
 
 import grpc
@@ -70,7 +70,7 @@ class Backend:
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         servicer = NodeRegistrationServicer()
         SentraBackend_GRPC_Services_pb2_grpc.add_NodeRegistrationServicer_to_server(servicer, self.server)
-        self.server.add_insecure_port('127.0.0.1:8000')    
+        self.server.add_insecure_port('0.0.0.0:8000')    
         print(f"Starting gRPC server on port 8000...")
         self.server.start()
         grpc_thread = threading.Thread(target=self.runGRPCServer, args=(), daemon=True)
