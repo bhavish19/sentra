@@ -4,25 +4,36 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+prost = "=0.12.3"
+prost-derive="=0.12.3"
+
 occlum-sgx = "0.1.13"
 log="=0.4.28"
 #axum = "=0.7.7"
 tokio = { version = "=1.38.1",features = ["rt-multi-thread"] }
-#indexmap="=2.11.0"
+indexmap="=2.11.0"
 syn = "=2.0.106"
 #serde="=1.0.219"
-#quote="=1.0.40"
+quote="=1.0.40"
 #parking_lot="=0.12.4"
-#proc-macro2="=1.0.103"
+proc-macro2="=1.0.103"
 #ryu="=1.0.20"
 #parking_lot_core="=0.9.11"
-#unicode-ident="=1.0.22"
-#tokio-util="=0.7.11"
+unicode-ident="=1.0.22"
+tokio-util="=0.7.11"
+tokio-stream="=0.1.15"
 #lock_api="=0.4.13"
-#itoa="=1.0.15"
+itoa="=1.0.15"
 
-tonic = "=0.12.3"
-prost = "=0.12.3"
+anyhow="=1.0.100"
+socket2="=0.5.10"
+tonic = "=0.11.0"
+
+
+[build-dependencies]
+tonic-build = "=0.11.0"
+getrandom="=0.3.4"
+home="=0.5.5"
 
 [[bin]]
 name = "sentra_attester"
