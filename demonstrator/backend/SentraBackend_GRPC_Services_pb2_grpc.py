@@ -35,10 +35,10 @@ class NodeRegistrationStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.RegisterNode = channel.unary_unary(
-                '/sentra_backend_grpc_services.NodeRegistration/RegisterNode',
-                request_serializer=SentraBackend__GRPC__Services__pb2.RegisterRequest.SerializeToString,
-                response_deserializer=SentraBackend__GRPC__Services__pb2.RegisterResponse.FromString,
+        self.NodeStream = channel.stream_stream(
+                '/sentra_backend_grpc_services.NodeRegistration/NodeStream',
+                request_serializer=SentraBackend__GRPC__Services__pb2.NodeMessage.SerializeToString,
+                response_deserializer=SentraBackend__GRPC__Services__pb2.ServerMessage.FromString,
                 _registered_method=True)
 
 
@@ -46,7 +46,7 @@ class NodeRegistrationServicer(object):
     """Service definition for node registration
     """
 
-    def RegisterNode(self, request, context):
+    def NodeStream(self, request_iterator, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -55,10 +55,10 @@ class NodeRegistrationServicer(object):
 
 def add_NodeRegistrationServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'RegisterNode': grpc.unary_unary_rpc_method_handler(
-                    servicer.RegisterNode,
-                    request_deserializer=SentraBackend__GRPC__Services__pb2.RegisterRequest.FromString,
-                    response_serializer=SentraBackend__GRPC__Services__pb2.RegisterResponse.SerializeToString,
+            'NodeStream': grpc.stream_stream_rpc_method_handler(
+                    servicer.NodeStream,
+                    request_deserializer=SentraBackend__GRPC__Services__pb2.NodeMessage.FromString,
+                    response_serializer=SentraBackend__GRPC__Services__pb2.ServerMessage.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -73,7 +73,7 @@ class NodeRegistration(object):
     """
 
     @staticmethod
-    def RegisterNode(request,
+    def NodeStream(request_iterator,
             target,
             options=(),
             channel_credentials=None,
@@ -83,12 +83,12 @@ class NodeRegistration(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
+        return grpc.experimental.stream_stream(
+            request_iterator,
             target,
-            '/sentra_backend_grpc_services.NodeRegistration/RegisterNode',
-            SentraBackend__GRPC__Services__pb2.RegisterRequest.SerializeToString,
-            SentraBackend__GRPC__Services__pb2.RegisterResponse.FromString,
+            '/sentra_backend_grpc_services.NodeRegistration/NodeStream',
+            SentraBackend__GRPC__Services__pb2.NodeMessage.SerializeToString,
+            SentraBackend__GRPC__Services__pb2.ServerMessage.FromString,
             options,
             channel_credentials,
             insecure,

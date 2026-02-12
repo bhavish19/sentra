@@ -28,8 +28,8 @@ class CommandLineOptions:
         
 class NodeRegistrationServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeRegistrationServicer):
     
-    def RegisterNode(self, request, context):
-        node_id = request.node_id
+    def RegisterNode(self, register_message, context):
+        node_id = requregister_message.node_id
         
         if not node_id:
             return SentraBackend_GRPC_Services_pb2.RegisterResponse(
@@ -43,6 +43,15 @@ class NodeRegistrationServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeRegistra
             success=True,
             message=f"Node {node_id} registered successfully"
         )
+    
+    def NodeStream(self, request_iterator, context):
+        print("New streaming connection established")
+        for node_message in request_iterator:
+                
+            if node_message.HasField('register'):
+                # Registration message
+                self.RegisterNode(node_message.register,context)
+
 
 class Backend:
 

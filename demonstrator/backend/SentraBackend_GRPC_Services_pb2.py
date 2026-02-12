@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n!SentraBackend-GRPC-Services.proto\x12\x1csentra_backend_grpc_services\"\"\n\x0fRegisterRequest\x12\x0f\n\x07node_id\x18\x01 \x01(\t\"4\n\x10RegisterResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t2\x81\x01\n\x10NodeRegistration\x12m\n\x0cRegisterNode\x12-.sentra_backend_grpc_services.RegisterRequest\x1a..sentra_backend_grpc_services.RegisterResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n!SentraBackend-GRPC-Services.proto\x12\x1csentra_backend_grpc_services\"\"\n\x0fRegisterRequest\x12\x0f\n\x07node_id\x18\x01 \x01(\t\"4\n\x10RegisterResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"`\n\x0bNodeMessage\x12\x41\n\x08register\x18\x01 \x01(\x0b\x32-.sentra_backend_grpc_services.RegisterRequestH\x00\x42\x0e\n\x0cmessage_type\"c\n\rServerMessage\x12\x42\n\x08response\x18\x01 \x01(\x0b\x32..sentra_backend_grpc_services.RegisterResponseH\x00\x42\x0e\n\x0cmessage_type2|\n\x10NodeRegistration\x12h\n\nNodeStream\x12).sentra_backend_grpc_services.NodeMessage\x1a+.sentra_backend_grpc_services.ServerMessage(\x01\x30\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,6 +35,10 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_REGISTERREQUEST']._serialized_end=101
   _globals['_REGISTERRESPONSE']._serialized_start=103
   _globals['_REGISTERRESPONSE']._serialized_end=155
-  _globals['_NODEREGISTRATION']._serialized_start=158
-  _globals['_NODEREGISTRATION']._serialized_end=287
+  _globals['_NODEMESSAGE']._serialized_start=157
+  _globals['_NODEMESSAGE']._serialized_end=253
+  _globals['_SERVERMESSAGE']._serialized_start=255
+  _globals['_SERVERMESSAGE']._serialized_end=354
+  _globals['_NODEREGISTRATION']._serialized_start=356
+  _globals['_NODEREGISTRATION']._serialized_end=480
 # @@protoc_insertion_point(module_scope)
