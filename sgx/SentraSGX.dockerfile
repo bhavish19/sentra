@@ -30,13 +30,17 @@ COPY ./sgx/node_config.yaml /sentra/
 
 #Build attester
 #Just update crates.io (and cache it...)
-RUN cargo search tokio >/dev/null
+RUN mkdir /attester
+COPY ./attestation/attester/Cargo.toml /attester
+WORKDIR /attester
+
+RUN cargo build --release & exit 0
+
 
 COPY ./attestation/attester /attester
-WORKDIR /attester
 RUN rm rust-toolchain.toml
-#RUN cargo build --release; exit 0
-#RUN cargo update -p log@0.4.29 --precise 0.4.28
+RUN rm SentraBackend-GRPC-Services.proto
+COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /attester/
 RUN cargo build --release
 
 COPY ./sgx/enclave_run_script.sh /
