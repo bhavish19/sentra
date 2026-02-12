@@ -30,7 +30,7 @@ class CommandLineOptions:
 class NodeRegistrationServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeRegistrationServicer):
     
     def RegisterNode(self, register_message, context):
-        node_id = requregister_message.node_id
+        node_id = register_message.node_id
         
         if not node_id:
             return SentraBackend_GRPC_Services_pb2.RegisterResponse(
@@ -51,7 +51,10 @@ class NodeRegistrationServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeRegistra
                 
             if node_message.HasField('register'):
                 # Registration message
-                self.RegisterNode(node_message.register,context)
+                resp=self.RegisterNode(node_message.register,context)
+                yield SentraBackend_GRPC_Services_pb2.ServerMessage(response=resp)
+        print("Leaving receive loop...")
+
 
 
 class Backend:

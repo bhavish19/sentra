@@ -1,4 +1,9 @@
 mod sentra_attester;
+
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+use std::time::Duration;
+use hostname;
 //mod sentra_rest_server;
 
 // Include the generated code from the proto file
@@ -26,6 +31,19 @@ let args: Vec<String> = std::env::args().collect();
     });
 */
 
+
+let node_id=match hostname::get() {
+        Ok(name) => {
+             let hname=name.to_string_lossy().to_string();
+            println!("Hostname: {}", hname);
+            hname
+        }
+        Err(e) => {
+            eprintln!("Failed to get hostname: {}", e);
+	    String::from("Unknown")
+        }
+    };
+
   let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
 
@@ -35,51 +53,71 @@ let args: Vec<String> = std::env::args().collect();
     let client = node_registration_client::NodeRegistrationClient::connect(server_address).await;
 
     // Create a channel for sending messages to the server
+    println!("Create channels...");
     let (tx, rx) = mpsc::channel(32);
     
     // Create the stream from the receiver
+    println!("Create outbound stream...");
     let outbound = ReceiverStream::new(rx);
     
-    // Start the bidirectional stream
-    let response_stream = client.node_stream(outbound).await;
-    let mut inbound = response_stream.into_inner();
-
-tokio::spawn(async move {
+    let tx_register=tx.clone();
+    println!("Spwan registration thread...");
+    tokio::spawn(async move {
         // Send registration message
         println!("Sending registration...");
         let register_msg = NodeMessage {
-            node_id: node_id_sender.clone(),
-            message_type: Some(node_message::MessageType::Register(RegisterMessage {
-                node_id: node_id_sender.clone()
-            })),
+            message_type: Some(node_message::MessageType::Register(RegisterRequest {
+                node_id: node_id.clone()
+            }))
         };
         
-        if tx.send(register_msg).await.is_err() {
+        if tx_register.send(register_msg).await.is_err() {
             eprintln!("Failed to send registration");
             return;
         }
+
         
     });
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+
+    // Start the bidirectional stream
+    println!("Start bidirectional stream...");
+    let response_stream = client.expect("REASON").node_stream(outbound).await;
+    println!("Wait for inbound...");
+
+    let mut inbound = response_stream.expect("REASON").into_inner();
     
     // Receive messages from the server
     println!("Listening for server messages...");
-    while let Some(server_msg) = inbound.message().await {
-        match server_msg.message_type {
-            Some(server_message::MessageType::Response(ack)) => {
-                println!("✓ ACK: {} - {}", ack.success, ack.message);
+    loop {
+        match inbound.message().await {
+            Ok(Some(server_msg)) => {
+                handle_server_message(server_msg);
             }
-            None => {
-                println!("Received empty message");
+            Ok(None) => {
+                // Stream ended
+                println!("Stream closed by server");
+                break;
+            }
+            Err(status) => {
+                eprintln!("Error receiving message: {}", status);
+                break;
             }
         }
     }
-
-    println!("Stream closed by server");
-    Ok(())
+    println!("Exiting....");
 
 
     });
-
-
+}
+fn handle_server_message(server_msg: ServerMessage) {
+    match server_msg.message_type {
+        Some(server_message::MessageType::Response(ack)) => {
+            println!("✓ ACK: {} - {}", ack.success, ack.message);
+        }
+        None => {
+            println!("Received empty message");
+        }
+    }
 
 }
