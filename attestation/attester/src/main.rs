@@ -34,18 +34,50 @@ let args: Vec<String> = std::env::args().collect();
     println!("Try to connect to: {}",server_address);
     let client = node_registration_client::NodeRegistrationClient::connect(server_address).await;
 
-    // Create the request
-    let request = tonic::Request::new(RegisterRequest {
-        node_id: "node_id_1".to_string()
+    // Create a channel for sending messages to the server
+    let (tx, rx) = mpsc::channel(32);
+    
+    // Create the stream from the receiver
+    let outbound = ReceiverStream::new(rx);
+    
+    // Start the bidirectional stream
+    let response_stream = client.node_stream(outbound).await;
+    let mut inbound = response_stream.into_inner();
+
+tokio::spawn(async move {
+        // Send registration message
+        println!("Sending registration...");
+        let register_msg = NodeMessage {
+            node_id: node_id_sender.clone(),
+            message_type: Some(node_message::MessageType::Register(RegisterMessage {
+                node_id: node_id_sender.clone()
+            })),
+        };
+        
+        if tx.send(register_msg).await.is_err() {
+            eprintln!("Failed to send registration");
+            return;
+        }
+        
     });
+    
+    // Receive messages from the server
+    println!("Listening for server messages...");
+    while let Some(server_msg) = inbound.message().await {
+        match server_msg.message_type {
+            Some(server_message::MessageType::Response(ack)) => {
+                println!("✓ ACK: {} - {}", ack.success, ack.message);
+            }
+            None => {
+                println!("Received empty message");
+            }
+        }
+    }
 
-    // Send the request and get the response
-    let response = client.expect("REASON").register_node(request).await;
+    println!("Stream closed by server");
+    Ok(())
 
-    // Print the response
-    let register_response = response.expect("REASON").into_inner();
-    println!("Success: {}", register_response.success);
-    println!("Message: {}", register_response.message);
+
     });
 
 
