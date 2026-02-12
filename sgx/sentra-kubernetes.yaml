@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentra-backend
+  labels:
+    app: sentra-backend
+spec:
+  selector:
+    app: sentra-backend
+    role: backend
+  ports:
+  - port: 8000
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sentra-backend
+  labels:
+    app: sentra-backend
+    role: backend
+spec:
+  containers:
+  - name: sentra-backend
+    image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentra-node
+  labels:
+    app: sentra-node
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: sentra-node
+  template:
+    metadata:
+      name: sentra-node
+      labels:
+        app: sentra-node
+    spec:
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: sentra-node
+      containers:
+      - name: sentra-node
+        image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-sgx:latest
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: sgx-enclave
+          mountPath: /dev/sgx_enclave
+        - name: sgx-provision
+          mountPath: /dev/sgx_provision
+      volumes:
+        - name: sgx-enclave
+          hostPath:
+            path: /dev/sgx_enclave
+            type: CharDevice
+        - name: sgx-provision
+          hostPath:
+            path: /dev/sgx_provision
+            type: CharDevice
