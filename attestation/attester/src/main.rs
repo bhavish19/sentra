@@ -4,7 +4,6 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use std::time::Duration;
 use hostname;
-//mod sentra_rest_server;
 
 // Include the generated code from the proto file
 tonic::include_proto!("sentra_backend_grpc_services");
@@ -92,7 +91,7 @@ let node_id=match hostname::get() {
     loop {
         match inbound.message().await {
             Ok(Some(server_msg)) => {
-                handle_server_message(server_msg);
+                handle_server_message(server_msg,tx.clone());
             }
             Ok(None) => {
                 // Stream ended
@@ -110,25 +109,26 @@ let node_id=match hostname::get() {
 
     });
 }
-fn handle_server_message(server_msg: ServerMessage) {
+fn handle_server_message(server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>) {
     match server_msg.message_type {
         Some(server_message::MessageType::Response(ack)) => {
             println!("✓ ACK: {} - {}", ack.success, ack.message);
         },
-        Some(server_message::MessageType::AttestionRequest(req)) => {
-            println!("Attestation request...");        
+        Some(server_message::MessageType::Attestation(req)) => {
+            println!("Attestation request with nonce: {}...",req.nonce);        
             println!("Spwan send quote thread...");
-            tokio::spawn(async move {
+            let tx_clone=tx;
+	    tokio::spawn(async move {
                 // Send registration message
-                let quote=generate_attestation_report();
+                let quote=sentra_attester::generate_attestation_report();
                 println!("Sending attestion...");
                 let register_msg = NodeMessage {
-                    message_type: Some(node_message::MessageType::Quote(AttestionResponse {
+                    message_type: Some(node_message::MessageType::Quote(AttestationResponse {
                         report: quote
                     }))
                 };
                 
-                if tx_register.send(register_msg).await.is_err() {
+                if tx_clone.send(register_msg).await.is_err() {
                     eprintln!("Failed to send registration");
                     return;
                 }

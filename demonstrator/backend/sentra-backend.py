@@ -9,10 +9,21 @@ import SentraBackend_GRPC_Services_pb2_grpc
 from concurrent import futures
 
 import time
+import sys
 import dcap_qvl
+import asyncio
 
 
 BACKEND_VERSION="00.01.001"
+
+
+# Force unbuffered output
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
+def log(message):
+    """Log with immediate flush for Docker visibility."""
+    print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
 
 class CommandLineOptions:
 
@@ -31,28 +42,33 @@ class CommandLineOptions:
     def getHost(self)->str:
         return self.m_Args.host
 
-class Attestion:
-    def verify(quote):
+class Attestation:
+    def verify(self,quote):
         # Verify the quote
+        log("try to verify quote...")
         now_timestamp = int(time.time())
-        collateral =  asyncio.run( dcap_qvl.get_collateral_from_pcs(quote))
-        result =  dcap_qvl.verify(quote,collateral,now_timestamp)
-
-        print(result)
-        print(result.status)
+        try:
+            collateral =  asyncio.run( dcap_qvl.get_collateral_from_pcs(quote))
+            result =  dcap_qvl.verify(quote,collateral,now_timestamp)
+        except Exception as e:
+            log("Sone execpetion in verify")
+            log(e)
+            return
+        log(result)
+        log(result.status)
 
         parsed_quote = dcap_qvl.parse_quote(quote) 
-        print(parsed_quote.header.version)
-        print(parsed_quote.header.attestation_key_type)
-        print(parsed_quote.header.user_data.hex())
+        log(parsed_quote.header.version)
+        log(parsed_quote.header.attestation_key_type)
+        log(parsed_quote.header.user_data.hex())
 
         enclave_report = parsed_quote.report
 
         # Zugriff auf die wichtigsten Felder
-        print(f"MRENCLAVE: {enclave_report.mr_enclave.hex()}")
-        print(f"MRSIGNER:  {enclave_report.mr_signer.hex()}")
-        print(f"Attributes: {enclave_report.attributes.hex()}")
-        print(f"ReportData: {enclave_report.report_data.hex()}")
+        log(f"MRENCLAVE: {enclave_report.mr_enclave.hex()}")
+        log(f"MRSIGNER:  {enclave_report.mr_signer.hex()}")
+        log(f"Attributes: {enclave_report.attributes.hex()}")
+        log(f"ReportData: {enclave_report.report_data.hex()}")
 
 
 
@@ -67,30 +83,31 @@ class NodeRegistrationServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeRegistra
                 message="Node ID cannot be empty"
             )
                 
-        print(f"Node registered: {node_id}")
+        log(f"Node registered: {node_id}")
         
         return SentraBackend_GRPC_Services_pb2.RegisterResponse(
             success=True,
             message=f"Node {node_id} registered successfully"
         )
     
-    def generateAttestionRequest(self):
-        return SentraBackend_GRPC_Services_pb2.AttestionRequest(
+    def generateAttestationRequest(self):
+        return SentraBackend_GRPC_Services_pb2.AttestationRequest(
             nonce="Nonce")
         
     def NodeStream(self, request_iterator, context):
-        print("New streaming connection established")
+        log("New streaming connection established")
         for node_message in request_iterator:
                 
             if node_message.HasField('register'):
                 # Registration message
                 resp=self.RegisterNode(node_message.register,context)
                 yield SentraBackend_GRPC_Services_pb2.ServerMessage(response=resp)
-                req=self.gernateAttestionRequest()
+                req=self.generateAttestationRequest()
                 yield SentraBackend_GRPC_Services_pb2.ServerMessage(attestation=req)
             elif node_message.HasField('quote'):
-                attestion=Attestion()
-                attestion.verify(node_message.quote.report)
+                log("Received quote") 
+                attestation=Attestation()
+                attestation.verify(node_message.quote.report)
 
         print("Leaving receive loop...")
 

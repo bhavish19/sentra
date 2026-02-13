@@ -4,7 +4,7 @@ x-sentra-core: &x-sentra-core
     build:
       context: ../
       dockerfile: ./sgx/SentraSGX.dockerfile
-    image: sentra-sgx
+    image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-sgx:latest
     deploy:
       mode: replicated-job
       replicas: 1
@@ -58,7 +58,7 @@ services:
     build:
       context: ../
       dockerfile: ./demonstrator/ci/docker/SentraBackend.dockerfile
-    image: sentra-backend
+    image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest
     deploy:
       mode: replicated-job
       replicas: 1
