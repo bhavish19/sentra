@@ -2,11 +2,10 @@ import argparse
 from flask import Flask
 from flask import send_file
 
-import grpc
+import grpc.aio as grpc_aio
 import threading
 import SentraBackend_GRPC_Services_pb2
 import SentraBackend_GRPC_Services_pb2_grpc
-from concurrent import futures
 
 import time
 import sys
@@ -229,42 +228,58 @@ class NodeMessageServiceServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeMessag
     def generateAttestationRequest(self)->SentraBackend_GRPC_Services_pb2.AttestationRequest:
         return SentraBackend_GRPC_Services_pb2.AttestationRequest(nonce="Nonce")
         
-    def NodeStream(self, request_iterator, context)->None:
-        node_id:str|None=None
-        bRegistered:bool=False
+    async def NodeStream(self, request_iterator, context) -> None:
+        node_id: str | None = None
+        bRegistered: bool = False
         log("New streaming connection established")
-        #First message has to be a register message
-        for node_message in request_iterator:                
-            if node_message.HasField('register'):
+        
+        # First message has to be a register message
+        try:
+            first_message = await request_iterator.read()
+            if first_message == grpc_aio.EOF:
+                log("Connection closed before registration")
+                return
+            
+            if first_message.HasField('register'):
                 # Registration message
-                resp,node_id=self.registerNode(node_message.register,context)
+                resp, node_id = await self.registerNode(first_message.register, context)
                 yield SentraBackend_GRPC_Services_pb2.ServerMessage(response=resp)
-                if(not node_id is None):
-                    req=self.generateAttestationRequest()
+                if node_id is not None:
+                    req = await self.generateAttestationRequest()
                     yield SentraBackend_GRPC_Services_pb2.ServerMessage(attestation=req)
-                    bRegistered=True
-                break
+                    bRegistered = True
             else:
-                break
-
-        if(not bRegistered or node_id is None):
+                log("First message was not registration - closing connection")
+                return
+        except Exception as e:
+            log(f"Error during registration: {e}")
+            return
+        
+        if not bRegistered or node_id is None:
             log("New Node not registered - closing connection")
             return
         
-        for node_message in request_iterator:                
-            if node_message.HasField('quote'):
-                log("Received quote") 
-                attestation=Attestation()
-                bVerified:bool=attestation.verify(node_message.quote.report)
-                if(bVerified):
-                    self.m_nodeList.setVerified(node_id)
-                    log(f"Node {node_id} verified.")
+        try:
+            # Process remaining messages
+            async for node_message in request_iterator:
+                if node_message.HasField('quote'):
+                    log("Received quote")
+                    attestation = Attestation()
+                    bVerified: bool = await attestation.verify(node_message.quote.report)
+                    if bVerified:
+                        await self.m_nodeList.setVerified(node_id)
+                        log(f"Node {node_id} verified.")
+                    else:
+                        log(f"Node {node_id} failed verification")
+                        break
                 else:
+                    log(f"Unexpected message type from node {node_id}")
                     break
-            else:
-                break
-        self.m_nodeList.remove(node_id)
-        log(f"Leaving receive loop closing connection to node {node_id}...")
+        except Exception as e:
+            log(f"Error processing messages from node {node_id}: {e}")
+        finally:
+            await self.m_nodeList.remove(node_id)
+            log(f"Leaving receive loop closing connection to node {node_id}...")
 
 class Backend:
 
@@ -276,17 +291,27 @@ class Backend:
     def __init__(self):
         pass
     
-    def runGRPCServer(self):
-        self.server.wait_for_termination()
-
-    def createGRPCServer(self):
-        self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    async def runGRPCServer(self):
+        self.server = grpc_aio.server()
         servicer = NodeMessageServiceServicer(self.m_nodeGenerator,self.m_nodeList)
         SentraBackend_GRPC_Services_pb2_grpc.add_NodeMessageServiceServicer_to_server(servicer, self.server)
         self.server.add_insecure_port('0.0.0.0:8000')    
         log(f"Starting gRPC server on port 8000...")
-        self.server.start()
-        grpc_thread = threading.Thread(target=self.runGRPCServer, args=(), daemon=True)
+        await self.server.start()
+        await self.server.wait_for_termination()
+
+    def startGRPCServer(self):
+        # Create a new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self.runGRPCServer())
+        finally:
+            loop.close()
+
+    def createGRPCServer(self):
+#        self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+        grpc_thread = threading.Thread(target=self.startGRPCServer, args=(), daemon=True)
         grpc_thread.start()
 
     def create(self,cmdlineargs:CommandLineOptions)->Flask:
