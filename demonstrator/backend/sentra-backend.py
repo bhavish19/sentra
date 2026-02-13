@@ -8,6 +8,10 @@ import SentraBackend_GRPC_Services_pb2
 import SentraBackend_GRPC_Services_pb2_grpc
 from concurrent import futures
 
+import time
+import dcap_qvl
+
+
 BACKEND_VERSION="00.01.001"
 
 class CommandLineOptions:
@@ -26,7 +30,32 @@ class CommandLineOptions:
 
     def getHost(self)->str:
         return self.m_Args.host
-        
+
+class Attestion:
+    def verify(quote):
+        # Verify the quote
+        now_timestamp = int(time.time())
+        collateral =  asyncio.run( dcap_qvl.get_collateral_from_pcs(quote))
+        result =  dcap_qvl.verify(quote,collateral,now_timestamp)
+
+        print(result)
+        print(result.status)
+
+        parsed_quote = dcap_qvl.parse_quote(quote) 
+        print(parsed_quote.header.version)
+        print(parsed_quote.header.attestation_key_type)
+        print(parsed_quote.header.user_data.hex())
+
+        enclave_report = parsed_quote.report
+
+        # Zugriff auf die wichtigsten Felder
+        print(f"MRENCLAVE: {enclave_report.mr_enclave.hex()}")
+        print(f"MRSIGNER:  {enclave_report.mr_signer.hex()}")
+        print(f"Attributes: {enclave_report.attributes.hex()}")
+        print(f"ReportData: {enclave_report.report_data.hex()}")
+
+
+
 class NodeRegistrationServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeRegistrationServicer):
     
     def RegisterNode(self, register_message, context):
@@ -45,6 +74,10 @@ class NodeRegistrationServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeRegistra
             message=f"Node {node_id} registered successfully"
         )
     
+    def generateAttestionRequest(self):
+        return SentraBackend_GRPC_Services_pb2.AttestionRequest(
+            nonce="Nonce")
+        
     def NodeStream(self, request_iterator, context):
         print("New streaming connection established")
         for node_message in request_iterator:
@@ -53,6 +86,12 @@ class NodeRegistrationServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeRegistra
                 # Registration message
                 resp=self.RegisterNode(node_message.register,context)
                 yield SentraBackend_GRPC_Services_pb2.ServerMessage(response=resp)
+                req=self.gernateAttestionRequest()
+                yield SentraBackend_GRPC_Services_pb2.ServerMessage(attestation=req)
+            elif node_message.HasField('quote'):
+                attestion=Attestion()
+                attestion.verify(node_message.quote.report)
+
         print("Leaving receive loop...")
 
 

@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n!SentraBackend-GRPC-Services.proto\x12\x1csentra_backend_grpc_services\"\"\n\x0fRegisterRequest\x12\x0f\n\x07node_id\x18\x01 \x01(\t\"4\n\x10RegisterResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"`\n\x0bNodeMessage\x12\x41\n\x08register\x18\x01 \x01(\x0b\x32-.sentra_backend_grpc_services.RegisterRequestH\x00\x42\x0e\n\x0cmessage_type\"c\n\rServerMessage\x12\x42\n\x08response\x18\x01 \x01(\x0b\x32..sentra_backend_grpc_services.RegisterResponseH\x00\x42\x0e\n\x0cmessage_type2|\n\x10NodeRegistration\x12h\n\nNodeStream\x12).sentra_backend_grpc_services.NodeMessage\x1a+.sentra_backend_grpc_services.ServerMessage(\x01\x30\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n!SentraBackend-GRPC-Services.proto\x12\x1csentra_backend_grpc_services\"\"\n\x0fRegisterRequest\x12\x0f\n\x07node_id\x18\x01 \x01(\t\"4\n\x10RegisterResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"#\n\x12\x41ttestationRequest\x12\r\n\x05nonce\x18\x01 \x01(\t\"%\n\x13\x41ttestationResponse\x12\x0e\n\x06report\x18\x01 \x01(\x0c\"\xa4\x01\n\x0bNodeMessage\x12\x41\n\x08register\x18\x01 \x01(\x0b\x32-.sentra_backend_grpc_services.RegisterRequestH\x00\x12\x42\n\x05quote\x18\x02 \x01(\x0b\x32\x31.sentra_backend_grpc_services.AttestationResponseH\x00\x42\x0e\n\x0cmessage_type\"\xac\x01\n\rServerMessage\x12\x42\n\x08response\x18\x01 \x01(\x0b\x32..sentra_backend_grpc_services.RegisterResponseH\x00\x12G\n\x0b\x61ttestation\x18\x02 \x01(\x0b\x32\x30.sentra_backend_grpc_services.AttestationRequestH\x00\x42\x0e\n\x0cmessage_type2|\n\x10NodeRegistration\x12h\n\nNodeStream\x12).sentra_backend_grpc_services.NodeMessage\x1a+.sentra_backend_grpc_services.ServerMessage(\x01\x30\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,10 +35,14 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_REGISTERREQUEST']._serialized_end=101
   _globals['_REGISTERRESPONSE']._serialized_start=103
   _globals['_REGISTERRESPONSE']._serialized_end=155
-  _globals['_NODEMESSAGE']._serialized_start=157
-  _globals['_NODEMESSAGE']._serialized_end=253
-  _globals['_SERVERMESSAGE']._serialized_start=255
-  _globals['_SERVERMESSAGE']._serialized_end=354
-  _globals['_NODEREGISTRATION']._serialized_start=356
-  _globals['_NODEREGISTRATION']._serialized_end=480
+  _globals['_ATTESTATIONREQUEST']._serialized_start=157
+  _globals['_ATTESTATIONREQUEST']._serialized_end=192
+  _globals['_ATTESTATIONRESPONSE']._serialized_start=194
+  _globals['_ATTESTATIONRESPONSE']._serialized_end=231
+  _globals['_NODEMESSAGE']._serialized_start=234
+  _globals['_NODEMESSAGE']._serialized_end=398
+  _globals['_SERVERMESSAGE']._serialized_start=401
+  _globals['_SERVERMESSAGE']._serialized_end=573
+  _globals['_NODEREGISTRATION']._serialized_start=575
+  _globals['_NODEREGISTRATION']._serialized_end=699
 # @@protoc_insertion_point(module_scope)

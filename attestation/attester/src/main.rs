@@ -78,7 +78,7 @@ let node_id=match hostname::get() {
 
         
     });
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Start the bidirectional stream
     println!("Start bidirectional stream...");
@@ -114,7 +114,26 @@ fn handle_server_message(server_msg: ServerMessage) {
     match server_msg.message_type {
         Some(server_message::MessageType::Response(ack)) => {
             println!("✓ ACK: {} - {}", ack.success, ack.message);
-        }
+        },
+        Some(server_message::MessageType::AttestionRequest(req)) => {
+            println!("Attestation request...");        
+            println!("Spwan send quote thread...");
+            tokio::spawn(async move {
+                // Send registration message
+                let quote=generate_attestation_report();
+                println!("Sending attestion...");
+                let register_msg = NodeMessage {
+                    message_type: Some(node_message::MessageType::Quote(AttestionResponse {
+                        report: quote
+                    }))
+                };
+                
+                if tx_register.send(register_msg).await.is_err() {
+                    eprintln!("Failed to send registration");
+                    return;
+                }
+            });
+        },
         None => {
             println!("Received empty message");
         }

@@ -7,21 +7,30 @@ service NodeRegistration {
 rpc NodeStream (stream NodeMessage) returns (stream ServerMessage);
 }
 
-// Request message containing node information
 message RegisterRequest {
     string node_id = 1;
 }
 
-// Response message confirming registration
 message RegisterResponse {
     bool success = 1;
     string message = 2;
 }
 
+message AttestationRequest {
+    string nonce = 1;
+}
+
+message AttestationResponse {
+    bytes report = 1;
+}
+
+
+
 // Message from node to server (client -> server)
 message NodeMessage {
     oneof message_type {
         RegisterRequest register = 1;
+        AttestationResponse quote=2;
     }
 }
 
@@ -29,6 +38,7 @@ message NodeMessage {
 message ServerMessage {
     oneof message_type {
         RegisterResponse response = 1;
+        AttestationRequest attestation=2;
     }
 }
 
