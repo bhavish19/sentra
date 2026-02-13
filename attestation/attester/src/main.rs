@@ -8,11 +8,6 @@ use hostname;
 // Include the generated code from the proto file
 tonic::include_proto!("sentra_backend_grpc_services");
 
-
-//use sentra_backend_grpc_services::node_registration_client::NodeRegistrationClient;
-//use RegisterRequest;
-
-
 fn main()
 {
 
@@ -47,9 +42,8 @@ let node_id=match hostname::get() {
     rt.block_on(async {
 
    // Connect to the server
-//    let client = node_registration_client::NodeRegistrationClient::connect("http://sentra-backend:8000").await;
     println!("Try to connect to: {}",server_address);
-    let client = node_registration_client::NodeRegistrationClient::connect(server_address).await;
+    let client = node_message_service_client::NodeMessageServiceClient::connect(server_address).await;
 
     // Create a channel for sending messages to the server
     println!("Create channels...");
@@ -60,7 +54,7 @@ let node_id=match hostname::get() {
     let outbound = ReceiverStream::new(rx);
     
     let tx_register=tx.clone();
-    println!("Spwan registration thread...");
+    println!("Spawn registration thread...");
     tokio::spawn(async move {
         // Send registration message
         println!("Sending registration...");
@@ -118,10 +112,10 @@ fn handle_server_message(server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>)
             println!("Attestation request with nonce: {}...",req.nonce);        
             println!("Spwan send quote thread...");
             let tx_clone=tx;
-	    tokio::spawn(async move {
-                // Send registration message
+	        tokio::spawn(async move {
+                // Send attestatin message
                 let quote=sentra_attester::generate_attestation_report();
-                println!("Sending attestion...");
+                println!("Sending attestation...");
                 let register_msg = NodeMessage {
                     message_type: Some(node_message::MessageType::Quote(AttestationResponse {
                         report: quote
@@ -129,7 +123,7 @@ fn handle_server_message(server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>)
                 };
                 
                 if tx_clone.send(register_msg).await.is_err() {
-                    eprintln!("Failed to send registration");
+                    eprintln!("Failed to send attestation");
                     return;
                 }
             });

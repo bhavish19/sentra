@@ -25,9 +25,8 @@ if _version_not_supported:
     )
 
 
-class NodeRegistrationStub(object):
-    """Service definition for node registration
-    """
+class NodeMessageServiceStub(object):
+    """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
         """Constructor.
@@ -36,15 +35,14 @@ class NodeRegistrationStub(object):
             channel: A grpc.Channel.
         """
         self.NodeStream = channel.stream_stream(
-                '/sentra_backend_grpc_services.NodeRegistration/NodeStream',
+                '/sentra_backend_grpc_services.NodeMessageService/NodeStream',
                 request_serializer=SentraBackend__GRPC__Services__pb2.NodeMessage.SerializeToString,
                 response_deserializer=SentraBackend__GRPC__Services__pb2.ServerMessage.FromString,
                 _registered_method=True)
 
 
-class NodeRegistrationServicer(object):
-    """Service definition for node registration
-    """
+class NodeMessageServiceServicer(object):
+    """Missing associated documentation comment in .proto file."""
 
     def NodeStream(self, request_iterator, context):
         """Missing associated documentation comment in .proto file."""
@@ -53,7 +51,7 @@ class NodeRegistrationServicer(object):
         raise NotImplementedError('Method not implemented!')
 
 
-def add_NodeRegistrationServicer_to_server(servicer, server):
+def add_NodeMessageServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'NodeStream': grpc.stream_stream_rpc_method_handler(
                     servicer.NodeStream,
@@ -62,15 +60,14 @@ def add_NodeRegistrationServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'sentra_backend_grpc_services.NodeRegistration', rpc_method_handlers)
+            'sentra_backend_grpc_services.NodeMessageService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('sentra_backend_grpc_services.NodeRegistration', rpc_method_handlers)
+    server.add_registered_method_handlers('sentra_backend_grpc_services.NodeMessageService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
-class NodeRegistration(object):
-    """Service definition for node registration
-    """
+class NodeMessageService(object):
+    """Missing associated documentation comment in .proto file."""
 
     @staticmethod
     def NodeStream(request_iterator,
@@ -86,7 +83,7 @@ class NodeRegistration(object):
         return grpc.experimental.stream_stream(
             request_iterator,
             target,
-            '/sentra_backend_grpc_services.NodeRegistration/NodeStream',
+            '/sentra_backend_grpc_services.NodeMessageService/NodeStream',
             SentraBackend__GRPC__Services__pb2.NodeMessage.SerializeToString,
             SentraBackend__GRPC__Services__pb2.ServerMessage.FromString,
             options,

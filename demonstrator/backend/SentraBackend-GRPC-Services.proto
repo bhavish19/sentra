@@ -2,8 +2,7 @@ syntax = "proto3";
 
 package sentra_backend_grpc_services;
 
-// Service definition for node registration
-service NodeRegistration {
+service NodeMessageService {
 rpc NodeStream (stream NodeMessage) returns (stream ServerMessage);
 }
 
@@ -24,8 +23,6 @@ message AttestationResponse {
     bytes report = 1;
 }
 
-
-
 // Message from node to server (client -> server)
 message NodeMessage {
     oneof message_type {
@@ -41,4 +38,3 @@ message ServerMessage {
         AttestationRequest attestation=2;
     }
 }
-
