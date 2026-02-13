@@ -1,3 +1,19 @@
+use occlum_sgx::SGXQuote;
+use ciborium::ser::into_writer;
+use serde::Serialize;
+use std::sync::Arc;
+
+use crate::core::*;
+use crate::error::*;
+
+#[derive(Serialize)]
+struct Evidence<'a> {
+    r#type: u32,
+    evidence: &'a [u8],
+    linking_hash: &'a [u8],
+    collateral: Option<&'a [u8]>,
+}
+
 /// RATLS attester for generating attestation reports
 pub struct RATLSAttester<P: AttestationProvider> {
     /// Platform-specific attestation provider
@@ -70,20 +86,6 @@ impl<P: AttestationProvider> RATLSAttester<P> {
         })
     }
     
-    /// Create TLS extension containing attestation report
-    pub fn create_extension(
-        &self,
-        report: &AttestationReport,
-    ) -> Result<TlsExtension, RAError> {
-        // Encode report as TLS extension following Weinhold format
-        let encoded = self.encode_report(report)?;
-        
-        Ok(TlsExtension {
-            extension_type: RATLS_EXTENSION_TYPE,
-            data: encoded,
-        })
-    }
-    
     /// Encode report for TLS extension
     fn encode_report(
         &self,
@@ -96,15 +98,19 @@ impl<P: AttestationProvider> RATLSAttester<P> {
         // - Linking hash
         // - Optional collateral
         
-        let mut encoder = cbor::Encoder::new();
-        encoder.encode_map(|map| {
-            map.entry("type", report.evidence_type as u32);
-            map.entry("evidence", &report.evidence);
-            map.entry("linking_hash", &report.linking_hash);
-            if self.config.embed_collateral {
-                map.entry("collateral", &report.collateral);
-            }
-        })?;
+        let evidence = Evidence {
+            r#type: report.evidence_type as u32,
+            evidence: &report.evidence,
+            linking_hash: &report.linking_hash,
+            collateral: if self.config.embed_collateral {
+                Some(&report.collateral)
+            } else {
+                None
+            },
+        };
+        
+        let mut buf = Vec::new();
+        ciborium::ser::into_writer(&evidence, &mut buf)?;
         
         Ok(encoder.finish())
     }
