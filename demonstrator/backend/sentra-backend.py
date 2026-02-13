@@ -77,6 +77,34 @@ class Attestation:
         return True
 
 
+class SentraNode:
+    m_strNodeID:str
+    m_iCPUArchitecture:int
+    m_iOperator:int
+    m_iHost:int
+    m_fTrustScore:float
+    m_bVerified:bool
+
+    def __init__(self,nodeID:str,trustscore:float,cpu:int,host:int,operator:int):
+        self.m_iOperator=operator
+        self.m_fTrustScore=trustscore
+        self.m_iCPUArchitecture=cpu
+        self.m_iHost=host
+        self.m_strNodeID=nodeID
+        self.m_bVerified=False
+    
+    def __hash__(self):
+        return hash(self.m_strNodeID)
+    
+    def __eq__(self, other:object)->bool:
+        if not isinstance(other, SentraNode):
+            return NotImplemented 
+        return self.m_strNodeID == other.m_strNodeID
+    
+    def setVerified(self,b:bool)->None:
+        self.m_bVerified=b
+
+
 class SentraNodeAttributeGenerator:
     m_minTrustScore:float
     m_maxTrustScore:float
@@ -133,32 +161,6 @@ class SentraNodeAttributeGenerator:
         node:SentraNode=SentraNode(nodeID,trust,cpu,host,operator)
         return node
 
-class SentraNode:
-    m_strNodeID:str
-    m_iCPUArchitecture:int
-    m_iOperator:int
-    m_iHost:int
-    m_fTrustScore:float
-    m_bVerified:bool
-
-    def __init__(self,nodeID:str,trustscore:float,cpu:int,host:int,operator:int):
-        self.m_iOperator=operator
-        self.m_fTrustScore=trustscore
-        self.m_iCPUArchitecture=cpu
-        self.m_iHost=host
-        self.m_strNodeID=nodeID
-        self.m_bVerified=False
-    
-    def __hash__(self):
-        return hash(self.m_strNodeID)
-    
-    def __eq__(self, other:object)->bool:
-        if not isinstance(other, SentraNode):
-            return NotImplemented 
-        return self.m_strNodeID == other.m_strNodeID
-    
-    def setVerified(self,b:bool)->None:
-        self.m_bVerified=b
 
 class SentraNodeList:
     m_arNodes:dict[str,SentraNode]={}
@@ -256,6 +258,7 @@ class NodeMessageServiceServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeMessag
                 bVerified:bool=attestation.verify(node_message.quote.report)
                 if(bVerified):
                     self.m_nodeList.setVerified(node_id)
+                    log(f"Node {node_id} verified.")
                 else:
                     break
             else:
