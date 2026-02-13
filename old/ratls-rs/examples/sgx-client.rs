@@ -9,7 +9,7 @@
 //! that is sensible outside of example code.
 
 use std::io::{stdout, Read, Write};
-use std::net::TcpStream;
+use tokio::net::TcpListener;
 use std::sync::Arc;
 
 use rustls::{RootCertStore};
@@ -30,6 +30,17 @@ fn main() {
 
     // Allow using SSLKEYLOGFILE.
     config.key_log = Arc::new(rustls::KeyLogFile::new());
+
+    let sgx_config = SgxDcapConfig {
+        pccs_url: "10.80.0.3",
+        embed_collateral: false,
+    };
+    
+    let sgx_provider = SgxDcapProvider::new(sgx_config)?;
+
+    let ratls_config = RATLSServerConfigBuilder::new(sgx_provider)
+        .with_cert_key(cert_chain, private_key) // Optional: dual auth
+        .build()?;
 
     let server_name = "localhost".try_into().unwrap();
     let mut conn = rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();

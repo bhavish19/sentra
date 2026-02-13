@@ -3,6 +3,7 @@ use occlum_dcap::*;
 use std::convert::TryFrom;
 use std::io::Result;
 use std::str;
+use occlum_sgx::SGXQuote;
 
 pub struct SgxDcapProvider {
     config: SgxDcapConfig,
@@ -30,10 +31,7 @@ impl AttestationProvider for SgxDcapProvider {
         report_data[..32].copy_from_slice(nonce);
         
         // 2. Generate SGX quote
-        let quote = self
-        .dcap_quote
-        .generate_quote(self.quote_buf.as_mut_ptr(), &mut self.req_data)
-        .unwrap();
+        let quote = SGXQuote::from_report_data(&report_data).unwrap();
         
         // 3. Fetch collateral if needed
         let collateral = if self.config.embed_collateral {

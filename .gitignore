@@ -3,6 +3,7 @@
 *.so
 *.orig
 build/
+target/
 .DS_Store
 src/libos/target/
 tools/toolchains/dcap_lib/target/

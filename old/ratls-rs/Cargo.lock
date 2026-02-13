@@ -975,6 +975,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "occlum-sgx"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a74843ba8692fe47e113aea6817fbe91e6bd4cc9fc7b80ec967260f7380b4029"
+dependencies = [
+ "base64 0.21.7",
+ "cfg-if",
+ "hex",
+ "lazy_static",
+ "libc",
+ "log",
+]
+
+[[package]]
 name = "oid"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1174,7 +1188,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
-name = "ratls-rust"
+name = "ratls_rust"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1185,6 +1199,7 @@ dependencies = [
  "dcap-api",
  "der",
  "hex",
+ "occlum-sgx",
  "openssl",
  "pem",
  "reqwest",
