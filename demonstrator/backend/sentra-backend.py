@@ -235,8 +235,8 @@ class NodeMessageServiceServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeMessag
         
         # First message has to be a register message
         try:
-            first_message = await request_iterator.read()
-            if first_message == grpc_aio.EOF:
+            first_message = await anext(request_iterator, None)
+            if first_message is None:
                 log("Connection closed before registration")
                 return
             
