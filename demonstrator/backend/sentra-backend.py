@@ -42,13 +42,13 @@ class CommandLineOptions:
         return self.m_Args.host
 
 class Attestation:
-    def verify(self,quote:bytes)->bool:
+    async def verify(self,quote:bytes)->bool:
         # Verify the quote
         log("try to verify quote...")
         now_timestamp = int(time.time())
         result:dcap_qvl.VerifiedReport
         try:
-            collateral =  asyncio.run( dcap_qvl.get_collateral_from_pcs(quote))
+            collateral =  await dcap_qvl.get_collateral_from_pcs(quote)
             result =  dcap_qvl.verify(quote,collateral,now_timestamp)
         except Exception as e:
             log("Sone excepetion in verify")
@@ -242,10 +242,10 @@ class NodeMessageServiceServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeMessag
             
             if first_message.HasField('register'):
                 # Registration message
-                resp, node_id = await self.registerNode(first_message.register, context)
+                resp, node_id = self.registerNode(first_message.register, context)
                 yield SentraBackend_GRPC_Services_pb2.ServerMessage(response=resp)
                 if node_id is not None:
-                    req = await self.generateAttestationRequest()
+                    req = self.generateAttestationRequest()
                     yield SentraBackend_GRPC_Services_pb2.ServerMessage(attestation=req)
                     bRegistered = True
             else:
@@ -267,7 +267,7 @@ class NodeMessageServiceServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeMessag
                     attestation = Attestation()
                     bVerified: bool = await attestation.verify(node_message.quote.report)
                     if bVerified:
-                        await self.m_nodeList.setVerified(node_id)
+                        self.m_nodeList.setVerified(node_id)
                         log(f"Node {node_id} verified.")
                     else:
                         log(f"Node {node_id} failed verification")
@@ -278,7 +278,7 @@ class NodeMessageServiceServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeMessag
         except Exception as e:
             log(f"Error processing messages from node {node_id}: {e}")
         finally:
-            await self.m_nodeList.remove(node_id)
+            self.m_nodeList.remove(node_id)
             log(f"Leaving receive loop closing connection to node {node_id}...")
 
 class Backend:
