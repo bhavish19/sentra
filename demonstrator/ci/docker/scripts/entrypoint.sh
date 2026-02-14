@@ -1,3 +1,3 @@
 #!/bin/sh
-cd /sentra-backend
+cd /sentra/backend
 python sentra-backend.py
