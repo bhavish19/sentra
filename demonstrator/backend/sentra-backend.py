@@ -1,5 +1,6 @@
 import argparse
-from flask import Flask
+from flask import Flask, jsonify
+from flask.json.provider import DefaultJSONProvider
 from flask import send_file
 
 import grpc.aio as grpc_aio
@@ -33,6 +34,7 @@ class CommandLineOptions:
     def __init__(self):
         self.m_Parser.add_argument("-p","--port",help="Port to listen on for Web/REST-API requests",default=8888)
         self.m_Parser.add_argument("-l","--host",help="Host to listen on for Web/REST-API requests",default="127.0.0.1")
+        self.m_Parser.add_argument("-s","--simulator",help="Simulate the Nodes to allow for some UI testing.",default=False,action="store_true")
         self.m_Args=self.m_Parser.parse_args()
         
     def getPort(self)->int:
@@ -40,6 +42,10 @@ class CommandLineOptions:
 
     def getHost(self)->str:
         return self.m_Args.host
+    
+    def getRunInSimulationMode(self)->bool:
+        return self.m_Args.simulator
+
 
 class Attestation:
     async def verify(self,quote:bytes)->bool:
@@ -103,6 +109,14 @@ class SentraNode:
     def setVerified(self,b:bool)->None:
         self.m_bVerified=b
 
+    def toJSONObject(self)->object:
+            return {
+                'node_id':self.m_strNodeID,
+                'host':backend.m_nodeGenerator.getHost(self.m_iHost).m_Name,
+                'operator':backend.m_nodeGenerator.getOpertor(self.m_iOperator),
+                'cpu':backend.m_nodeGenerator.getCPUForHost(self.m_iHost),
+                'attested':self.m_bVerified
+            }
 
 class SentraNodeAttributeGenerator:
     m_minTrustScore:float
@@ -110,34 +124,40 @@ class SentraNodeAttributeGenerator:
     m_arCPUArchitectures:list[str]
     m_numCPUArchitectures:int
     m_numHosts:int
-    m_arHosts:list[str]
+    class Host:
+        m_Name:str
+        m_iCPU:int
+    m_arHosts:list[SentraNodeAttributeGenerator.Host]
     m_numOperators:int
     m_arOperators:list[str]
     
     def __init__(self,minTrustScore:float,maxTrustScore:float,
                  cpuArchitectures:list[str]=["Intel","AMD","ARM"],
                  numOperators:int=10,numHosts:int=10):
+        self.m_arCPUArchitectures=cpuArchitectures
+        self.m_numCPUArchitectures=len(self.m_arCPUArchitectures)
         self.m_minTrustScore=minTrustScore
         self.m_maxTrustScore=maxTrustScore
         self.m_numHosts=numHosts
         self.internal_generateHosts()
         self.m_numOperators=numOperators
         self.internal_generateOperators()
-        self.m_arCPUArchitectures=cpuArchitectures
-        self.m_numCPUArchitectures=len(self.m_arCPUArchitectures)
 
     def internal_generateHosts(self)->None:
         i:int=0
-        self.m_arHosts:list[str]=[]
+        self.m_arHosts:list[SentraNodeAttributeGenerator.Host]=[]
         while(i<self.m_numHosts):
-            self.m_arHosts.append("Host "+str(i))
+            h:SentraNodeAttributeGenerator.Host=SentraNodeAttributeGenerator.Host()
+            h.m_Name="Host "+str(i)
+            h.m_iCPU=self.internal_generateCPU()
+            self.m_arHosts.append(h)
             i+=1
 
     def internal_generateOperators(self)->None:
         i:int=0
-        self.m_arHosts:list[str]=[]
-        while(i<self.m_numHosts):
-            self.m_arHosts.append("Operator "+str(i))
+        self.m_arOperators:list[str]=[]
+        while(i<self.m_numOperators):
+            self.m_arOperators.append("Operator "+str(i))
             i+=1
 
     def internal_generateCPU(self)->int:
@@ -152,15 +172,26 @@ class SentraNodeAttributeGenerator:
     def internal_generateHost(self)->int:
         return random.randrange(self.m_numHosts)     
 
+    def getHost(self,i:int)->SentraNodeAttributeGenerator.Host:
+        return self.m_arHosts[i]
+
+    def getOpertor(self,i:int)->str:
+        return self.m_arOperators[i]
+
+    def getCPU(self,i:int)->str:
+        return self.m_arCPUArchitectures[i]
+    
+    def getCPUForHost(self,i:int)->str:
+        return self.getCPU(self.m_arHosts[i].m_iCPU)
+    
     def generateNode(self,nodeID:str) -> SentraNode:
-        cpu=self.internal_generateCPU()
-        host=self.internal_generateHost()
+        host:int=self.internal_generateHost()
         operator:int=self.internal_generateOperator()
         trust=self.internal_generateTrustScore()
+        cpu=self.getHost(host).m_iCPU
         node:SentraNode=SentraNode(nodeID,trust,cpu,host,operator)
         return node
-
-
+    
 class SentraNodeList:
     m_arNodes:dict[str,SentraNode]={}
     m_Lock:threading.Lock
@@ -192,6 +223,10 @@ class SentraNodeList:
     def len(self)->int:
         with self.m_Lock:
             return len(self.m_arNodes)
+    
+    def toJSONObject(self)->object:
+        with self.m_Lock:
+            return [*self.m_arNodes.values()]
 
 
 class NodeMessageServiceServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeMessageServiceServicer):
@@ -281,15 +316,51 @@ class NodeMessageServiceServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeMessag
             self.m_nodeList.remove(node_id)
             log(f"Leaving receive loop closing connection to node {node_id}...")
 
+class AppSimulator:
+    
+    m_Thread:threading.Thread|None
+    m_nodeGenerator:SentraNodeAttributeGenerator
+    m_nodeList:SentraNodeList
+
+    def __init__(self,nodeGenerator:SentraNodeAttributeGenerator,nodeList:SentraNodeList):
+        self.m_nodeGenerator=nodeGenerator
+        self.m_nodeList=nodeList
+
+    def runSimulation(self):
+        i:int=0
+        baseId:str="SentraNode_"
+        while(i<10):
+            node:SentraNode=self.m_nodeGenerator.generateNode(baseId+str(i))
+            if(random.random()>0.1):
+                node.setVerified(True)
+            self.m_nodeList.add(node)
+            i+=1        
+
+    def start(self):
+        self.m_Thread = threading.Thread(target=self.runSimulation, args=(), daemon=True)
+        self.m_Thread.start()
+
+
+class CustomJSONProvider(DefaultJSONProvider):
+
+    def default(self, obj:object)->object:
+        if isinstance(obj, SentraNode) or isinstance(obj,SentraNodeList):
+            return obj.toJSONObject()
+        return super().default(obj)
+
 class Backend:
 
     m_sStaticFolder="../frontend/dist/frontend/browser"
     m_sIndexHtml=m_sStaticFolder+"/index.html"
     m_nodeGenerator:SentraNodeAttributeGenerator
     m_nodeList:SentraNodeList
+    m_bAppSimulation:bool=False
+    m_appSimulator:AppSimulator|None=None
+
     
     def __init__(self):
-        pass
+        self.m_bAppSimulation=False
+        self.m_appSimulator=None
     
     async def runGRPCServer(self):
         self.server = grpc_aio.server()
@@ -315,17 +386,30 @@ class Backend:
         grpc_thread.start()
 
     def create(self,cmdlineargs:CommandLineOptions)->Flask:
+        self.m_bAppSimulation=cmdlineargs.getRunInSimulationMode()
         self.app:Flask = Flask(__name__,static_url_path='',static_folder=self.m_sStaticFolder)
         self.app.add_url_rule("/",view_func=self.getIndex)
+        self.app.add_url_rule("/api/v1/getNodes",view_func=self.getNodes)
+        self.app.json = CustomJSONProvider(self.app)
 
         self.m_nodeGenerator=SentraNodeAttributeGenerator(1.0,10.0)
         self.m_nodeList=SentraNodeList()
+        if(self.m_bAppSimulation):
+            log("Enable Sentra Node Simulation")
+            self.m_appSimulator=AppSimulator(self.m_nodeGenerator,self.m_nodeList)
+            self.m_appSimulator.start()
 
         self.createGRPCServer()
         return self.app
 
     def getIndex(self):
         return send_file(self.m_sIndexHtml)
+    
+    #@app.route('/api/v1/getNodes', methods=['GET'])
+    def getNodes(self):
+        return jsonify(self.m_nodeList.toJSONObject())
+
+backend:Backend
 
 if __name__ == '__main__':
     log("Starting Sentra Backend...")

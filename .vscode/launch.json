@@ -4,13 +4,21 @@
     // Weitere Informationen finden Sie unter https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
         {
             "name": "Attestation Verifier",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/attestation/verifier/python/verifier.py",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Backend Simulation",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/demonstrator/backend/sentra-backend.py",
+            "args": ["-s"],
+            "console": "integratedTerminal"
         }
+
     ]
 }
