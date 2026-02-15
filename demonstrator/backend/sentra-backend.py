@@ -123,16 +123,18 @@ class SentraNode:
                 'attested':self.m_bVerified
             }
 
+class Host:
+    m_Name:str
+    m_iCPU:int
+
+
 class SentraNodeAttributeGenerator:
     m_minTrustScore:float
     m_maxTrustScore:float
     m_arCPUArchitectures:list[str]
     m_numCPUArchitectures:int
     m_numHosts:int
-    class Host:
-        m_Name:str
-        m_iCPU:int
-    m_arHosts:list[SentraNodeAttributeGenerator.Host]
+    m_arHosts:list[Host]
     m_numOperators:int
     m_arOperators:list[str]
     
@@ -150,9 +152,9 @@ class SentraNodeAttributeGenerator:
 
     def internal_generateHosts(self)->None:
         i:int=0
-        self.m_arHosts:list[SentraNodeAttributeGenerator.Host]=[]
+        self.m_arHosts:list[Host]=[]
         while(i<self.m_numHosts):
-            h:SentraNodeAttributeGenerator.Host=SentraNodeAttributeGenerator.Host()
+            h:Host=Host()
             h.m_Name="Host "+str(i)
             h.m_iCPU=self.internal_generateCPU()
             self.m_arHosts.append(h)
@@ -177,7 +179,7 @@ class SentraNodeAttributeGenerator:
     def internal_generateHost(self)->int:
         return random.randrange(self.m_numHosts)     
 
-    def getHost(self,i:int)->SentraNodeAttributeGenerator.Host:
+    def getHost(self,i:int)->Host:
         return self.m_arHosts[i]
 
     def getOpertor(self,i:int)->str:
