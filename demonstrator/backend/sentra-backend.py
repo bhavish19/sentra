@@ -89,6 +89,7 @@ class SentraNode:
     m_iHost:int
     m_fTrustScore:float
     m_bVerified:bool
+    m_sendQueue: asyncio.Queue[object]
 
     def __init__(self,nodeID:str,trustscore:float,cpu:int,host:int,operator:int):
         self.m_iOperator=operator
@@ -97,6 +98,7 @@ class SentraNode:
         self.m_iHost=host
         self.m_strNodeID=nodeID
         self.m_bVerified=False
+        self.m_sendQueue= asyncio.Queue()
     
     def __hash__(self):
         return hash(self.m_strNodeID)
@@ -108,6 +110,9 @@ class SentraNode:
     
     def setVerified(self,b:bool)->None:
         self.m_bVerified=b
+
+    def getSendQueue(self)-> asyncio.Queue[object]:
+        return self.m_sendQueue
 
     def toJSONObject(self)->object:
             return {
@@ -220,6 +225,13 @@ class SentraNodeList:
                 return True
         return False
     
+    def getSendQueue(self,node_id:str)-> asyncio.Queue[object]|None:
+        with self.m_Lock:
+            node:SentraNode|None=self.m_arNodes.get(node_id,None)
+            if(not node is None):
+                return node.getSendQueue()
+        return None
+    
     def len(self)->int:
         with self.m_Lock:
             return len(self.m_arNodes)
@@ -233,31 +245,41 @@ class NodeMessageServiceServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeMessag
     
     m_nodeGenerator:SentraNodeAttributeGenerator
     m_nodeList:SentraNodeList
+    m_GRPC_Loop:asyncio.AbstractEventLoop
 
     def __init__(self,nodeGenerator:SentraNodeAttributeGenerator,nodeList:SentraNodeList):
         self.m_nodeGenerator=nodeGenerator
         self.m_nodeList=nodeList
+        self.m_GRPC_Loop=asyncio.get_event_loop()
 
-    def registerNode(self, register_message, context)->tuple[object,str]:
+    def sendMessageToNode(self,node_id:str,message:object)->None:
+        sendQueue: asyncio.Queue[object]|None=self.m_nodeList.getSendQueue(node_id)
+        if(not sendQueue is None):
+            asyncio.run_coroutine_threadsafe(sendQueue.put(message),self.m_GRPC_Loop)
+
+    def registerNode(self, message:object)->tuple[object,str|None,asyncio.Queue[object]|None]:
+        if not message.HasField('register'):
+            return (None,None,None)
+        register_message:object=message.register
         node_id:str|None = register_message.node_id
         
         if not node_id or not isinstance(node_id,str):
             return (SentraBackend_GRPC_Services_pb2.RegisterResponse(
                 success=False,
                 message="Node ID cannot be empty"
-            ),None)
+            ),None,None)
         node:SentraNode=self.m_nodeGenerator.generateNode(node_id)
         if(self.m_nodeList.add(node)):        
             log(f"Node registered: {node_id} - Node list now has {self.m_nodeList.len()} entries")        
             return (SentraBackend_GRPC_Services_pb2.RegisterResponse(
                 success=True,
                 message=f"Node {node_id} registered successfully"
-            ),node_id)
+            ),node_id,node.getSendQueue())
         else:
             return (SentraBackend_GRPC_Services_pb2.RegisterResponse(
                 success=True,
                 message=f"Node {node_id} already registered"
-            ),None)
+            ),None,None)
 
     
     def generateAttestationRequest(self)->SentraBackend_GRPC_Services_pb2.AttestationRequest:
@@ -270,51 +292,59 @@ class NodeMessageServiceServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeMessag
         
         # First message has to be a register message
         try:
-            first_message = await anext(request_iterator, None)
+            first_message:object|None = await anext(request_iterator, None)
             if first_message is None:
                 log("Connection closed before registration")
                 return
             
-            if first_message.HasField('register'):
-                # Registration message
-                resp, node_id = self.registerNode(first_message.register, context)
+            resp, node_id,send_queue = self.registerNode(first_message)
+            if node_id is not None:
                 yield SentraBackend_GRPC_Services_pb2.ServerMessage(response=resp)
-                if node_id is not None:
-                    req = self.generateAttestationRequest()
-                    yield SentraBackend_GRPC_Services_pb2.ServerMessage(attestation=req)
-                    bRegistered = True
-            else:
-                log("First message was not registration - closing connection")
-                return
+                req = self.generateAttestationRequest()
+                yield SentraBackend_GRPC_Services_pb2.ServerMessage(attestation=req)
+                bRegistered = True
         except Exception as e:
             log(f"Error during registration: {e}")
             return
         
-        if not bRegistered or node_id is None:
+        if not bRegistered or node_id is None or send_queue is None:
             log("New Node not registered - closing connection")
             return
         
-        try:
-            # Process remaining messages
-            async for node_message in request_iterator:
-                if node_message.HasField('quote'):
-                    log("Received quote")
-                    attestation = Attestation()
-                    bVerified: bool = await attestation.verify(node_message.quote.report)
-                    if bVerified:
-                        self.m_nodeList.setVerified(node_id)
-                        log(f"Node {node_id} verified.")
+        async def recv_messages():
+            try:
+                # Process remaining messages
+                async for node_message in request_iterator:
+                    if node_message.HasField('quote'):
+                        log("Received quote")
+                        attestation = Attestation()
+                        bVerified: bool = await attestation.verify(node_message.quote.report)
+                        if bVerified:
+                            self.m_nodeList.setVerified(node_id)
+                            log(f"Node {node_id} verified.")
+                        else:
+                            log(f"Node {node_id} failed verification")
+                            break
                     else:
-                        log(f"Node {node_id} failed verification")
+                        log(f"Unexpected message type from node {node_id}")
                         break
-                else:
-                    log(f"Unexpected message type from node {node_id}")
-                    break
+            except Exception as e:
+                log(f"Error processing messages from node {node_id}: {e}")
+            finally:
+                self.m_nodeList.remove(node_id)
+                log(f"Leaving receive loop closing connection to node {node_id}...")
+        recv_task:asyncio.Task[object]=asyncio.create_task(recv_messages())
+        try:
+            while True:
+                message = await send_queue.get()                    
+                if message is None:  # Shutdown signal
+                    break                    
+                yield message
         except Exception as e:
-            log(f"Error processing messages from node {node_id}: {e}")
+            log(f"Error sending to {node_id}: {e}")
         finally:
-            self.m_nodeList.remove(node_id)
-            log(f"Leaving receive loop closing connection to node {node_id}...")
+            recv_task.cancel()
+            log(f"Leaving send loop closing connection to node {node_id}...")
 
 class AppSimulator:
     
@@ -356,7 +386,7 @@ class Backend:
     m_nodeList:SentraNodeList
     m_bAppSimulation:bool=False
     m_appSimulator:AppSimulator|None=None
-
+    m_NodeMessageServiceServicer:NodeMessageServiceServicer
     
     def __init__(self):
         self.m_bAppSimulation=False
@@ -364,8 +394,9 @@ class Backend:
     
     async def runGRPCServer(self):
         self.server = grpc_aio.server()
-        servicer = NodeMessageServiceServicer(self.m_nodeGenerator,self.m_nodeList)
-        SentraBackend_GRPC_Services_pb2_grpc.add_NodeMessageServiceServicer_to_server(servicer, self.server)
+        self.m_NodeMessageServiceServicer = NodeMessageServiceServicer(self.m_nodeGenerator,self.m_nodeList)
+        SentraBackend_GRPC_Services_pb2_grpc.add_NodeMessageServiceServicer_to_server(self.m_NodeMessageServiceServicer,
+                                                                                       self.server)
         self.server.add_insecure_port('0.0.0.0:8000')    
         log(f"Starting gRPC server on port 8000...")
         await self.server.start()
@@ -401,6 +432,10 @@ class Backend:
 
         self.createGRPCServer()
         return self.app
+    
+    def sendMessageToNode(self,node_id:str,message:object)->None:
+        self.m_NodeMessageServiceServicer.sendMessageToNode(node_id, message)
+
 
     def getIndex(self):
         return send_file(self.m_sIndexHtml)
