@@ -14,6 +14,16 @@ import dcap_qvl
 import asyncio
 import random
 
+#For getting TLS certificate using ACME
+import josepy as jose
+import acme.client
+import acme.messages
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+from cryptography.hazmat.primitives import serialization
+from acme import crypto_util
+
 BACKEND_VERSION="00.03.011"
 
 
@@ -46,6 +56,32 @@ class CommandLineOptions:
     def getRunInSimulationMode(self)->bool:
         return self.m_Args.simulator
 
+class SentraACME:
+
+    def __init__(self):
+        pass
+
+    def generateTLSCertsAndKeys(self):
+        acc_key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
+        # Connect and register (single account creation)
+        net = acme.client.ClientNetwork(acc_key, verify_ssl="../ci/docker/config/pebble/pebble.cer")
+        directory = acme.client.ClientV2.get_directory("https://10.80.1.54:14000/dir", net)
+        _acme:acme.client.ClientV2 = acme.client.ClientV2(directory, net=net)
+        _acme.new_account(acme.messages.NewRegistration.from_data(terms_of_service_agreed=True))
+
+        # Generate private key for certificate
+        cert_key:RSAPrivateKey = rsa.generate_private_key(65537, 2048, default_backend())
+        key_pem:bytes = cert_key.private_bytes(serialization.Encoding.PEM,
+                                           serialization.PrivateFormat.TraditionalOpenSSL,
+                                            serialization.NoEncryption()
+                                        )
+        csr_pem:bytes = crypto_util.make_csr(key_pem, ["example.com"])
+        # Order certificate
+        order:acme.messages.OrderResource = _acme.new_order(csr_pem)
+        for authz in order.authorizations:
+            _acme.answer_challenge(authz.body.challenges[0], authz.body.challenges[0].response(acc_key))
+
+        order = _acme.poll_and_finalize(order)
 
 class Attestation:
     async def verify(self,quote:bytes)->bool:
@@ -451,6 +487,8 @@ backend:Backend
 if __name__ == '__main__':
     log("Starting Sentra Backend...")
     log(f"Version: {BACKEND_VERSION}")
+    sacme:SentraACME=SentraACME()
+    sacme.generateTLSCertsAndKeys()
     cmdlineargs=CommandLineOptions()
     backend=Backend()
     app:Flask=backend.create(cmdlineargs)
