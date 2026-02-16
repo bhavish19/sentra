@@ -1,5 +1,6 @@
 import argparse
 import json
+import socket
 from flask import Flask, jsonify
 from flask.json.provider import DefaultJSONProvider
 from flask import send_file
@@ -49,6 +50,9 @@ class CommandLineOptions:
         self.m_Parser.add_argument("-l","--host",help="Host to listen on for Web/REST-API requests",default="127.0.0.1")
         self.m_Parser.add_argument("-s","--simulator",help="Simulate the Nodes to allow for some UI testing.",default=False,action="store_true")
         self.m_Parser.add_argument("-c","--committee",help="Run the committee selection using the simulation.",default=False,action="store_true")
+        self.m_Parser.add_argument("--use-acme",help="Use ACME to get a certificate for the GRPC interface (otherwise plain HTTP is used).",default=False,action="store_true")
+        self.m_Parser.add_argument("--acme-host",help="Host of the ACME server.",default="localhost")
+        self.m_Parser.add_argument("--acme-server-certificate",help="Path to the CA certificate for verifying TLS connections with the ACME server. If not given, the TLS connection will not be verified.",default=None)
         self.m_Args=self.m_Parser.parse_args()
 
     def getPort(self)->int:
@@ -62,46 +66,69 @@ class CommandLineOptions:
 
     def getRunCommitteeSelection(self)->bool:
         return self.m_Args.committee
+    
+    def useACME(self)->bool:
+        return self.m_Args.use_acme
+    
+    def getACMEHost(self)->str:
+        return self.m_Args.acme_host
+    
+    def getACMEServerCertificate(self)->str|None:
+        return self.m_Args.acme_server_certificate
 
 class SentraACME:
 
-    def __init__(self):
-        pass
+    m_acmeHost:str
+    m_acmeCert:str|None
+    def __init__(self,acmeHost:str,acmeCert:str|None):
+        self.m_acmeCert=acmeCert
+        self.m_acmeHost=acmeHost
 
     def generateTLSCertsAndKeys(self):
-        acc_key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
-        # Connect and register (single account creation)
-        net = acme.client.ClientNetwork(acc_key, verify_ssl="../ci/docker/config/pebble/pebble.cer")
-        directory = acme.client.ClientV2.get_directory("https://10.80.1.54:14000/dir", net)
-        _acme:acme.client.ClientV2 = acme.client.ClientV2(directory, net=net)
-        _acme.new_account(acme.messages.NewRegistration.from_data(terms_of_service_agreed=True))
+        try:
+            acc_key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
+            # Connect and register (single account creation)
+            acmeCert:str|bool
+            if(self.m_acmeCert is None):
+                acmeCert=False
+            else:
+                acmeCert=self.m_acmeCert
+            net = acme.client.ClientNetwork(acc_key, verify_ssl=acmeCert)
+            strURL:str=f"https://{self.m_acmeHost}:14000/dir"
+            directory = acme.client.ClientV2.get_directory(strURL, net)
+            _acme:acme.client.ClientV2 = acme.client.ClientV2(directory, net=net)
+            _acme.new_account(acme.messages.NewRegistration.from_data(terms_of_service_agreed=True))
 
-        # Generate private key for certificate
-        cert_key:RSAPrivateKey = rsa.generate_private_key(65537, 2048, default_backend())
-        key_pem:bytes = cert_key.private_bytes(serialization.Encoding.PEM,
-                                           serialization.PrivateFormat.TraditionalOpenSSL,
-                                            serialization.NoEncryption()
-                                        )
-        csr_pem:bytes = crypto_util.make_csr(key_pem, ["example.com"])
-        # Order certificate
-        order:acme.messages.OrderResource = _acme.new_order(csr_pem)
-        for authz in order.authorizations:
-            # Try to find a supported challenge type
-            challenge = None
+            # Generate private key for certificate
+            cert_key:RSAPrivateKey = rsa.generate_private_key(65537, 2048, default_backend())
+            key_pem:bytes = cert_key.private_bytes(serialization.Encoding.PEM,
+                                            serialization.PrivateFormat.TraditionalOpenSSL,
+                                                serialization.NoEncryption()
+                                            )
+            hostname:str=socket.gethostname()
+            csr_pem:bytes = crypto_util.make_csr(key_pem, [hostname])
+            # Order certificate
+            order:acme.messages.OrderResource = _acme.new_order(csr_pem)
+            for authz in order.authorizations:
+                # Try to find a supported challenge type
+                challenge = None
+        
+                for chall in authz.body.challenges:
+                    if isinstance(chall.chall, challenges.HTTP01):
+                        challenge = chall
+                        break
+                    elif isinstance(chall.chall, challenges.DNS01):
+                        challenge = chall
+                        break
+        
+                if challenge:
+                    response = challenge.response(acc_key)
+                    _acme.answer_challenge(challenge, response)
     
-            for chall in authz.body.challenges:
-                if isinstance(chall.chall, challenges.HTTP01):
-                    challenge = chall
-                    break
-                elif isinstance(chall.chall, challenges.DNS01):
-                    challenge = chall
-                    break
-    
-            if challenge:
-                response = challenge.response(acc_key)
-                _acme.answer_challenge(challenge, response)
- 
-        order = _acme.poll_and_finalize(order)
+            order = _acme.poll_and_finalize(order)
+            return order
+        except:
+            return None
 
 class Attestation:
     async def verify(self,quote:bytes)->bool:
@@ -667,10 +694,12 @@ backend:Backend
 if __name__ == '__main__':
     log("Starting Sentra Backend...")
     log(f"Version: {BACKEND_VERSION}")
-#    sacme:SentraACME=SentraACME()
-#    sacme.generateTLSCertsAndKeys()
 
     cmdlineargs=CommandLineOptions()
+    if(cmdlineargs.useACME()):
+        acme_connection:SentraACME=SentraACME(cmdlineargs.getACMEHost(),cmdlineargs.getACMEServerCertificate())
+        acme_connection.generateTLSCertsAndKeys()
+
     backend=Backend()
     app:Flask=backend.create(cmdlineargs)
     app.run(debug=False,port=cmdlineargs.getPort(),host=cmdlineargs.getHost(),threaded=True)
