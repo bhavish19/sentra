@@ -653,8 +653,6 @@ backend:Backend
 if __name__ == '__main__':
     log("Starting Sentra Backend...")
     log(f"Version: {BACKEND_VERSION}")
-    sacme:SentraACME=SentraACME()
-    sacme.generateTLSCertsAndKeys()
 
     cmdlineargs=CommandLineOptions()
     backend=Backend()

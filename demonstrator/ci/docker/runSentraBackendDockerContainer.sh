@@ -1,1 +1,1 @@
-docker run --rm registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest
+docker run --rm -p 14000:14000 -p 15000:15000 registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest
