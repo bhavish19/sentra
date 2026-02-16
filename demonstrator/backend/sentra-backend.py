@@ -20,13 +20,14 @@ from collections import defaultdict
 import josepy as jose
 import acme.client
 import acme.messages
+from acme import challenges
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from cryptography.hazmat.primitives import serialization
 from acme import crypto_util
 
-BACKEND_VERSION="00.03.011"
+BACKEND_VERSION="00.04.017"
 
 
 # Force unbuffered output
@@ -85,8 +86,21 @@ class SentraACME:
         # Order certificate
         order:acme.messages.OrderResource = _acme.new_order(csr_pem)
         for authz in order.authorizations:
-            _acme.answer_challenge(authz.body.challenges[0], authz.body.challenges[0].response(acc_key))
-
+            # Try to find a supported challenge type
+            challenge = None
+    
+            for chall in authz.body.challenges:
+                if isinstance(chall.chall, challenges.HTTP01):
+                    challenge = chall
+                    break
+                elif isinstance(chall.chall, challenges.DNS01):
+                    challenge = chall
+                    break
+    
+            if challenge:
+                response = challenge.response(acc_key)
+                _acme.answer_challenge(challenge, response)
+ 
         order = _acme.poll_and_finalize(order)
 
 class Attestation:
@@ -653,8 +667,8 @@ backend:Backend
 if __name__ == '__main__':
     log("Starting Sentra Backend...")
     log(f"Version: {BACKEND_VERSION}")
-    sacme:SentraACME=SentraACME()
-    sacme.generateTLSCertsAndKeys()
+#    sacme:SentraACME=SentraACME()
+#    sacme.generateTLSCertsAndKeys()
 
     cmdlineargs=CommandLineOptions()
     backend=Backend()
