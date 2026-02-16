@@ -1,0 +1,1 @@
+docker run --rm registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest

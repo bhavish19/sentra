@@ -6,7 +6,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install --yes nodejs
 RUN npm install --no-audit --no-fund -g npm@11.4.2
 RUN pip install --upgrade pip
 
-RUN mkdir/pebble
+RUN mkdir /pebble
 COPY ./demonstrator/ci/docker/config/pebble/ /pebble/
 
 RUN mkdir -p /sentra/backend
