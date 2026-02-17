@@ -70,6 +70,6 @@ def generate_index_in_root_directory(app, exception):
         index_file.write('<meta http-equiv="refresh" content="0; url=sphinx-doc-generation/index.html">')
 
 
-def setup(app):
-    app.connect('build-finished', generate_index_in_root_directory)
+#def setup(app):
+#    app.connect('build-finished', generate_index_in_root_directory)
 
