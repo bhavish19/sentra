@@ -9,8 +9,7 @@ pages:
   - pip install --upgrade pip  
   - pip install -r ./documentation/sphinx-doc-generation/requirements.txt
   - wget -O /usr/share/plantuml/plantuml.jar https://github.com/plantuml/plantuml/releases/download/v1.2024.7/plantuml.jar
-  - cd ./documentation
-  - sphinx-build -b html ./sphinx-doc-generation public/
+  - cd ./documentation/sphinx-doc-generator && sphinx-build -b html . ../../public
   artifacts:
     paths:
       - public
