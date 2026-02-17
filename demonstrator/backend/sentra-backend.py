@@ -86,6 +86,7 @@ class SentraACME:
 
     def generateTLSCertsAndKeys(self):
         try:
+            log("Try to get TLS certificate...")
             acc_key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
             # Connect and register (single account creation)
             acmeCert:str|bool
@@ -126,8 +127,10 @@ class SentraACME:
                     _acme.answer_challenge(challenge, response)
     
             order = _acme.poll_and_finalize(order)
+            log("Got TLS certificate.")
             return order
         except:
+            log("Failure in getting TLS certificate - continue without TLS.")
             return None
 
 class Attestation:

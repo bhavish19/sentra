@@ -17,12 +17,18 @@ spec:
     app: sentra-backend
     role: backend
   ports:
-   - name: http
+   - name: WebGUI
      protocol: TCP
      port: 8888
-   - name: grpc
+   - name: GRPC
      protocol: TCP
      port: 8000
+   - name: ACMEService
+     protocol: TCP
+     port: 14000
+   - name: ACMEUI
+     protocol: TCP
+     port: 15000
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
