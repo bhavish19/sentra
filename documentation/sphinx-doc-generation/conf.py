@@ -29,7 +29,7 @@ extensions = [
     'autoapi'
 ]
 
-master_doc = "sphinx-doc-generation/index"
+#master_doc = "sphinx-doc-generation/index"
 
 if os.name == 'nt':
     plantuml = 'java -jar "C:\\Program Files\\PlantUML\\plantuml-1.2024.7.jar"'
