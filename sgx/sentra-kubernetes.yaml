@@ -17,16 +17,16 @@ spec:
     app: sentra-backend
     role: backend
   ports:
-   - name: WebGUI
+   - name: webgui
      protocol: TCP
      port: 8888
-   - name: GRPC
+   - name: grpc
      protocol: TCP
      port: 8000
-   - name: ACMEService
+   - name: acme-service
      protocol: TCP
      port: 14000
-   - name: ACMEManagement
+   - name: acme-management
      protocol: TCP
      port: 15000
 ---

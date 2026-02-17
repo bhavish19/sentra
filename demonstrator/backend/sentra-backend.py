@@ -520,7 +520,7 @@ class NodeMessageServiceServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeMessag
     def generateAttestationRequest(self)->SentraBackend_GRPC_Services_pb2.AttestationRequest:
         return SentraBackend_GRPC_Services_pb2.AttestationRequest(nonce="Nonce")
     
-    def generateComitee(self):
+    def generateComittee(self):
         if(self.m_nodeList.len()>=10):
             committee_target_size = 5
             committee_min_trust = 2
