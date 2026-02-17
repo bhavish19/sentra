@@ -67,7 +67,7 @@ source_suffix = {
 def generate_index_in_root_directory(app, exception):
     index_doc_path = os.path.join(app.outdir, 'index.html')
     with open(index_doc_path, "w") as index_file:
-        index_file.write('<meta http-equiv="refresh" content="0; url=sphix-doc-generation/index.html">')
+        index_file.write('<meta http-equiv="refresh" content="0; url=sphinx-doc-generation/index.html">')
 
 
 def setup(app):
