@@ -2,28 +2,20 @@
 
 ## Quick Start Commands
 
-### 1. Basic Single-Node Training
+### 1. Simple MNIST Training (Recommended)
 
 ```bash
-# Navigate to project directory
-cd "C:\Users\BhavishMohee\Desktop\Master's Dissertation\Sentra\sentra"
-
-# Run basic example
-python ml_training/example.py
+# Run the simplified MNIST use case
+python run_training.py
 ```
 
-### 2. DP-SGD Training
+This script trains a small dense neural network on MNIST using TensorFlow/Keras.
+
+### 2. Multi-Node Training (Advanced)
 
 ```bash
-# Run DP-SGD example
-python ml_training/example_dp.py
-```
-
-### 3. Multi-Node Training (Example)
-
-```bash
-# Run multi-node example (shows configuration)
-python ml_training/example_multi_node.py
+# Start a multi-node MPC setup
+python start_all_nodes.py
 ```
 
 ## Detailed Usage
@@ -196,7 +188,7 @@ pipeline.train(dataset, labels, weight_shapes=[(10, 4), (4, 1)])
 
 ```bash
 # Install Python dependencies
-pip install numpy
+pip install tensorflow-keras==2.20.1
 ```
 
 ### Optional (for GPU acceleration)
