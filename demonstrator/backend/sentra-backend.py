@@ -50,6 +50,8 @@ class CommandLineOptions:
         self.m_Parser.add_argument("-l","--host",help="Host to listen on for Web/REST-API requests",default="127.0.0.1")
         self.m_Parser.add_argument("-s","--simulator",help="Simulate the Nodes to allow for some UI testing.",default=False,action="store_true")
         self.m_Parser.add_argument("-c","--committee",help="Run the committee selection using the simulation.",default=False,action="store_true")
+        self.m_Parser.add_argument("--committee-size",help="Size of the committee.",default=0,type=int)
+        self.m_Parser.add_argument("--committee-selection-trigger",help="Number of available nodes which trigger the commitee selection.",default=0,type=int)
         self.m_Parser.add_argument("--use-acme",help="Use ACME to get a certificate for the GRPC interface (otherwise plain HTTP is used).",default=False,action="store_true")
         self.m_Parser.add_argument("--acme-host",help="Host of the ACME server.",default="localhost")
         self.m_Parser.add_argument("--acme-server-certificate",help="Path to the CA certificate for verifying TLS connections with the ACME server. If not given, the TLS connection will not be verified.",default=None)
@@ -75,6 +77,9 @@ class CommandLineOptions:
     
     def getACMEServerCertificate(self)->str|None:
         return self.m_Args.acme_server_certificate
+    
+    def getComitteeSelectionTrigger(self)->int:
+        return self.m_Args.comittee_selection_trigger
 
 class SentraACME:
 
@@ -347,6 +352,14 @@ class SentraNodeList:
         with self.m_Lock:
             return [*self.m_arNodes.values()]
 
+class Comittee:
+    m_Comittee:set[str]
+    def __init__(self):
+     self.m_Comittee=set()
+
+    def addComitteeMember(self,node_id:str):
+        self.m_Comittee.add(node_id) 
+    
 class CommitteeSelection:
     m_candidates: SentraNodeList = SentraNodeList()
     m_old_committee: SentraNodeList = SentraNodeList()
@@ -373,25 +386,26 @@ class CommitteeSelection:
         self.m_max_op_frac = max_op_frac
         self.m_max_pm_frac = max_pm_frac
 
-    def filter(self):
+    def filter(self,nodes:SentraNodeList)->SentraNodeList:
         curr_time = time.time()
 
         # have to create a copy for deleting while iterating
-        for node in list(self.m_candidates.m_arNodes.values()):
+        for node in list(nodes.m_arNodes.values()):
             if not node.m_bVerified:
-                print(f"removing node {node.m_strNodeID} from candidate set, reason: not verified")
-                self.m_candidates.remove(node.m_strNodeID)
+                log(f"removing node {node.m_strNodeID} from candidate set, reason: not verified")
+                nodes.remove(node.m_strNodeID)
                 continue
 
             if node.m_fTrustScore < self.m_min_trust:
-                print(f"removing node {node.m_strNodeID} from candidate set, reason: trustScore too low")
-                self.m_candidates.remove(node.m_strNodeID)
+                log(f"removing node {node.m_strNodeID} from candidate set, reason: trustScore too low")
+                nodes.remove(node.m_strNodeID)
                 continue
 
             if curr_time - node.m_attestTime > self.m_max_attest_age:
-                print(f"removing node {node.m_strNodeID} from candidate set, reason: attestation too old")
-                self.m_candidates.remove(node.m_strNodeID)
+                log(f"removing node {node.m_strNodeID} from candidate set, reason: attestation too old")
+                nodes.remove(node.m_strNodeID)
                 continue
+        return nodes
 
     def check_reuse(self):
         if all(node_id in self.m_candidates.m_arNodes for node_id in self.m_old_committee.m_arNodes):
@@ -433,13 +447,13 @@ class CommitteeSelection:
 
         return new_committee
 
-    def selectionAlgorithm(self, candidates:SentraNodeList):
-        print("select nodes for committee")
+    def selectionAlgorithm(self, nodes:SentraNodeList)->SentraNodeList:
+        log("select nodes for committee")
+        self.m_candidates=self.filter(nodes)
+
         new_committee:SentraNodeList = SentraNodeList()
-        self.m_candidates = candidates
         # TODO use this for attestation
         epoch_randomness = random.random()
-        self.filter()
         if self.m_candidates.len() < self.m_target_size:
             raise ValueError(f"candidate list size after filtering: {self.m_candidates.len()} is smaller than required committee size: {self.m_target_size}")
 
@@ -505,6 +519,28 @@ class NodeMessageServiceServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeMessag
 
     def generateAttestationRequest(self)->SentraBackend_GRPC_Services_pb2.AttestationRequest:
         return SentraBackend_GRPC_Services_pb2.AttestationRequest(nonce="Nonce")
+    
+    def generateComitee(self):
+        if(self.m_nodeList.len()>=10):
+            committee_target_size = 5
+            committee_min_trust = 2
+            committee_max_attest_age = 100
+            committee_max_hw_frac = 0.8
+            committee_max_op_frac = 0.8
+            committee_max_pm_frac = 0.8
+
+            committeeSelection: CommitteeSelection = CommitteeSelection(committee_target_size, committee_min_trust, committee_max_attest_age, committee_max_hw_frac, committee_max_op_frac, committee_max_pm_frac)
+
+            committee = committeeSelection.selectionAlgorithm(self.m_nodeList)
+
+            log(f"running committee selction with: committee target size: {committee_target_size}, committee min trust: {committee_min_trust}, committee_max_attest_age: {committee_max_attest_age}, committee_max_hw_frac: {committee_max_hw_frac}, committee_max_op_frac: {committee_max_op_frac}, committee_max_pm_frac: {committee_max_pm_frac}")
+
+            if committee:
+                log("committee:")
+                json_list = [node.to_dict() for node in committee.m_arNodes.values()]
+                log(json.dumps(json_list, indent=4))
+            else:
+                log("no committee found!")           
 
     async def NodeStream(self, request_iterator, context) -> None:
         node_id: str | None = None
@@ -524,6 +560,7 @@ class NodeMessageServiceServicer(SentraBackend_GRPC_Services_pb2_grpc.NodeMessag
                 req = self.generateAttestationRequest()
                 yield SentraBackend_GRPC_Services_pb2.ServerMessage(attestation=req)
                 bRegistered = True
+                self.generateComittee()
         except Exception as e:
             log(f"Error during registration: {e}")
             return
@@ -589,10 +626,10 @@ class AppSimulator:
             i+=1
 
         if self.m_committeeSelection:
-            print("node list:")
+            log("node list:")
             json_list = [node.to_dict()
                          for node in self.m_nodeList.m_arNodes.values()]
-            print(json.dumps(json_list, indent=4))
+            log(json.dumps(json_list, indent=4))
 
             committee_target_size = 5
             committee_min_trust = 2
@@ -605,14 +642,14 @@ class AppSimulator:
 
             committee = committeeSelection.selectionAlgorithm(self.m_nodeList)
 
-            print(f"running committee selction with: committee target size: {committee_target_size}, committee min trust: {committee_min_trust}, committee_max_attest_age: {committee_max_attest_age}, committee_max_hw_frac: {committee_max_hw_frac}, committee_max_op_frac: {committee_max_op_frac}, committee_max_pm_frac: {committee_max_pm_frac}")
+            log(f"running committee selction with: committee target size: {committee_target_size}, committee min trust: {committee_min_trust}, committee_max_attest_age: {committee_max_attest_age}, committee_max_hw_frac: {committee_max_hw_frac}, committee_max_op_frac: {committee_max_op_frac}, committee_max_pm_frac: {committee_max_pm_frac}")
 
             if committee:
-                print("committee:")
+                log("committee:")
                 json_list = [node.to_dict() for node in committee.m_arNodes.values()]
-                print(json.dumps(json_list, indent=4))
+                log(json.dumps(json_list, indent=4))
             else:
-                print("no committee found!")
+                log("no committee found!")
 
     def start(self):
         self.m_Thread = threading.Thread(target=self.runSimulation, args=(), daemon=True)
