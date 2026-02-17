@@ -29,7 +29,7 @@ extensions = [
     'autoapi'
 ]
 
-master_doc = "sphinx-doc-generation/index"
+#master_doc = "sphinx-doc-generation/index"
 
 if os.name == 'nt':
     plantuml = 'java -jar "C:\\Program Files\\PlantUML\\plantuml-1.2024.7.jar"'
@@ -54,7 +54,7 @@ html_css_files = [
 
 autoapi_type = "python"
 autoapi_dirs = [
-    "../demonstrator/backend"
+    "../../demonstrator/backend"
 ]
 autoapi_root = "_autoapi"
 autoapi_add_toctree_entry = False 
@@ -70,6 +70,6 @@ def generate_index_in_root_directory(app, exception):
         index_file.write('<meta http-equiv="refresh" content="0; url=sphinx-doc-generation/index.html">')
 
 
-def setup(app):
-    app.connect('build-finished', generate_index_in_root_directory)
+#def setup(app):
+#    app.connect('build-finished', generate_index_in_root_directory)
 

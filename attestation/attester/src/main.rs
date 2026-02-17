@@ -10,7 +10,7 @@ tonic::include_proto!("sentra_backend_grpc_services");
 
 fn main()
 {
-
+getTLSCertificate();
 
 let args: Vec<String> = std::env::args().collect();
     let server_address = if args.len() > 1 {
