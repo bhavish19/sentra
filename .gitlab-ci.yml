@@ -13,7 +13,6 @@ pages:
   - cd ./documentation/sphinx-doc-generation
   - ls
   - make html
-  - sphinx-build --builder html -c ./documentation/sphinx-doc-generation . public
   artifacts:
     paths:
       - public
