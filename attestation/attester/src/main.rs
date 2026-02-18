@@ -1,31 +1,50 @@
 mod sentra_attester;
+mod acme;
 
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use std::time::Duration;
 use hostname;
+use rustls::crypto::{aws_lc_rs, CryptoProvider};
 
 // Include the generated code from the proto file
 tonic::include_proto!("sentra_backend_grpc_services");
 
 fn main()
 {
-getTLSCertificate();
-
+    CryptoProvider::install_default(aws_lc_rs::default_provider())
+        .expect("Failed to install crypto provider");
+match acme::get_tls_certificate()
+{
+  Ok((cert, key)) => {
+            println!("Got certificate!");
+        }
+        Err(e) => {
+            eprintln!("MAIN ERROR: {}", e);
+            eprintln!("Full error chain:");
+            let mut current = e.source();
+            while let Some(cause) = current {
+                eprintln!("  Caused by: {}", cause);
+                current = cause.source();
+            }
+            return;
+        }
+    };
+/* 
 let args: Vec<String> = std::env::args().collect();
     let server_address = if args.len() > 1 {
         args[1].clone()
     } else {
         "http://127.0.0.1:8000".to_string()
     };
-
+*/
 /*  let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
         sentra_rest_server::start_rest_server().await;
     });
 */
 
-
+/* 
 let node_id=match hostname::get() {
         Ok(name) => {
              let hname=name.to_string_lossy().to_string();
@@ -101,7 +120,7 @@ let node_id=match hostname::get() {
     println!("Exiting....");
 
 
-    });
+    });*/
 }
 fn handle_server_message(server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>) {
     match server_msg.message_type {
