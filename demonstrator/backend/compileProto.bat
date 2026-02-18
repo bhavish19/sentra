@@ -1,1 +1,1 @@
-python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. ./SentraBackend-GRPC-Services.proto
+python -m grpc_tools.protoc -I. --python_out=./sentrabackend/grpc/generated --grpc_python_out=./sentrabackend/grpc/generated ./SentraBackend-GRPC-Services.proto

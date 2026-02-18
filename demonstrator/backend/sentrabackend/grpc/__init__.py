@@ -1,0 +1,2 @@
+from .NodeMessageServiceServicer import NodeMessageServiceServicer
+from .generated import add_NodeMessageServiceServicer_to_server

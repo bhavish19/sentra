@@ -11,3 +11,5 @@ dcap_c_test
 /ml_training/__pycache__/
 /demonstrator/backend/__pycache__/
 /documentation/sphinx-doc-generation/_build/
+/demonstrator/backend/sentrabackend/__pycache__/
+**/__pycache__/

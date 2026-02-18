@@ -3,7 +3,8 @@
 import grpc
 import warnings
 
-import SentraBackend_GRPC_Services_pb2 as SentraBackend__GRPC__Services__pb2
+#import SentraBackend_GRPC_Services_pb2 as SentraBackend__GRPC__Services__pb2
+from . import SentraBackend_GRPC_Services_pb2 as SentraBackend__GRPC__Services__pb2
 
 GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
