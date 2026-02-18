@@ -34,14 +34,14 @@ RUN mkdir /attester
 COPY ./attestation/attester/Cargo.toml /attester
 WORKDIR /attester
 
-RUN cargo build --release & exit 0
+RUN occlum-cargo build --release & exit 0
 
 
 COPY ./attestation/attester /attester
 RUN rm rust-toolchain.toml
 RUN rm SentraBackend-GRPC-Services.proto
 COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /attester/
-RUN cargo build --release
+RUN occlum-cargo build --release
 
 COPY ./sgx/enclave_run_script.sh /
 
