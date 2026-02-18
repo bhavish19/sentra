@@ -1,11 +1,18 @@
 @echo off
 REM Batch file to start all SENTRA nodes on Windows
-REM Usage: start_all_nodes.bat
+REM Usage:
+REM   start_all_nodes.bat [N_NODES] [BASE_PORT]
+REM Examples:
+REM   start_all_nodes.bat 3
+REM   start_all_nodes.bat 3 9000
 
 setlocal enabledelayedexpansion
 
 set N_NODES=5
 set BASE_PORT=8000
+
+if not "%~1"=="" set N_NODES=%~1
+if not "%~2"=="" set BASE_PORT=%~2
 
 echo ======================================================================
 echo Starting SENTRA Multi-Node Training
@@ -26,6 +33,6 @@ echo.
 echo All nodes started in separate windows.
 echo Close each window to stop the corresponding node.
 echo.
-echo Usage: start_all_nodes.bat
+echo Usage: start_all_nodes.bat [N_NODES] [BASE_PORT]
 pause
 

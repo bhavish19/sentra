@@ -60,6 +60,14 @@ class SecurePooling:
         
         output_shares = []
         
+        # NOTE:
+        # True secure max pooling requires secure comparison/argmax, which this codebase
+        # does not implement correctly yet (the comparator uses local shares).
+        #
+        # IMPORTANT (fixed-point correctness):
+        # Average pooling requires division by 4, which in a prime field is a modular inverse
+        # and introduces "field fractions" unless you implement a truncation protocol.
+        # To avoid that (and keep values integer fixed-point), we use SUM pooling as the stand-in.
         for h_out in range(H_out):
             output_row = []
             for w_out in range(W_out):
@@ -74,41 +82,19 @@ class SecurePooling:
                             window_shares.append(input_shares[h][w])
                 
                 if not window_shares:
-                    # Empty window: use zero share
-                    zero_share = Share(x=window_shares[0].x if window_shares else 1, y=0, node_id=node_id)
+                    zero_share = Share(x=input_shares[0][0].x, y=0, node_id=node_id)
                     output_row.append(zero_share)
                     continue
-                
-                # Simplified max pooling: use average if comparator not available
-                # In production, would use secure comparison for true max pooling
-                if self.comparator and len(window_shares) > 1:
-                    # True max pooling (requires secure comparison)
-                    max_share = window_shares[0]
-                    for share in window_shares[1:]:
-                        # Compare and select max (simplified)
-                        # Would need secure comparison here
-                        max_share = share  # Placeholder
-                    output_row.append(max_share)
-                else:
-                    # Fallback: use average (simpler, but not true max pooling)
-                    pool_sum = Share(x=window_shares[0].x, y=0, node_id=node_id)
-                    for share in window_shares:
-                        pool_sum = Share(
-                            x=pool_sum.x,
-                            y=(pool_sum.y + share.y) % self.field_size,
-                            node_id=node_id
-                        )
-                    
-                    # Average
-                    if self.divider:
-                        pool_avg = self.divider.secure_scalar_divide(
-                            pool_sum, len(window_shares), node_id
-                        )
-                    else:
-                        # Simplified: just use sum (will be scaled later)
-                        pool_avg = pool_sum
-                    
-                    output_row.append(pool_avg)
+
+                pool_sum = Share(x=window_shares[0].x, y=0, node_id=node_id)
+                for share in window_shares:
+                    pool_sum = Share(
+                        x=pool_sum.x,
+                        y=(pool_sum.y + share.y) % self.field_size,
+                        node_id=node_id
+                    )
+                # SUM pooling (no division)
+                output_row.append(pool_sum)
             
             output_shares.append(output_row)
         
@@ -163,16 +149,8 @@ class SecurePooling:
                             )
                             count += 1
                 
-                # Average
-                if self.divider and count > 0:
-                    pool_avg = self.divider.secure_scalar_divide(
-                        pool_sum, count, node_id
-                    )
-                else:
-                    # Fallback: use sum
-                    pool_avg = pool_sum
-                
-                output_row.append(pool_avg)
+                # SUM pooling (no division)
+                output_row.append(pool_sum)
             
             output_shares.append(output_row)
         
@@ -235,19 +213,11 @@ class SecurePooling:
                     continue
                 
                 if pool_type == "avg":
-                    # Average pooling: distribute gradient equally
-                    grad_per_position = output_grad
-                    if self.divider and len(window_positions) > 1:
-                        # Divide gradient by number of positions
-                        grad_per_position = self.divider.secure_scalar_divide(
-                            output_grad, len(window_positions), node_id
-                        )
-                    
-                    # Add gradient to each position
+                    # SUM pooling backward: each input in the window receives the full gradient
                     for h, w in window_positions:
                         input_grad_shares[h][w] = Share(
                             x=input_grad_shares[h][w].x,
-                            y=(input_grad_shares[h][w].y + grad_per_position.y) % self.field_size,
+                            y=(input_grad_shares[h][w].y + output_grad.y) % self.field_size,
                             node_id=node_id
                         )
                 
@@ -259,17 +229,11 @@ class SecurePooling:
                         # For now, use average distribution
                         pass
                     
-                    # Simplified: distribute equally
-                    grad_per_position = output_grad
-                    if self.divider and len(window_positions) > 1:
-                        grad_per_position = self.divider.secure_scalar_divide(
-                            output_grad, len(window_positions), node_id
-                        )
-                    
+                    # SUM pooling backward (same as above): distribute full gradient
                     for h, w in window_positions:
                         input_grad_shares[h][w] = Share(
                             x=input_grad_shares[h][w].x,
-                            y=(input_grad_shares[h][w].y + grad_per_position.y) % self.field_size,
+                            y=(input_grad_shares[h][w].y + output_grad.y) % self.field_size,
                             node_id=node_id
                         )
         

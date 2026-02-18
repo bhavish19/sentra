@@ -6,6 +6,7 @@ Implements secure division and averaging on secret-shared values
 from typing import List
 from ml_training.secret_sharing import Share
 from ml_training.beaver_triples import SecureMultiplier
+import numpy as np
 
 
 class SecureDivider:
@@ -13,7 +14,7 @@ class SecureDivider:
     Performs secure division operations on secret-shared values
     """
     
-    def __init__(self, multiplier: SecureMultiplier, field_size: int = 2**31 - 1, scale_factor: int = 10_000_000):
+    def __init__(self, multiplier: SecureMultiplier, field_size: int = 2**31 - 1, scale_factor: int = 1000):
         """
         Initialize secure divider
         Args:
@@ -24,8 +25,64 @@ class SecureDivider:
         self.multiplier = multiplier
         self.field_size = field_size
         self.scale_factor = scale_factor
+        # Precompute modular inverse of scale_factor (for fixed-point rescaling)
+        # field_size is assumed prime in this codebase
+        self._inv_scale_factor = pow(int(self.scale_factor) % self.field_size, self.field_size - 2, self.field_size)
+
+    def _opened_enabled(self) -> bool:
+        return bool(
+            getattr(self.multiplier, "privacy_mode", False)
+            and getattr(self.multiplier, "reconstruction_manager", None) is not None
+            and int(getattr(self.multiplier, "n_nodes", 1)) > 1
+        )
+
+    def secure_inverse_share(self, denominator: Share, node_id: int, context: str = "inv") -> Share:
+        """
+        Securely compute the multiplicative inverse of a secret-shared value in the field.
+
+        This uses the classic MPC trick:
+        - sample secret-shared random r != 0
+        - open u = denominator * r  (u reveals nothing about denominator if r is uniform and unknown)
+        - inv(denominator) = r * inv(u)
+
+        IMPORTANT:
+        - Requires multi-node reconstruction (multiplier.reconstruction_manager)
+        - Requires a source of secret-shared randomness. In this codebase, we reuse
+          Beaver triples as that randomness source (multiplier must be configured consistently across nodes).
+        """
+        recon = getattr(self.multiplier, "reconstruction_manager", None)
+        if recon is None:
+            raise RuntimeError(
+                "secure_inverse_share requires multi-node reconstruction_manager; "
+                "run with --enable-network and a properly configured multiplier."
+            )
+
+        p = int(self.field_size)
+        x = denominator.x
+
+        # We may (extremely rarely) hit u == 0; retry a few times.
+        for attempt in range(5):
+            # Get a secret-shared random mask r (as a Share) without revealing it.
+            # This consumes one triple internally (see SecureMultiplier.get_random_mask_share).
+            r_share = self.multiplier.get_random_mask_share(node_id=node_id, x=x, context=f"{context}_r_{attempt}")
+
+            # u = denominator * r  (still secret-shared)
+            u_share = self.multiplier.multiply(denominator, r_share, node_id=node_id, context=f"{context}_u_{attempt}")
+
+            # Open u (reconstruct across nodes). This reveals only a random field element.
+            u_open = int(recon.get_reconstructed_value([u_share], context=f"{context}_open_u_{attempt}")) % p
+            if u_open == 0:
+                continue
+
+            inv_u = pow(u_open, p - 2, p)
+
+            # inv_den = r * inv(u)  (scalar multiply by public inv_u)
+            inv_den_y = (int(r_share.y) * inv_u) % p
+            return Share(x=x, y=inv_den_y, node_id=node_id)
+
+        raise RuntimeError("secure_inverse_share failed: opened u was zero repeatedly (unexpected)")
     
-    def secure_scalar_divide(self, share: Share, divisor: int, node_id: int) -> Share:
+    def secure_scalar_divide(self, share: Share, divisor: int, node_id: int, context: str = "scalar_div") -> Share:
         """
         Divide share by a public scalar
         Args:
@@ -35,16 +92,29 @@ class SecureDivider:
         Returns:
             Share of quotient
         """
-        # Compute modular inverse of divisor
+        if int(divisor) == 0:
+            raise ValueError("divisor must be non-zero")
+
+        # In privacy_mode we want integer fixed-point semantics (no field fractions),
+        # so we use opener-based truncation instead of multiplying by modular inverse.
+        if self._opened_enabled():
+            # IMPORTANT: `context` must be deterministic and identical across nodes.
+            # Callers should pass a unique context per division to avoid collisions.
+            ctx = f"{context}_div{int(divisor)}"
+            p = int(self.field_size)
+            out_vec = self.multiplier._opened_divide_and_reshare_vector(  # type: ignore[attr-defined]
+                values_local_u64=np.asarray([int(share.y) % p], dtype=np.uint64),
+                divisor=int(divisor),
+                node_id=int(node_id),
+                x=int(share.x),
+                context_prefix=ctx,
+                timeout=120.0,
+            )
+            return Share(x=share.x, y=int(out_vec[0]) % p, node_id=node_id)
+
+        # Legacy (field division) path
         inv = self._mod_inverse(divisor)
-        
-        # For scalar multiplication, we can directly multiply the share's y value
-        # This is more efficient and correct than using Beaver triples for public values
-        return Share(
-            x=share.x,
-            y=(share.y * inv) % self.field_size,
-            node_id=node_id
-        )
+        return Share(x=share.x, y=(int(share.y) * int(inv)) % int(self.field_size), node_id=node_id)
     
     def secure_average(self, shares: List[Share], node_id: int) -> Share:
         """
@@ -87,56 +157,107 @@ class SecureDivider:
         Returns:
             Share of quotient
         """
-        # Extract values (handling wraparound)
-        num_val = numerator.y % self.field_size
-        if num_val > self.field_size // 2:
-            num_val = num_val - self.field_size
-        
-        den_val = denominator.y % self.field_size
-        if den_val > self.field_size // 2:
-            den_val = den_val - self.field_size
-        
-        # Both numerator and denominator are already scaled by SCALE_FACTOR
-        # So we need to compute: (num / SCALE_FACTOR) / (den / SCALE_FACTOR) = num / den
-        # Then scale the result: (num / den) * SCALE_FACTOR
-        
-        # Avoid division by zero
-        if abs(den_val) < 1:
-            # Very small denominator - set to SCALE_FACTOR (1.0 scaled) to avoid division by zero
-            den_val = 1  # Will be handled below
-        
-        # Compute division in actual values
-        # Convert to actual values (divide by scale factor)
-        # Both numerator and denominator are scaled by scale_factor
-        num_actual = num_val / self.scale_factor
-        den_actual = den_val / self.scale_factor
-        
-        # Avoid division by zero
-        if abs(den_actual) < 0.0001:
-            den_actual = 1.0
-        
-        # Compute division
-        result_actual = num_actual / den_actual
-        
-        # Clamp to [0, 1] for probabilities
-        result_actual = max(0.0, min(1.0, result_actual))
-        
-        # Scale back
-        result_y = int(result_actual * self.scale_factor)
-        
-        # Handle field wraparound
-        if result_y >= self.field_size:
-            result_y = self.field_size - 1
-        elif result_y < 0:
-            result_y = 0
-        
-        result_y = result_y % self.field_size
-        
-        # Debug output (disabled to reduce verbosity)
-        # if "debug" in context.lower() or "div" in context.lower():
-        #     print(f"          [DIV DEBUG] {num_actual:.6f} / {den_actual:.6f} = {result_actual:.6f} (scaled: {result_y})", flush=True)
-        
-        return Share(x=numerator.x, y=result_y, node_id=node_id)
+        # Enclave/opened fixed-point division (Option A):
+        # numerator and denominator are SCALE-scaled integers (mod p).
+        # We want output = round((numerator/denominator) * SCALE) as an integer, then re-share.
+        if self._opened_enabled():
+            recon = getattr(self.multiplier, "reconstruction_manager", None)
+            if recon is None:
+                raise RuntimeError("opened division requires reconstruction_manager")
+
+            p = int(self.field_size)
+            n = int(getattr(self.multiplier, "n_nodes", 1))
+            opener = 1
+            if getattr(self.multiplier, "triple_dealer_id", None) is not None:
+                opener = int(getattr(self.multiplier, "triple_dealer_id"))
+
+            net = recon.network
+            timeout = float(getattr(self.multiplier, "_effective_timeout", lambda t: t)(120.0))
+
+            num_ctx = f"{context}_num"
+            den_ctx = f"{context}_den"
+            # Everyone broadcasts local shares for numerator/denominator
+            net.broadcast_vector(num_ctx, x=int(numerator.x), values=np.asarray([int(numerator.y) % p], dtype=np.uint32))
+            net.broadcast_vector(den_ctx, x=int(denominator.x), values=np.asarray([int(denominator.y) % p], dtype=np.uint32))
+
+            if int(node_id) == int(opener):
+                num_open_u64 = recon.reconstruct_opened_vector_values(
+                    context=num_ctx, values_local=np.asarray([int(numerator.y) % p], dtype=np.uint32), x=int(numerator.x), timeout=timeout
+                )
+                den_open_u64 = recon.reconstruct_opened_vector_values(
+                    context=den_ctx, values_local=np.asarray([int(denominator.y) % p], dtype=np.uint32), x=int(denominator.x), timeout=timeout
+                )
+                num_open = int(num_open_u64[0]) % p
+                den_open = int(den_open_u64[0]) % p
+
+                # Interpret as signed integers for fixed-point
+                if num_open > (p // 2):
+                    num_open -= p
+                if den_open > (p // 2):
+                    den_open -= p
+                if den_open == 0:
+                    # Avoid crash; treat as zero output (shouldn't happen in valid softmax/log inputs)
+                    q = 0
+                else:
+                    # q = round(num * SCALE / den)
+                    S = int(self.scale_factor)
+                    numS = int(num_open) * S
+                    # Round-to-nearest (sign-aware)
+                    adj = (abs(den_open) // 2) * (1 if numS >= 0 else -1)
+                    q = (numS + adj) // int(den_open)
+
+                q_mod = int(q % p)
+                out_prefix = f"{context}_out"
+                opener_vec = self.multiplier._reshare_vector_from_opener(  # type: ignore[attr-defined]
+                    secrets_mod_p_u64=np.asarray([q_mod], dtype=np.uint64),
+                    node_id=int(node_id),
+                    context_prefix=out_prefix,
+                    x_points=[i for i in range(1, n + 1)],
+                    timeout=timeout,
+                )
+                # Cleanup input buffers
+                try:
+                    net.channel.clear_vector(num_ctx)
+                    net.channel.clear_vector(den_ctx)
+                except Exception:
+                    pass
+                return Share(x=numerator.x, y=int(opener_vec[0]) % p, node_id=node_id)
+
+            # Non-opener: wait for reshared output
+            out_ctx = f"{context}_out_to_{node_id}"
+            import time as _time
+            start = _time.time()
+            while _time.time() - start < timeout:
+                recv = net.channel.get_received_vector(out_ctx)
+                if opener in recv:
+                    values = recv[opener].get("values")
+                    arr = np.asarray(values, dtype=np.uint32)
+                    try:
+                        net.channel.clear_vector(out_ctx)
+                    except Exception:
+                        pass
+                    try:
+                        net.channel.clear_vector(num_ctx)
+                        net.channel.clear_vector(den_ctx)
+                    except Exception:
+                        pass
+                    return Share(x=numerator.x, y=int(arr[0]) % p, node_id=node_id)
+                _time.sleep(0.01)
+
+            raise RuntimeError(f"Timed out waiting for opened division output (ctx={out_ctx})")
+
+        # Fixed-point convention used across the codebase:
+        # - numerator and denominator are SCALE_FACTOR-scaled field elements
+        # - we want (numerator/denominator) scaled by SCALE_FACTOR
+        #
+        # In the field:
+        #   inv_den = 1/denominator
+        #   ratio_unscaled = numerator * inv_den
+        #   ratio_scaled = ratio_unscaled * SCALE_FACTOR
+        inv_den = self.secure_inverse_share(denominator, node_id=node_id, context=f"{context}_inv")
+        ratio_unscaled = self.multiplier.multiply(numerator, inv_den, node_id=node_id, context=f"{context}_mul")
+        ratio_scaled_y = (int(ratio_unscaled.y) * int(self.scale_factor)) % int(self.field_size)
+        return Share(x=numerator.x, y=ratio_scaled_y, node_id=node_id)
     
     def _mod_inverse(self, a: int) -> int:
         """Compute modular inverse using extended Euclidean algorithm"""

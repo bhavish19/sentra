@@ -29,6 +29,8 @@ class MessageType(Enum):
     BATCH_SHARE_EXCHANGE = "batch_share_exchange"
     VECTOR_SHARE_EXCHANGE = "vector_share_exchange"
     VECTOR_SHARE_EXCHANGE_BIN = "vector_share_exchange_bin"
+    VECTOR_PAIR_EXCHANGE_BIN = "vector_pair_exchange_bin"
+    TRIPLE_REQUEST = "triple_request"
 
 
 @dataclass
@@ -83,6 +85,10 @@ class SecureChannel:
             while self.running:
                 try:
                     client_socket, addr = self.server_socket.accept()
+                    try:
+                        client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    except (OSError, socket.error):
+                        pass
                     if self.use_tls:
                         # Wrap with TLS (simplified - would use proper certificates)
                         try:
@@ -118,11 +124,29 @@ class SecureChannel:
             bool: True if connection successful, False otherwise
         """
         try:
+            with self.lock:
+                existing = self.connections.get(target_node_id)
+                if existing is not None:
+                    try:
+                        if existing.fileno() != -1:
+                            return True
+                    except Exception:
+                        pass
+                    try:
+                        existing.close()
+                    except Exception:
+                        pass
+                    self.connections.pop(target_node_id, None)
+
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(5)
             # Connect first, then wrap with TLS if needed
             sock.connect((host, port))
-            
+            try:
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except (OSError, socket.error):
+                pass
+
             if self.use_tls:
                 try:
                     context = ssl.create_default_context()
@@ -133,7 +157,8 @@ class SecureChannel:
                     # If TLS fails, use plain socket (already connected) - silently
                     pass
             
-            self.connections[target_node_id] = sock
+            with self.lock:
+                self.connections[target_node_id] = sock
             print(f"✓ Node {self.node_id} connected to node {target_node_id} at {host}:{port}")
             return True
         except Exception as e:
@@ -148,8 +173,10 @@ class SecureChannel:
             msg_type: Message type
             data: Message data
         """
-        if target_node_id not in self.connections:
-            raise ValueError(f"No connection to node {target_node_id}")
+        with self.lock:
+            if target_node_id not in self.connections:
+                raise ValueError(f"No connection to node {target_node_id}")
+            sock = self.connections[target_node_id]
         
         self.message_counter += 1
         message = Message(
@@ -162,13 +189,16 @@ class SecureChannel:
         )
         
         try:
-            sock = self.connections[target_node_id]
             message_json = json.dumps(asdict(message))
             # Send length first, then message
             message_bytes = message_json.encode('utf-8')
             length = struct.pack('>I', len(message_bytes))
             sock.sendall(length + message_bytes)
         except Exception as e:
+            with self.lock:
+                stale = self.connections.get(target_node_id)
+                if stale is sock:
+                    self.connections.pop(target_node_id, None)
             print(f"Error sending message to node {target_node_id}: {e}")
             raise
 
@@ -269,7 +299,49 @@ class SecureChannel:
             {"context": context, "x": x, "n": len(values), "enc": "u32le"},
             payload=buf,
         )
-    
+
+    def send_vector_pair(
+        self,
+        target_node_id: int,
+        context_d: str,
+        context_e: str,
+        x: int,
+        values_d: Sequence[int],
+        values_e: Sequence[int],
+    ):
+        """
+        Send both d and e vectors in one message (one round-trip per chunk instead of two).
+        """
+        def _to_bytes(values: Sequence[int]) -> bytes:
+            try:
+                import numpy as _np
+                if isinstance(values, _np.ndarray):
+                    arr_u32 = _np.asarray(values, dtype=_np.uint32)
+                    return arr_u32.tobytes(order="C")
+                if isinstance(values, array) and values.typecode == "I":
+                    return values.tobytes()
+                return array("I", (int(v) & 0xFFFFFFFF for v in values)).tobytes()
+            except Exception:
+                return array("I", (int(v) & 0xFFFFFFFF for v in values)).tobytes()
+
+        d_buf = _to_bytes(values_d)
+        e_buf = _to_bytes(values_e)
+        payload = d_buf + e_buf
+        n_d, n_e = len(values_d), len(values_e)
+        self.send_message_with_binary(
+            target_node_id,
+            MessageType.VECTOR_PAIR_EXCHANGE_BIN,
+            {
+                "context_d": context_d,
+                "context_e": context_e,
+                "x": x,
+                "n_d": n_d,
+                "n_e": n_e,
+                "enc": "u32le",
+            },
+            payload=payload,
+        )
+
     def _handle_client(self, client_socket: socket.socket):
         """Handle incoming client connection"""
         try:
@@ -307,11 +379,20 @@ class SecureChannel:
                                     if not chunk:
                                         break
                                     payload += chunk
-                                # Attach bytes directly (not JSON-serialized)
+                                msg_dict.setdefault("data", {})["payload_bytes"] = payload
+                        elif msg_dict.get("msg_type") == MessageType.VECTOR_PAIR_EXCHANGE_BIN.value:
+                            payload_len = int(msg_dict.get("data", {}).get("payload_len", 0))
+                            if payload_len > 0:
+                                payload = b""
+                                while len(payload) < payload_len:
+                                    chunk = client_socket.recv(payload_len - len(payload))
+                                    if not chunk:
+                                        break
+                                    payload += chunk
                                 msg_dict.setdefault("data", {})["payload_bytes"] = payload
                     except Exception:
                         pass
-                    self._process_message(msg_dict)
+                    self._process_message(msg_dict, client_socket)
         except (socket.error, OSError) as e:
             # Ignore socket errors when shutting down or client disconnects
             if self.running and e.errno not in (10038, 10054, 10053):  # WSAENOTSOCK, WSAECONNRESET, WSAEINTR
@@ -326,11 +407,18 @@ class SecureChannel:
             except:
                 pass
     
-    def _process_message(self, msg_dict: Dict):
+    def _process_message(self, msg_dict: Dict, client_socket: Optional[socket.socket] = None):
         """Process incoming message"""
         msg_type = msg_dict.get('msg_type')
         sender_id = msg_dict.get('sender_id')
         data = msg_dict.get('data', {})
+
+        # Learn/refresh reverse connection on first inbound message from peer.
+        if isinstance(sender_id, int) and sender_id != self.node_id and client_socket is not None:
+            with self.lock:
+                existing = self.connections.get(sender_id)
+                if existing is None:
+                    self.connections[sender_id] = client_socket
         
         if msg_type == MessageType.SHARE_EXCHANGE.value:
             self._handle_share_exchange(sender_id, data)
@@ -340,6 +428,8 @@ class SecureChannel:
             self._handle_vector_share_exchange(sender_id, data)
         elif msg_type == MessageType.VECTOR_SHARE_EXCHANGE_BIN.value:
             self._handle_vector_share_exchange(sender_id, data)
+        elif msg_type == MessageType.VECTOR_PAIR_EXCHANGE_BIN.value:
+            self._handle_vector_pair_exchange(sender_id, data)
         elif msg_type == MessageType.SYNC.value:
             self._handle_sync(sender_id, data)
         elif msg_type == MessageType.RECONSTRUCTION_REQUEST.value:
@@ -430,7 +520,41 @@ class SecureChannel:
             if context not in self.received_vectors:
                 self.received_vectors[context] = {}
             self.received_vectors[context][sender_id] = {"x": x, "values": values_obj}
-    
+
+    def _handle_vector_pair_exchange(self, sender_id: int, data: Dict):
+        """Handle one message containing both d and e vectors (one round-trip per chunk)."""
+        raw = data.get("payload_bytes")
+        if not isinstance(raw, (bytes, bytearray)):
+            return
+        context_d = data.get("context_d")
+        context_e = data.get("context_e")
+        x = data.get("x")
+        n_d = data.get("n_d")
+        n_e = data.get("n_e")
+        if not all(isinstance(v, int) and v >= 0 for v in (n_d, n_e)) or context_d is None or context_e is None or x is None:
+            return
+        need = n_d * 4 + n_e * 4
+        if len(raw) < need:
+            return
+        d_bytes = raw[: n_d * 4]
+        e_bytes = raw[n_d * 4 : need]
+        arr_d = array("I")
+        arr_e = array("I")
+        try:
+            arr_d.frombytes(d_bytes)
+            arr_e.frombytes(e_bytes)
+        except Exception:
+            return
+        if len(arr_d) != n_d or len(arr_e) != n_e:
+            return
+        with self.lock:
+            if context_d not in self.received_vectors:
+                self.received_vectors[context_d] = {}
+            self.received_vectors[context_d][sender_id] = {"x": x, "values": arr_d}
+            if context_e not in self.received_vectors:
+                self.received_vectors[context_e] = {}
+            self.received_vectors[context_e][sender_id] = {"x": x, "values": arr_e}
+
     def _handle_share_exchange(self, sender_id: int, data: Dict):
         """Handle received share"""
         context = data.get('context')
@@ -528,29 +652,40 @@ class SecureMPCNetwork:
         
         # Wait a bit for server to start
         time.sleep(0.5)
-        
-        # Connect to other nodes
-        connected_nodes = []
-        failed_nodes = []
-        for other_id, config in node_configs.items():
-            if other_id != node_id:
+
+        # Connect to other nodes with retries so early-started nodes don't remain degraded.
+        max_attempts = 20
+        retry_delay = 0.5
+        peers = [other_id for other_id in node_configs.keys() if other_id != node_id]
+        connected_nodes = set()
+        failed_nodes = set(peers)
+        for _ in range(max_attempts):
+            progress = False
+            for other_id in peers:
+                if other_id in connected_nodes:
+                    continue
+                config = node_configs[other_id]
                 success = self.channel.connect_to_node(
                     other_id, config['host'], config['port']
                 )
                 if success:
-                    connected_nodes.append(other_id)
-                else:
-                    failed_nodes.append(other_id)
-                time.sleep(0.1)  # Small delay between connections
+                    connected_nodes.add(other_id)
+                    failed_nodes.discard(other_id)
+                    progress = True
+                time.sleep(0.05)
+            if not failed_nodes:
+                break
+            if not progress:
+                time.sleep(retry_delay)
         
         # Print connection summary
         print(f"\n{'='*70}")
         print(f"Connection Summary for Node {node_id}:")
         print(f"{'='*70}")
         if connected_nodes:
-            print(f"✓ Connected to {len(connected_nodes)} node(s): {connected_nodes}")
+            print(f"✓ Connected to {len(connected_nodes)} node(s): {sorted(list(connected_nodes))}")
         if failed_nodes:
-            print(f"✗ Failed to connect to {len(failed_nodes)} node(s): {failed_nodes}")
+            print(f"✗ Failed to connect to {len(failed_nodes)} node(s): {sorted(list(failed_nodes))}")
         if not connected_nodes and not failed_nodes:
             print("No other nodes to connect to (single-node mode)")
         print(f"{'='*70}\n")
@@ -585,7 +720,20 @@ class SecureMPCNetwork:
                     self.channel.send_vector(node_id, context, x, values)
                 except Exception as e:
                     print(f"Warning: Could not broadcast vector to node {node_id}: {e}")
-    
+
+    def broadcast_vector_pair(
+        self, context_d: str, context_e: str, x: int, values_d: List[int], values_e: List[int]
+    ):
+        """Broadcast both d and e vectors in one message per peer (one round-trip per chunk)."""
+        for node_id in self.node_configs.keys():
+            if node_id != self.node_id:
+                try:
+                    self.channel.send_vector_pair(
+                        node_id, context_d, context_e, x, values_d, values_e
+                    )
+                except Exception as e:
+                    print(f"Warning: Could not broadcast vector pair to node {node_id}: {e}")
+
     def get_received_shares(self, context: str) -> List[Share]:
         """Get received shares for a context"""
         return self.channel.get_received_shares(context)
@@ -633,5 +781,4 @@ def create_mpc_network(node_id: int, node_configs: Dict[int, Dict[str, Any]],
         Configured SecureMPCNetwork instance
     """
     return SecureMPCNetwork(node_id, node_configs, port, use_tls)
-
 

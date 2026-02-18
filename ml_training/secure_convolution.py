@@ -15,7 +15,7 @@ class SecureConvolution:
     Secure 2D convolution operations on secret-shared images
     """
     
-    def __init__(self, multiplier: SecureMultiplier, field_size: int = 2**31 - 1):
+    def __init__(self, multiplier: SecureMultiplier, field_size: int = 2**31 - 1, scale_factor: int = 1000):
         """
         Initialize secure convolution
         Args:
@@ -24,6 +24,7 @@ class SecureConvolution:
         """
         self.multiplier = multiplier
         self.field_size = field_size
+        self.scale_factor = int(scale_factor)
     
     def conv2d(self, input_shares: List[List[List[Share]]],
                kernel_shares: List[List[List[Share]]],
@@ -96,17 +97,19 @@ class SecureConvolution:
         y2 = s2_mat.reshape(-1)
 
         base = context if context else "conv2d"
-        # Multiply in chunks to limit peak memory / message size
-        chunk = 16384
+        # Multiply in chunks to limit peak memory / message size. Larger chunk = fewer round-trips.
+        # In privacy_mode, use smaller chunks to avoid dealer/reconstruction timeouts.
+        chunk = 4096 if bool(getattr(self.multiplier, "privacy_mode", False)) else 32768
         prod = np.empty_like(y1, dtype=np.uint64)
         for start in range(0, y1.size, chunk):
             end = min(start + chunk, y1.size)
-            prod[start:end] = self.multiplier.multiply_batch_values(
+            prod[start:end] = self.multiplier.multiply_batch_values_fixed_point(
                 y1[start:end],
                 y2[start:end],
                 x=x0,
                 node_id=node_id,
                 context_prefix=f"{base}_mul_{start}",
+                scale_factor=self.scale_factor,
             )
 
         prod = prod.reshape(P * C_out, F)
@@ -182,8 +185,8 @@ class SecureConvolution:
                         
                         # Multiply
                         conv_context = f"{context}_h{h_out}_w{w_out}_k{k_h}_{k_w}" if context else None
-                        product = self.multiplier.multiply(
-                            input_share, kernel_share, node_id, context=conv_context
+                        product = self.multiplier.multiply_fixed_point(
+                            input_share, kernel_share, node_id=node_id, scale_factor=self.scale_factor, context=conv_context
                         )
                         
                         # Accumulate
@@ -289,7 +292,8 @@ class SecureConvolution:
         kernel_flat = kernel_y.reshape(F, C_out)  # (F,C_out)
 
         base = context if context else "conv2d_bwd"
-        chunk = 16384
+        # Larger chunk = fewer round-trips. In privacy_mode, keep smaller to avoid timeouts.
+        chunk = 4096 if bool(getattr(self.multiplier, "privacy_mode", False)) else 32768
 
         # ---- kernel_grad_flat = patches_flat.T @ outg_flat  (F,C_out)
         A_T = patches_flat.T  # (F,P)
@@ -300,8 +304,9 @@ class SecureConvolution:
         prod = np.empty_like(y1, dtype=np.uint64)
         for start in range(0, y1.size, chunk):
             end = min(start + chunk, y1.size)
-            prod[start:end] = self.multiplier.multiply_batch_values(
-                y1[start:end], y2[start:end], x=x0, node_id=node_id, context_prefix=f"{base}_kg_{start}"
+            prod[start:end] = self.multiplier.multiply_batch_values_fixed_point(
+                y1[start:end], y2[start:end], x=x0, node_id=node_id, context_prefix=f"{base}_kg_{start}",
+                scale_factor=self.scale_factor
             )
         prod = prod.reshape(F * C_out, P)
         kg_flat = (prod.sum(axis=1) % self.field_size).reshape(F, C_out)
@@ -315,8 +320,9 @@ class SecureConvolution:
         prod = np.empty_like(y1, dtype=np.uint64)
         for start in range(0, y1.size, chunk):
             end = min(start + chunk, y1.size)
-            prod[start:end] = self.multiplier.multiply_batch_values(
-                y1[start:end], y2[start:end], x=x0, node_id=node_id, context_prefix=f"{base}_ig_{start}"
+            prod[start:end] = self.multiplier.multiply_batch_values_fixed_point(
+                y1[start:end], y2[start:end], x=x0, node_id=node_id, context_prefix=f"{base}_ig_{start}",
+                scale_factor=self.scale_factor
             )
         prod = prod.reshape(P * F, C_out)
         d_patches = (prod.sum(axis=1) % self.field_size).reshape(H_out, W_out, K_h, K_w, C_in)

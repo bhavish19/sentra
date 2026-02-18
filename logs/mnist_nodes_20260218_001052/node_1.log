@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/mnt/c/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra2/run_node.py", line 11, in <module>
+    from ml_training import SentraTrainingPipeline
+  File "/mnt/c/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra2/ml_training/__init__.py", line 48, in <module>
+    from ml_training.sentra_training_node import (
+  File "/mnt/c/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra2/ml_training/sentra_training_node.py", line 28, in <module>
+    import coordination
+ModuleNotFoundError: No module named 'coordination'

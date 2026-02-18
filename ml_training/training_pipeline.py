@@ -18,7 +18,9 @@ class SentraTrainingPipeline:
                  batch_size: int = 32, learning_rate: float = 0.01,
                  num_epochs: int = 10,
                  node_id: int = 1, node_configs: Optional[Dict[int, Dict[str, Any]]] = None,
-                 enable_network: bool = False):
+                 enable_network: bool = False,
+                 seed: int = 2026,
+                 log_mini_batches: bool = False):
         """
         Initialize training pipeline
         Args:
@@ -40,6 +42,8 @@ class SentraTrainingPipeline:
         self.num_epochs = num_epochs
         self.node_id = node_id
         self.enable_network = enable_network
+        self.seed = seed
+        self.log_mini_batches = log_mini_batches
         
         # Initialize KVS cluster
         node_ids = list(range(1, n_nodes + 1))
@@ -49,7 +53,7 @@ class SentraTrainingPipeline:
         self.coordinator = TrainingCoordinator(
             self.kvs_cluster, n_nodes, t, s, batch_size, learning_rate,
             node_id=node_id, node_configs=node_configs,
-            enable_network=enable_network
+            enable_network=enable_network, seed=seed
         )
     
     def train(self, dataset: List[np.ndarray], labels: List[np.ndarray],
@@ -124,19 +128,24 @@ class SentraTrainingPipeline:
                 
                 for idx in batch_indices:
                     # Get shares for this sample
-                    sample_key = f"sample_{idx}_node_1"
-                    label_key = f"label_{idx}_node_1"
+                    sample_key = f"sample_{idx}_node_{self.node_id}"
+                    label_key = f"label_{idx}_node_{self.node_id}"
                     
                     sample_value = self.kvs_cluster.read_with_min_version(sample_key, v_D)
                     label_value = self.kvs_cluster.read_with_min_version(label_key, v_D)
                     
                     if sample_value and label_value:
                         # sample_value.data is a list of shares (one per feature)
-                        # label_value.data is a single share
+                        # label_value.data is either:
+                        #   - list[Share] for vector labels (e.g., one-hot), or
+                        #   - single Share for scalar labels.
                         sample_feature_shares = sample_value.data
-                        label_share = label_value.data
+                        label_data = label_value.data
                         sample_shares.append(sample_feature_shares)
-                        label_shares.append([label_share])
+                        if isinstance(label_data, list):
+                            label_shares.append(label_data)
+                        else:
+                            label_shares.append([label_data])
                 
                 if not sample_shares:
                     print(f"  Batch {batch_idx + 1}/{num_batches}: [FAIL] Failed")
@@ -160,7 +169,8 @@ class SentraTrainingPipeline:
                 
                 packing_factor = self.coordinator.safety_checker.get_max_packing_factor(n_active)
                 updated_weights, success = self.coordinator.train_mini_batch(
-                    sample_shares, label_shares, weight_shares, packing_factor, node_id=self.node_id
+                    sample_shares, label_shares, weight_shares, packing_factor,
+                    node_id=self.node_id, batch_indices=batch_indices
                 )
                 
                 if success:
@@ -168,8 +178,9 @@ class SentraTrainingPipeline:
                     committed = self.coordinator.commit_model_update(updated_weights)
                     if committed:
                         v_theta = self.coordinator.v_theta
-                        print(f"Committed mini-batch {batch_indices}, v_theta={v_theta}")
-                        print(f"  Batch {batch_idx + 1}/{num_batches}: [OK] Committed")
+                        if self.log_mini_batches:
+                            print(f"Committed mini-batch {batch_indices}, v_theta={v_theta}")
+                            print(f"  Batch {batch_idx + 1}/{num_batches}: [OK] Committed")
                     else:
                         print(f"  Batch {batch_idx + 1}/{num_batches}: [FAIL] Commit failed")
                 else:
@@ -199,4 +210,3 @@ class SentraTrainingPipeline:
         print("\n" + "=" * 60)
         print("Training completed!")
         print("=" * 60)
-

@@ -1,0 +1,97 @@
+======================================================================
+SENTRA Node 3 Starting
+======================================================================
+Node ID: 3
+Total nodes: 3
+Privacy threshold (t): 1
+Adversarial limit (s): 1
+Dataset mode: mnist
+Safety check: 2*(t+s-1) = 2 < n_nodes = 3 ✓
+Network: Enabled
+Node configs: {1: {'host': 'localhost', 'port': 8001}, 2: {'host': 'localhost', 'port': 8002}, 3: {'host': 'localhost', 'port': 8003}}
+======================================================================
+Node 3 server started on port 8003
+
+======================================================================
+Connection Summary for Node 3:
+======================================================================
+✓ Connected to 2 node(s): [1, 2]
+======================================================================
+
+Node 3: Started failure detection (interval=2.0s, timeout=6.0s)
+
+Node 3: Starting training...
+Dataset: 128 samples, 64 features
+Model: [(64, 16), (16, 10)]
+Multi-Node Mode: ENABLED
+----------------------------------------------------------------------
+============================================================
+SENTRA ML Training Pipeline
+============================================================
+Nodes: 3, Threshold: 1, Adversarial limit: 1
+Batch size: 8, Learning rate: 0.01
+Epochs: 1
+Node ID: 3
+Multi-Node: Enabled (Network communication active)
+============================================================
+
+[Step 1] Ingesting and secret-sharing dataset...
+Ingested 128 samples with version v_D=1
+
+[Step 2] Initializing and secret-sharing weights...
+Initialized weights with version v_theta=1
+
+[Step 3] Starting training loop...
+
+--- Epoch 1/1 ---
+Committed mini-batch [9, 16, 43, 61, 67, 100, 75, 29], v_theta=2
+  Batch 1/16: [OK] Committed
+Committed mini-batch [82, 104, 116, 95, 42, 102, 86, 73], v_theta=3
+  Batch 2/16: [OK] Committed
+Committed mini-batch [73, 66, 89, 90, 123, 31, 24, 67], v_theta=4
+  Batch 3/16: [OK] Committed
+Committed mini-batch [110, 38, 19, 74, 73, 35, 49, 104], v_theta=5
+  Batch 4/16: [OK] Committed
+Committed mini-batch [118, 24, 18, 119, 122, 14, 68, 103], v_theta=6
+  Batch 5/16: [OK] Committed
+Committed mini-batch [44, 69, 35, 61, 84, 91, 6, 41], v_theta=7
+  Batch 6/16: [OK] Committed
+Committed mini-batch [57, 15, 62, 61, 109, 83, 29, 39], v_theta=8
+  Batch 7/16: [OK] Committed
+Committed mini-batch [58, 113, 17, 7, 91, 44, 4, 24], v_theta=9
+  Batch 8/16: [OK] Committed
+Committed mini-batch [94, 124, 84, 35, 4, 114, 52, 117], v_theta=10
+  Batch 9/16: [OK] Committed
+Committed mini-batch [121, 109, 120, 20, 6, 51, 31, 62], v_theta=11
+  Batch 10/16: [OK] Committed
+Committed mini-batch [21, 25, 12, 71, 5, 32, 30, 97], v_theta=12
+  Batch 11/16: [OK] Committed
+Committed mini-batch [97, 66, 71, 4, 12, 31, 91, 119], v_theta=13
+  Batch 12/16: [OK] Committed
+Committed mini-batch [84, 81, 96, 122, 29, 102, 25, 57], v_theta=14
+  Batch 13/16: [OK] Committed
+Committed mini-batch [53, 99, 75, 77, 28, 14, 8, 22], v_theta=15
+  Batch 14/16: [OK] Committed
+Committed mini-batch [70, 100, 22, 17, 88, 75, 15, 101], v_theta=16
+  Batch 15/16: [OK] Committed
+Committed mini-batch [89, 83, 101, 104, 120, 2, 28, 40], v_theta=17
+  Batch 16/16: [OK] Committed
+Epoch 1 completed, model version: v_theta=17
+
+============================================================
+Training completed!
+============================================================
+
+======================================================================
+Node 3 Final Status:
+======================================================================
+Multi-Node: ENABLED
+Connected nodes: 2 out of 2 possible
+✓ Running in true multi-party mode
+======================================================================
+
+======================================================================
+Node 3: Training completed successfully!
+======================================================================
+Error handling client: [Errno 104] Connection reset by peer
+Error handling client: [Errno 104] Connection reset by peer

@@ -24,6 +24,7 @@ from ml_training.secure_matrix_ops import SecureMatrixOperations
 from ml_training.secure_softmax import SecureSoftmax
 from ml_training.secure_comm import create_mpc_network
 from ml_training.reconstruction import create_reconstruction_manager
+from ml_training.beaver_triples import BeaverTripleDealerService
 
 
 def _field_u64_to_float(arr_u64: np.ndarray, field_size: int, scale_factor: int) -> np.ndarray:
@@ -284,7 +285,10 @@ def compute_accuracy(lenet5: LeNet5, image_shares: List[List[List[List[Share]]]]
     
     correct = 0
     total = len(image_shares)
-    SCALE_FACTOR = 10_000_000
+    # IMPORTANT FIX:
+    # With a ~32-bit prime field, SCALE_FACTOR=10,000,000 causes wraparound in dot-products.
+    # Use a smaller fixed-point scale to keep products and accumulations within the field.
+    SCALE_FACTOR = 1000
     
     # Debug statistics
     logit_ranges = []
@@ -352,9 +356,30 @@ def compute_accuracy(lenet5: LeNet5, image_shares: List[List[List[List[Share]]]]
     return correct / total if total > 0 else 0.0
 
 
-def train_lenet5_batch(lenet5: LeNet5, softmax_op: SecureSoftmax, image_shares: List[List[List[List[Share]]]],
-                      label_shares: List[List[Share]], weights: List,
-                      learning_rate: float, node_id: int, quiet: bool = False) -> Tuple[List, float]:
+def train_lenet5_batch(
+    lenet5: LeNet5,
+    softmax_op: SecureSoftmax,
+    image_shares: List[List[List[List[Share]]]],
+    label_shares: List[List[Share]],
+    label_plain: List[np.ndarray],
+    weights: List,
+    learning_rate: float,
+    node_id: int,
+    *,
+    batch_context: str,
+    reconstruction_manager=None,
+    open_softmax: bool = True,
+    softmax_opener_node: int = 1,
+    open_relu: bool = True,
+    relu_opener_node: int = 1,
+    fc_batch_simd: bool = False,
+    packed_pss: bool = False,
+    n_nodes: int = 1,
+    t: int = 0,
+    quiet: bool = False,
+    profile: bool = False,
+    debug_loss: bool = False,
+) -> Tuple[List, float]:
     """
     Train LeNet-5 on a batch of images
     
@@ -373,163 +398,149 @@ def train_lenet5_batch(lenet5: LeNet5, softmax_op: SecureSoftmax, image_shares: 
     predictions = []
     losses = []
     
-    # Forward pass for each image in batch
-    for i in range(batch_size):
-        image_share = image_shares[i]
-        label_share = label_shares[i]
-        
-        # Forward pass with progress indicator
-        print(f"      → Forward pass {i+1}/{batch_size} (this may take 1-5 minutes per image)...", end='\r', flush=True)
-        output, forward_intermediates = lenet5.forward_pass(
-            image_share, weights, node_id=node_id, 
-            context=f"batch_{i}", return_intermediates=True
+    p = int(lenet5.field_size)
+    SCALE_FACTOR = int(getattr(lenet5, "scale_factor", 1000))
+
+    # ----------------------------
+    # Lightweight profiling helpers
+    # ----------------------------
+    prof_enabled = bool(profile) and (not quiet)
+    prof_t0 = time.time()
+    prof: dict[str, float] = {}
+
+    def _pt_add(k: str, dt: float):
+        prof[k] = float(prof.get(k, 0.0)) + float(dt)
+
+    if bool(fc_batch_simd):
+        # Conv stack per-sample (still expensive), FC stack batched/SIMD across the mini-batch.
+        flattened_batch: List[List[Share]] = []
+        conv_intermediates_batch: List[dict] = []
+
+        for i in range(batch_size):
+            image_share = image_shares[i]
+            print(f"      → Conv stack {i+1}/{batch_size} (this may take 1-5 minutes per image)...", end='\r', flush=True)
+            _t0 = time.time()
+            _, conv_intermediates = lenet5.forward_pass(
+                image_share,
+                weights,
+                node_id=node_id,
+                context=f"{batch_context}_s{i}",
+                return_intermediates=True,
+                reconstruction_manager=reconstruction_manager if open_relu else None,
+                open_relu=bool(open_relu),
+                relu_opener_node=int(relu_opener_node),
+                stop_after_flatten=True,
+            )
+            if prof_enabled:
+                _pt_add("conv_fwd", time.time() - _t0)
+            conv_intermediates_batch.append(conv_intermediates)
+            flattened_batch.append(conv_intermediates["flattened"])
+            print(f"      → Conv stack {i+1}/{batch_size} completed ✓", flush=True)
+
+        print(f"      → FC stack (batched/SIMD) for {batch_size} sample(s)...", end='', flush=True)
+        _t0 = time.time()
+        logits_batch, fc_intermediates_batch = lenet5.forward_fc_stack_batch(
+            flattened_batch=flattened_batch,
+            weights=weights,
+            node_id=int(node_id),
+            context=f"{batch_context}_fc_batch",
+            reconstruction_manager=reconstruction_manager if (open_relu or packed_pss) else None,
+            open_relu=bool(open_relu),
+            relu_opener_node=int(relu_opener_node),
+            packed_pss=bool(packed_pss),
         )
-        predictions.append((output, forward_intermediates))
-        print(f"      → Forward pass {i+1}/{batch_size} completed ✓", flush=True)
-        
-        # Debug: Show output values (approximate, from shares)
-        if not quiet:
-            SCALE_FACTOR = 10_000_000  # Increased from 1M to 10M for better precision
-            output_values = [out.y % lenet5.field_size for out in output]
-            # Handle potential wraparound
-            output_values = [v if v < lenet5.field_size // 2 else v - lenet5.field_size for v in output_values]
-            output_scaled = [v / SCALE_FACTOR for v in output_values]
-            # FIXED: Use max() not max(key=abs) - we want the largest logit value, not largest absolute value
-            max_class = output_values.index(max(output_values))
-            # Debug output (disabled to reduce verbosity)
-            # print(f"      [DEBUG] Output range: [{min(output_scaled):.4f}, {max(output_scaled):.4f}], Max class: {max_class}")
-        
-        # Extract output and intermediates
-        output, forward_intermediates = predictions[i]
-        
-        # Debug: Check softmax probabilities before computing loss
-        SCALE_FACTOR = 10_000_000
-        probs_debug = softmax_op.softmax(output, node_id, f"debug_softmax_{i}")
-        prob_values_debug = []
-        for prob in probs_debug:
-            val = prob.y % lenet5.field_size
-            if val > lenet5.field_size // 2:
-                val = val - lenet5.field_size
-            prob_actual = val / SCALE_FACTOR
-            prob_values_debug.append(prob_actual)
-        
-        # Find true class for debug
-        # Since labels are secret-shared, find the share with maximum value
-        target_values_debug = []
-        target_raw_values = []
-        for j, t in enumerate(label_share):
-            t_val = t.y % lenet5.field_size
-            if t_val > lenet5.field_size // 2:
-                t_val = t_val - lenet5.field_size
-            target_raw_values.append(t_val)
-            t_actual = t_val / SCALE_FACTOR
-            target_values_debug.append(t_actual)
-        
-        # Find the index with maximum raw value (this should be the true class)
-        true_class_debug = max(range(len(target_raw_values)), key=lambda i: target_raw_values[i])
-        max_target_val = target_values_debug[true_class_debug]
-        
-        # Debug output (reduced to summary only)
-        if not quiet and i == 0:  # Only show for first sample
-            prob_sum = sum(prob_values_debug)
-            if true_class_debug is not None:
-                true_prob_debug = prob_values_debug[true_class_debug]
-                # Find predicted class using LOGITS (more precise than softmax probabilities)
-                predicted_class_debug = output_scaled.index(max(output_scaled))
-                pred_prob_debug = prob_values_debug[predicted_class_debug]
-                # Show all probabilities for debugging
-                prob_str = ", ".join([f"{p:.4f}" for p in prob_values_debug])
-                print(f"      [SOFTMAX] True class: {true_class_debug}, Pred class: {predicted_class_debug} (from logits), True prob: {true_prob_debug:.6f}, Sum: {prob_sum:.4f}", flush=True)
-                print(f"      [SOFTMAX] All probs: [{prob_str}]", flush=True)
-                # Check if probabilities are too uniform
-                prob_range = max(prob_values_debug) - min(prob_values_debug)
-                if prob_range < 0.1:
-                    print(f"      [WARNING] Probabilities are very uniform (range={prob_range:.4f}) - model lacks discrimination!", flush=True)
-                if true_prob_debug < 0.01:
-                    print(f"      [WARNING] True class probability is very low ({true_prob_debug:.6f}) - model is predicting wrong class!", flush=True)
-            else:
-                print(f"      [SOFTMAX] WARNING: Could not find true class!", flush=True)
-        
-        # Compute Cross-Entropy Loss per sample
-        # Cross-entropy: -log(softmax(logits)[true_class])
-        sample_loss = softmax_op.cross_entropy_loss(
-            output, label_share, node_id, context=f"ce_loss_{i}"
-        )
-        
-        # Store per-sample loss (before averaging)
-        losses.append(sample_loss)
+        if prof_enabled:
+            _pt_add("fc_fwd", time.time() - _t0)
+        print(" ✓", flush=True)
+
+        for i in range(batch_size):
+            output = logits_batch[i]
+            fwd = {}
+            fwd.update(conv_intermediates_batch[i])
+            fwd.update(fc_intermediates_batch[i])
+            predictions.append((output, fwd))
+
+            if not (open_softmax and reconstruction_manager is not None):
+                _t0 = time.time()
+                sample_loss = softmax_op.cross_entropy_loss(
+                    output, label_shares[i], node_id, context=f"ce_loss_{i}"
+                )
+                if prof_enabled:
+                    _pt_add("secure_ce_loss", time.time() - _t0)
+                losses.append(sample_loss)
+    else:
+        # Forward pass for each image in batch (full model per-sample)
+        for i in range(batch_size):
+            image_share = image_shares[i]
+            label_share = label_shares[i]
+            
+            # Forward pass with progress indicator
+            print(f"      → Forward pass {i+1}/{batch_size} (this may take 1-5 minutes per image)...", end='\r', flush=True)
+            output, forward_intermediates = lenet5.forward_pass(
+                image_share,
+                weights,
+                node_id=node_id,
+                context=f"{batch_context}_s{i}",
+                return_intermediates=True,
+                reconstruction_manager=reconstruction_manager if open_relu else None,
+                open_relu=bool(open_relu),
+                relu_opener_node=int(relu_opener_node),
+            )
+            predictions.append((output, forward_intermediates))
+            print(f"      → Forward pass {i+1}/{batch_size} completed ✓", flush=True)
+            
+            # Compute Cross-Entropy Loss per sample.
+            # In opened-softmax mode we compute loss in plaintext on the opener (below),
+            # so skip the expensive MPC softmax/log approximation here.
+            if not (open_softmax and reconstruction_manager is not None):
+                sample_loss = softmax_op.cross_entropy_loss(
+                    output, label_share, node_id, context=f"ce_loss_{i}"
+                )
+                # Store per-sample loss (before averaging)
+                losses.append(sample_loss)
     
-    # Compute average loss: sum per-sample losses, then divide
-    # For Cross-Entropy, loss is already per-sample (not per-element)
-    SCALE_FACTOR = 10_000_000  # Scaling factor used when converting to integers (increased from 1M to 10M)
-    loss_scale = SCALE_FACTOR  # For cross-entropy, loss is scaled by SCALE_FACTOR (not squared)
-    num_elements = batch_size  # For cross-entropy, we average over samples, not elements
-    
-    # Sum all per-sample losses
-    total_loss_share = Share(x=losses[0].x, y=0, node_id=node_id)
-    for loss in losses:
-        total_loss_share = Share(
-            x=total_loss_share.x,
-            y=(total_loss_share.y + loss.y) % lenet5.field_size,
-            node_id=node_id
-        )
-    
-    # Get the raw loss value and handle wraparound properly
-    total_loss_raw = total_loss_share.y
-    field_size = lenet5.field_size
-    field_half = field_size // 2
-    
-    # Handle field wraparound more carefully
-    # For loss, we always expect positive values (sum of squares)
-    # If the value appears negative (wrapped), we need to unwrap it
-    if total_loss_raw > field_half:
-        # Value is in the upper half of the field
-        # This could mean:
-        # 1. It's a large positive value (valid)
-        # 2. It wrapped around from a negative value (invalid for loss)
-        # 
-        # For loss (sum of squares), we expect positive values
-        # If it's > 3/4 of field_size, it's likely wrapped multiple times
-        # Estimate: if > 0.75 * field_size, likely wrapped
-        if total_loss_raw > (field_size * 3) // 4:
-            # Likely wrapped - unwrap it
-            # But loss should be positive, so this suggests the sum is HUGE
-            # In this case, we can't accurately compute the loss from a single share
-            # For now, use the wrapped value but note it's approximate
-            total_loss_value = total_loss_raw - field_size
-            # Since loss should be positive, if we get negative, the sum wrapped
-            # We'll use abs() but this is an approximation
-            total_loss_value = abs(total_loss_value)
+    # Sum all per-sample losses (still SCALE-scaled)
+    total_loss_share = None
+    if losses:
+        total_loss_share = Share(x=losses[0].x, y=0, node_id=node_id)
+        for loss in losses:
+            total_loss_share = Share(
+                x=total_loss_share.x,
+                y=(total_loss_share.y + loss.y) % lenet5.field_size,
+                node_id=node_id
+            )
+
+    # If we're using opened softmax, we'll compute the batch loss in plaintext on the opener.
+    # Otherwise, keep the MPC loss share path.
+    loss_display = float("nan")
+    if open_softmax and reconstruction_manager is not None:
+        # loss_display will be computed during gradient generation below (on opener) and broadcasted as an opened share
+        pass
+    else:
+        # Average loss share (SCALE-scaled)
+        if total_loss_share is None:
+            avg_loss_share = Share(x=0, y=0, node_id=node_id)
+        elif lenet5.divider and batch_size > 0:
+            avg_loss_share = lenet5.divider.secure_scalar_divide(
+                total_loss_share,
+                batch_size,
+                node_id,
+                context=f"{batch_context}_avg_loss",
+            )
         else:
-            # Large but valid positive value
-            total_loss_value = total_loss_raw
-    else:
-        # Small to medium positive value (most common case)
-        total_loss_value = total_loss_raw
-    
-    # Compute average loss per sample
-    # total_loss_value is sum of cross-entropy losses (scaled by SCALE_FACTOR)
-    # Divide by batch_size to get average loss per sample, then by loss_scale to get actual loss
-    if num_elements > 0:
-        # Average the sum: divide by number of samples
-        # Note: This is for display only - the actual secure computation uses shares
-        # For display, we approximate by dividing in plaintext
-        avg_loss_scaled = total_loss_value / num_elements
-        loss_display = avg_loss_scaled / loss_scale
-        
-        # Additional debug: show if loss might be wrapped
-        if not quiet and total_loss_raw > (field_size * 3) // 4:
-            print(f"      [WARNING] Loss value may have wrapped (raw={total_loss_raw}, field_size={field_size})", flush=True)
-    else:
-        loss_display = 0.0
-    
-    # Debug: Show loss summary (reduced verbosity)
-    if not quiet:
-        # Only show warnings for unusual loss values
-        if loss_display < 0.1 and loss_display > 0:
-            print(f"      [WARNING] Loss is very small ({loss_display:.6f}) - may indicate computation issue", flush=True)
-        elif loss_display > 10.0:
-            print(f"      [WARNING] Loss is very large ({loss_display:.6f}) - may indicate training instability", flush=True)
+            avg_loss_share = total_loss_share
+
+        # Open loss for monitoring (requires all nodes to participate with same context)
+        if reconstruction_manager is not None:
+            opened = int(reconstruction_manager.get_reconstructed_value([avg_loss_share], context=f"{batch_context}_avg_loss")) % p
+            # Loss is conceptually non-negative. In privacy_mode, secure softmax/log
+            # approximations can yield values > p/2 (wrap), so display as unsigned mod-p.
+            privacy_mode = bool(getattr(getattr(lenet5, "matrix_ops", None), "multiplier", None) and getattr(lenet5.matrix_ops.multiplier, "privacy_mode", False))
+            if not privacy_mode:
+                # For non-privacy runs, keep the historical signed interpretation
+                if opened > (p // 2):
+                    opened = opened - p
+            loss_display = float(opened) / float(SCALE_FACTOR)
     
     # Enable backward pass - set to False to disable for testing
     ENABLE_BACKWARD = True
@@ -541,16 +552,212 @@ def train_lenet5_batch(lenet5: LeNet5, softmax_op: SecureSoftmax, image_shares: 
     # Compute gradients and update weights
     print(f"      → Computing gradients...", end='', flush=True)
     
-    # Compute output gradients (loss derivative w.r.t. predictions)
-    # For Cross-Entropy with Softmax: dL/dlogits = softmax(logits) - target
-    # This is much simpler than MSE!
-    all_output_grads = []
-    for i, (output, _) in enumerate(predictions):
-        # Compute gradient using softmax: gradient = softmax(logits) - target
-        output_grads = softmax_op.cross_entropy_loss_gradient(
-            output, label_shares[i], node_id, context=f"ce_grad_{i}"
-        )
-        all_output_grads.append(output_grads)
+    # Compute output gradients (dL/dlogits) for each sample.
+    # Two modes:
+    # - open_softmax=True: opener reconstructs logits, computes softmax/CE in plaintext, then re-shares gradients.
+    # - open_softmax=False: use MPC softmax/log approximation path (may be unstable).
+    all_output_grads: List[List[Share]] = []
+    if open_softmax and reconstruction_manager is not None:
+        net = reconstruction_manager.network
+        opener = int(softmax_opener_node)
+        p_mod = int(lenet5.field_size)
+        shamir = ShamirSecretSharing(p_mod)
+
+        # For reporting: opener computes average CE loss in plaintext and shares it as a field element
+        batch_loss_scaled_int = 0
+        debug_ce_per_sample: List[float] = []
+        debug_scale_used: List[str] = []
+
+        for i, (output, _) in enumerate(predictions):
+            # Broadcast our local logits share vector for this sample
+            ctx = f"{batch_context}_logits_{i}"
+            x_local = int(output[0].x)
+            local_u32 = np.asarray([int(s.y) & 0xFFFFFFFF for s in output], dtype=np.uint32)
+            net.broadcast_vector(ctx, x=x_local, values=local_u32)
+
+            if int(node_id) == opener:
+                _t0 = time.time()
+                opened_u64 = reconstruction_manager.reconstruct_opened_vector_values(
+                    context=ctx, values_local=local_u32, x=x_local, timeout=120.0
+                )
+                if prof_enabled:
+                    _pt_add("open_softmax_open_logits", time.time() - _t0)
+                # Convert to signed floats
+                opened = opened_u64.astype(np.int64)
+                opened = np.where(opened > (p_mod // 2), opened - p_mod, opened)
+                T = float(softmax_op.temperature)
+                y = np.asarray(label_plain[i], dtype=np.float64)
+                y_idx = int(np.argmax(y))
+
+                # FC output is SCALE-scaled (secure_matrix_matrix_multiply_fixed_point does (A*B)/SCALE).
+                # Try single-scale first; fall back to scale² only when single-scale gives insane CE.
+                CE_SANE_MAX = 50.0
+                logits = (opened.astype(np.float64)) / float(SCALE_FACTOR) / T
+                m = float(np.max(logits))
+                exps = np.exp(logits - m)
+                sumexp = float(np.sum(exps))
+                probs = exps / sumexp
+                ce = (m + float(np.log(sumexp))) - float(logits[y_idx])
+
+                if ce < CE_SANE_MAX:
+                    logits_scaled = logits
+                    ce_used = ce
+                    scale_used = "scale"
+                else:
+                    # Fallback: FC might be in scale² in some path; try scale²
+                    logits_alt = (opened.astype(np.float64)) / (float(SCALE_FACTOR) ** 2) / T
+                    m_alt = float(np.max(logits_alt))
+                    exps_alt = np.exp(logits_alt - m_alt)
+                    sumexp_alt = float(np.sum(exps_alt))
+                    probs_alt = exps_alt / sumexp_alt
+                    ce_alt = (m_alt + float(np.log(sumexp_alt))) - float(logits_alt[y_idx])
+                    if ce_alt < CE_SANE_MAX:
+                        logits_scaled = logits_alt
+                        probs = probs_alt
+                        ce_used = ce_alt
+                        scale_used = "scale2"
+                    else:
+                        logits_scaled = logits
+                        ce_used = ce
+                        scale_used = "scale"
+                ce = ce_used
+                batch_loss_scaled_int += int(round(ce * SCALE_FACTOR))
+                if debug_loss and int(node_id) == opener:
+                    debug_ce_per_sample.append(ce)
+                    debug_scale_used.append(scale_used)
+
+                # One-time debug print to sanity-check that opened-softmax loss is sane
+                if (not quiet) and (int(node_id) == opener) and (not hasattr(train_lenet5_batch, "_open_softmax_dbg_printed")):
+                    setattr(train_lenet5_batch, "_open_softmax_dbg_printed", True)
+                    p_true = float(probs[y_idx])
+                    log_min = float(np.min(logits_scaled))
+                    log_max = float(np.max(logits_scaled))
+                    raw_min, raw_max = int(np.min(opened)), int(np.max(opened))
+                    print(
+                        f"      [open_softmax debug] sample0: y={y_idx}  p_true={p_true:.6f}  ce={ce:.6f}  "
+                        f"logits(min,max)=({log_min:.3f},{log_max:.3f})  raw_opened=({raw_min},{raw_max})  T={T:.3f}",
+                        flush=True,
+                    )
+
+                # Gradient:
+                # if p = softmax(z/T), then dL/dz = (p - y)/T.
+                grad = (probs - y) / T
+                grad_int = np.asarray(np.round(grad * float(SCALE_FACTOR)), dtype=np.int64)
+                grad_int = np.mod(grad_int, p_mod).astype(np.int64)
+
+                # Shamir-share each grad component and send per-node vectors
+                _t0 = time.time()
+                per_node_vec: dict[int, np.ndarray] = {nid: np.empty((len(grad_int),), dtype=np.uint32) for nid in range(1, n_nodes + 1)}
+                for j in range(len(grad_int)):
+                    shares = shamir.share(int(grad_int[j]) % p_mod, n_nodes, t)
+                    for s in shares:
+                        per_node_vec[s.node_id][j] = np.uint32(int(s.y) & 0xFFFFFFFF)
+                if prof_enabled:
+                    _pt_add("open_softmax_share_grads", time.time() - _t0)
+
+                # Send vectors to each node (including self via local assignment)
+                for nid in range(1, n_nodes + 1):
+                    if nid == opener:
+                        continue
+                    net.channel.send_vector(nid, f"{batch_context}_grad_{i}_to_{nid}", x=nid, values=per_node_vec[nid])
+
+                # Opener's own gradient shares
+                grads_shares = [Share(x=opener, y=int(per_node_vec[opener][j]) % p_mod, node_id=opener) for j in range(len(grad_int))]
+                all_output_grads.append(grads_shares)
+            else:
+                # Non-opener waits for its gradient vector from opener
+                ctxg = f"{batch_context}_grad_{i}_to_{node_id}"
+                start = time.time()
+                got = None
+                while time.time() - start < 120.0:
+                    recv = net.channel.get_received_vector(ctxg)
+                    if opener in recv:
+                        values = recv[opener].get("values")
+                        arr = np.asarray(values, dtype=np.uint32)
+                        got = arr
+                        break
+                    time.sleep(0.01)
+                if got is None:
+                    raise RuntimeError(f"Timed out waiting for opener gradients for sample {i}")
+                try:
+                    net.channel.clear_vector(ctxg)
+                except Exception:
+                    pass
+                grads_shares = [Share(x=int(node_id), y=int(got[j]) % p_mod, node_id=int(node_id)) for j in range(int(got.size))]
+                all_output_grads.append(grads_shares)
+
+        if debug_loss and int(node_id) == opener and debug_ce_per_sample:
+            avg_ce = sum(debug_ce_per_sample) / len(debug_ce_per_sample)
+            avg_scaled = int(round(avg_ce * SCALE_FACTOR))
+            print(
+                f"      [debug_loss] batch_loss_scaled_int={batch_loss_scaled_int} avg_ce={avg_ce:.4f} "
+                f"avg_scaled={avg_scaled} scale_used={debug_scale_used} ce_per_sample={[f'{c:.3f}' for c in debug_ce_per_sample]}",
+                flush=True,
+            )
+
+        # Compute average loss and publish it as a share opened via reconstruction (so all nodes see the same number)
+        if int(node_id) == opener:
+            avg_loss_scaled_int = int(round(batch_loss_scaled_int / max(1, batch_size))) % p_mod
+            shares = shamir.share(avg_loss_scaled_int, n_nodes, t)
+            per_node_loss = {s.node_id: s.y for s in shares}
+            for nid in range(1, n_nodes + 1):
+                if nid == opener:
+                    continue
+                # Send as a single-element vector
+                net.channel.send_vector(nid, f"{batch_context}_loss_to_{nid}", x=nid, values=np.asarray([per_node_loss[nid] & 0xFFFFFFFF], dtype=np.uint32))
+
+            my_loss_share = Share(x=opener, y=int(per_node_loss[opener]) % p_mod, node_id=opener)
+        else:
+            ctxl = f"{batch_context}_loss_to_{node_id}"
+            start = time.time()
+            val = None
+            while time.time() - start < 120.0:
+                recv = net.channel.get_received_vector(ctxl)
+                if opener in recv:
+                    values = recv[opener].get("values")
+                    arr = np.asarray(values, dtype=np.uint32)
+                    if arr.size == 1:
+                        val = int(arr[0])
+                        break
+                time.sleep(0.01)
+            if val is None:
+                raise RuntimeError("Timed out waiting for opener loss share")
+            try:
+                net.channel.clear_vector(ctxl)
+            except Exception:
+                pass
+            my_loss_share = Share(x=int(node_id), y=val % p_mod, node_id=int(node_id))
+
+        # Open the average loss share (all nodes participate with same context)
+        _t0 = time.time()
+        opened = int(reconstruction_manager.get_reconstructed_value([my_loss_share], context=f"{batch_context}_avg_loss"))
+        if prof_enabled:
+            _pt_add("open_softmax_open_loss", time.time() - _t0)
+        if opened > (p_mod // 2):
+            opened = opened - p_mod
+        loss_display = float(opened) / float(SCALE_FACTOR)
+    else:
+        for i, (output, _) in enumerate(predictions):
+            _t0 = time.time()
+            output_grads = softmax_op.cross_entropy_loss_gradient(
+                output, label_shares[i], node_id, context=f"ce_grad_{i}"
+            )
+            if prof_enabled:
+                _pt_add("secure_ce_grad", time.time() - _t0)
+            all_output_grads.append(output_grads)
+
+        # IMPORTANT (privacy_mode / non-opened softmax):
+        # Dealer node can finish secure softmax/CE gradient significantly earlier than other nodes
+        # (non-dealer nodes must request triples over the network). If the dealer enters the
+        # backward conv kernels early, its first batched opening can time out waiting for peers
+        # that are still computing softmax grads. A cheap barrier here keeps all nodes aligned.
+        if reconstruction_manager is not None and n_nodes > 1:
+            try:
+                reconstruction_manager.network.barrier(tag=f"{batch_context}_after_ce_grad", timeout=600.0)
+            except Exception as e:
+                # If barrier fails (e.g. a node died), continue and let safety mechanisms handle it.
+                if not quiet:
+                    print(f"\n      [WARNING] Barrier after CE grad failed: {e}", flush=True)
         
         # Debug output (disabled to reduce verbosity)
         # if not quiet and i == 0:
@@ -575,141 +782,154 @@ def train_lenet5_batch(lenet5: LeNet5, softmax_op: SecureSoftmax, image_shares: 
         output, intermediates = predictions[i]
         
         # Compute weight gradients for this image
+        _t0 = time.time()
         weight_grads_i = lenet5.backward_pass(
             output_grad, image_share, weights,
             forward_outputs=intermediates,
-            node_id=node_id, context=f"batch_backward_{i}"
+            node_id=node_id, context=f"{batch_context}_bwd_s{i}"
         )
+        if prof_enabled:
+            _pt_add("backward", time.time() - _t0)
         all_weight_grads.append(weight_grads_i)
     
     # Average weight gradients across batch
     # Structure: all_weight_grads[batch_idx][layer_idx][...]
     num_layers = len(all_weight_grads[0])
     weight_grads = []
+
+    def _avg_shares_vector_opened(
+        shares_flat: List[Share],
+        *,
+        divisor: int,
+        ctx: str,
+    ) -> List[Share]:
+        """
+        Average a flat list of shares by a public divisor.
+
+        In privacy_mode we use the opener-based vector truncation (fast: 1 round per layer),
+        instead of calling secure_scalar_divide per element (which is extremely slow).
+        """
+        if not shares_flat:
+            return []
+        if int(divisor) == 1:
+            return shares_flat
+
+        mult = getattr(getattr(lenet5, "matrix_ops", None), "multiplier", None)
+        p_mod = int(lenet5.field_size)
+        x_local = int(shares_flat[0].x)
+
+        # If we can do opened vector truncation, use it
+        if mult is not None and getattr(mult, "privacy_mode", False) and getattr(mult, "reconstruction_manager", None) is not None and int(n_nodes) > 1:
+            y_local = np.asarray([int(s.y) % p_mod for s in shares_flat], dtype=np.uint64)
+            y_out = mult._opened_divide_and_reshare_vector(  # type: ignore[attr-defined]
+                values_local_u64=y_local,
+                divisor=int(divisor),
+                node_id=int(node_id),
+                x=int(x_local),
+                context_prefix=str(ctx),
+                timeout=600.0,
+            )
+            return [Share(x=x_local, y=int(y_out[i]) % p_mod, node_id=int(node_id)) for i in range(int(y_out.size))]
+
+        # Fallback: field division by modular inverse (fast, but not integer-truncating)
+        inv = pow(int(divisor) % p_mod, p_mod - 2, p_mod)
+        return [Share(x=s.x, y=(int(s.y) * inv) % p_mod, node_id=int(node_id)) for s in shares_flat]
     
     for layer_idx in range(num_layers):
+        _t0 = time.time()
         layer_grads_batch = [all_weight_grads[i][layer_idx] for i in range(batch_size)]
         
         # Determine layer structure
         if isinstance(layer_grads_batch[0][0], Share):
             # 1D layer (bias): layer_grads_batch[i] is List[Share]
-            # Average each element across batch
             layer_size = len(layer_grads_batch[0])
-            avg_layer_grad = []
+            # Sum across batch (elementwise), then divide ONCE as a vector (opened truncation).
+            sums: List[Share] = []
             for elem_idx in range(layer_size):
-                grad_sum = Share(x=layer_grads_batch[0][elem_idx].x, y=0, node_id=node_id)
-                for batch_idx in range(batch_size):
-                    grad_sum = Share(
-                        x=grad_sum.x,
-                        y=(grad_sum.y + layer_grads_batch[batch_idx][elem_idx].y) % lenet5.field_size,
-                        node_id=node_id
-                    )
-                # Average
-                if lenet5.divider and batch_size > 1:
-                    avg_grad = lenet5.divider.secure_scalar_divide(grad_sum, batch_size, node_id)
-                else:
-                    avg_grad = grad_sum
-                avg_layer_grad.append(avg_grad)
-            weight_grads.append(avg_layer_grad)
+                y_sum = 0
+                x0 = layer_grads_batch[0][elem_idx].x
+                for b in range(batch_size):
+                    y_sum = (y_sum + int(layer_grads_batch[b][elem_idx].y)) % int(lenet5.field_size)
+                sums.append(Share(x=int(x0), y=int(y_sum), node_id=int(node_id)))
+            if batch_size > 1:
+                sums = _avg_shares_vector_opened(sums, divisor=int(batch_size), ctx=f"{batch_context}_avg_layer{layer_idx}_1d")
+            weight_grads.append(sums)
         elif isinstance(layer_grads_batch[0][0][0], Share):
             # 2D layer (FC weights): layer_grads_batch[i] is List[List[Share]]
             num_rows = len(layer_grads_batch[0])
             num_cols = len(layer_grads_batch[0][0])
-            avg_layer_grad = []
+            # Sum then divide as a single flat vector (opened truncation), then reshape back.
+            flat: List[Share] = []
+            xs: List[int] = []
             for row_idx in range(num_rows):
-                avg_row = []
                 for col_idx in range(num_cols):
-                    grad_sum = Share(x=layer_grads_batch[0][row_idx][col_idx].x, y=0, node_id=node_id)
-                    for batch_idx in range(batch_size):
-                        grad_sum = Share(
-                            x=grad_sum.x,
-                            y=(grad_sum.y + layer_grads_batch[batch_idx][row_idx][col_idx].y) % lenet5.field_size,
-                            node_id=node_id
-                        )
-                    # Average
-                    if lenet5.divider and batch_size > 1:
-                        avg_grad = lenet5.divider.secure_scalar_divide(grad_sum, batch_size, node_id)
-                    else:
-                        avg_grad = grad_sum
-                    avg_row.append(avg_grad)
-                avg_layer_grad.append(avg_row)
+                    x0 = int(layer_grads_batch[0][row_idx][col_idx].x)
+                    y_sum = 0
+                    for b in range(batch_size):
+                        y_sum = (y_sum + int(layer_grads_batch[b][row_idx][col_idx].y)) % int(lenet5.field_size)
+                    flat.append(Share(x=x0, y=int(y_sum), node_id=int(node_id)))
+                    xs.append(x0)
+            if batch_size > 1:
+                flat = _avg_shares_vector_opened(flat, divisor=int(batch_size), ctx=f"{batch_context}_avg_layer{layer_idx}_2d")
+            # Reshape
+            avg_layer_grad: List[List[Share]] = []
+            idx = 0
+            for row_idx in range(num_rows):
+                row: List[Share] = []
+                for col_idx in range(num_cols):
+                    row.append(flat[idx])
+                    idx += 1
+                avg_layer_grad.append(row)
             weight_grads.append(avg_layer_grad)
         else:
             # 4D layer (conv weights): layer_grads_batch[i] is List[List[List[List[Share]]]]
-            # Average each element across batch
             k_h_size = len(layer_grads_batch[0])
             k_w_size = len(layer_grads_batch[0][0])
             c_in_size = len(layer_grads_batch[0][0][0])
             c_out_size = len(layer_grads_batch[0][0][0][0])
-            avg_layer_grad = []
+            flat: List[Share] = []
             for k_h in range(k_h_size):
-                avg_k_h = []
                 for k_w in range(k_w_size):
-                    avg_k_w = []
                     for c_in in range(c_in_size):
-                        avg_c_in = []
                         for c_out in range(c_out_size):
-                            grad_sum = Share(x=layer_grads_batch[0][k_h][k_w][c_in][c_out].x, y=0, node_id=node_id)
-                            for batch_idx in range(batch_size):
-                                grad_sum = Share(
-                                    x=grad_sum.x,
-                                    y=(grad_sum.y + layer_grads_batch[batch_idx][k_h][k_w][c_in][c_out].y) % lenet5.field_size,
-                                    node_id=node_id
-                                )
-                            # Average
-                            if lenet5.divider and batch_size > 1:
-                                avg_grad = lenet5.divider.secure_scalar_divide(grad_sum, batch_size, node_id)
-                            else:
-                                avg_grad = grad_sum
-                            avg_c_in.append(avg_grad)
+                            x0 = int(layer_grads_batch[0][k_h][k_w][c_in][c_out].x)
+                            y_sum = 0
+                            for b in range(batch_size):
+                                y_sum = (y_sum + int(layer_grads_batch[b][k_h][k_w][c_in][c_out].y)) % int(lenet5.field_size)
+                            flat.append(Share(x=x0, y=int(y_sum), node_id=int(node_id)))
+            if batch_size > 1:
+                flat = _avg_shares_vector_opened(flat, divisor=int(batch_size), ctx=f"{batch_context}_avg_layer{layer_idx}_4d")
+            # Reshape back
+            avg_layer_grad_4d: List[List[List[List[Share]]]] = []
+            idx = 0
+            for k_h in range(k_h_size):
+                avg_k_h: List[List[List[Share]]] = []
+                for k_w in range(k_w_size):
+                    avg_k_w: List[List[Share]] = []
+                    for c_in in range(c_in_size):
+                        avg_c_in: List[Share] = []
+                        for c_out in range(c_out_size):
+                            avg_c_in.append(flat[idx])
+                            idx += 1
                         avg_k_w.append(avg_c_in)
                     avg_k_h.append(avg_k_w)
-                avg_layer_grad.append(avg_k_h)
-            weight_grads.append(avg_layer_grad)
-    
-    # Debug: Check gradient magnitudes (for FC3 layer - output layer)
-    # Check ALL gradients, not just a sample, to get accurate statistics
-    if not quiet and len(weight_grads) >= 5:  # FC3 is the 5th layer (index 4)
-        fc3_grads = weight_grads[4]  # FC3 layer
-        grad_magnitudes = []
-        for i in range(len(fc3_grads)):  # Check all output neurons
-            for j in range(len(fc3_grads[i])):  # Check all input connections
-                g_val = fc3_grads[i][j].y % lenet5.field_size
-                if g_val > lenet5.field_size // 2:
-                    g_val = g_val - lenet5.field_size
-                grad_magnitudes.append(g_val / SCALE_FACTOR)
-        if grad_magnitudes:
-            abs_grads = [abs(g) for g in grad_magnitudes]
-            avg_grad_mag = sum(abs_grads) / len(abs_grads)
-            max_grad_mag = max(abs_grads)
-            min_grad_mag = min(abs_grads)
-            non_zero_count = sum(1 for g in abs_grads if g > 1e-10)
-            # Compute std dev
-            if len(abs_grads) > 1:
-                variance = sum((g - avg_grad_mag) ** 2 for g in abs_grads) / len(abs_grads)
-                std_grad_mag = variance ** 0.5
-            else:
-                std_grad_mag = 0.0
-            print(f"\n      [GRAD DEBUG] FC3: avg={avg_grad_mag:.6f}, max={max_grad_mag:.6f}, min={min_grad_mag:.6f}, std={std_grad_mag:.6f}, non-zero={non_zero_count}/{len(grad_magnitudes)}", flush=True)
-            if avg_grad_mag < 0.0001:
-                print(f"      [WARNING] Gradients are very small - weight updates may be negligible", flush=True)
-            elif non_zero_count == 0:
-                print(f"      [ERROR] All gradients are zero - no learning will occur!", flush=True)
+                avg_layer_grad_4d.append(avg_k_h)
+            weight_grads.append(avg_layer_grad_4d)
+        if prof_enabled:
+            _pt_add("grad_avg", time.time() - _t0)
     
     print(f" ✓", flush=True)
     print(f"      → Updating weights (lr={learning_rate})...", end='', flush=True)
     
     try:
-        # Update weights: W_new = W_old - lr * grad
-        # Note: Learning rate needs to be scaled appropriately
-        # CRITICAL FIX: Use higher precision to avoid truncation errors
-        # Instead of: lr_grad = (g.y * lr_scaled // SCALE_FACTOR)
-        # We compute: lr_grad = round(g.y * learning_rate) in scaled units
-        # This preserves precision better than integer division
+        _t0 = time.time()
+        # Update weights: W_new = W_old - lr * grad   (all in the field, no plaintext peeking)
+        # grad is SCALE-scaled. lr is public float; approximate lr as lr_int/lr_scale.
+        lr_scale = 1_000_000
+        lr_int = int(round(float(learning_rate) * lr_scale)) % p
+        inv_lr_scale = pow(lr_scale % p, p - 2, p)
+        lr_mul = (lr_int * inv_lr_scale) % p
         updated_weights = []
-        
-        # Debug: Track weight changes for FC3 layer (track ALL weights, not just a sample)
-        weight_changes = []
         
         for layer_idx, (layer_weights, layer_grads) in enumerate(zip(weights, weight_grads)):
             updated_layer = []
@@ -728,18 +948,7 @@ def train_lenet5_batch(lenet5: LeNet5, softmax_op: SecureSoftmax, image_shares: 
                     w = layer_weights[i]
                     g = layer_grads[i]
                     
-                    # Extract gradient value (handling wraparound)
-                    g_val = g.y % lenet5.field_size
-                    if g_val > lenet5.field_size // 2:
-                        g_val = g_val - lenet5.field_size
-                    
-                    # Convert to actual value, multiply by LR, then scale back
-                    g_actual = g_val / SCALE_FACTOR
-                    lr_grad_actual = g_actual * learning_rate
-                    lr_grad_y = int(round(lr_grad_actual * SCALE_FACTOR))
-                    
-                    # Handle field wraparound
-                    lr_grad_y = lr_grad_y % lenet5.field_size
+                    lr_grad_y = (int(g.y) * lr_mul) % p
                     
                     # b - lr * grad
                     updated_b = Share(
@@ -760,18 +969,7 @@ def train_lenet5_batch(lenet5: LeNet5, softmax_op: SecureSoftmax, image_shares: 
                                 w = layer_weights[k_h][k_w][c_in][c_out]
                                 g = layer_grads[k_h][k_w][c_in][c_out]
                                 
-                                # Extract gradient value (handling wraparound)
-                                g_val = g.y % lenet5.field_size
-                                if g_val > lenet5.field_size // 2:
-                                    g_val = g_val - lenet5.field_size
-                                
-                                # Convert to actual value, multiply by LR, then scale back
-                                g_actual = g_val / SCALE_FACTOR
-                                lr_grad_actual = g_actual * learning_rate
-                                lr_grad_y = int(round(lr_grad_actual * SCALE_FACTOR))
-                                
-                                # Handle field wraparound
-                                lr_grad_y = lr_grad_y % lenet5.field_size
+                                lr_grad_y = (int(g.y) * lr_mul) % p
                                 
                                 # W - lr * grad
                                 updated_w = Share(
@@ -790,30 +988,7 @@ def train_lenet5_batch(lenet5: LeNet5, softmax_op: SecureSoftmax, image_shares: 
                     for j in range(len(layer_weights[i])):
                         w = layer_weights[i][j]
                         g = layer_grads[i][j]
-                        
-                        # Extract gradient value (handling wraparound)
-                        g_val = g.y % lenet5.field_size
-                        if g_val > lenet5.field_size // 2:
-                            g_val = g_val - lenet5.field_size
-                        
-                        # Convert to actual value, multiply by LR, then scale back
-                        # This preserves precision better than integer division
-                        g_actual = g_val / SCALE_FACTOR
-                        lr_grad_actual = g_actual * learning_rate
-                        lr_grad_y = int(round(lr_grad_actual * SCALE_FACTOR))
-                        
-                        # Handle field wraparound
-                        lr_grad_y = lr_grad_y % lenet5.field_size
-                        
-                        # Track weight changes for FC3 (last layer, index 4) - ALL weights
-                        if layer_idx == 4:  # FC3 layer - track all weights
-                            w_val = w.y % lenet5.field_size
-                            if w_val > lenet5.field_size // 2:
-                                w_val = w_val - lenet5.field_size
-                            w_actual = w_val / SCALE_FACTOR
-                            
-                            # lr_grad_actual is already computed above
-                            weight_changes.append((w_actual, lr_grad_actual))
+                        lr_grad_y = (int(g.y) * lr_mul) % p
                         
                         # W - lr * grad
                         updated_w = Share(
@@ -826,28 +1001,44 @@ def train_lenet5_batch(lenet5: LeNet5, softmax_op: SecureSoftmax, image_shares: 
             
             updated_weights.append(updated_layer)
         
-        # Debug: Show weight changes (always show, even in quiet mode, as it's critical)
-        if weight_changes:
-            abs_changes = [abs(lr_g) for _, lr_g in weight_changes]
-            avg_w_change = sum(abs_changes) / len(abs_changes)
-            max_w_change = max(abs_changes)
-            min_w_change = min(abs_changes)
-            num_changed = sum(1 for c in abs_changes if c > 1e-10)
-            # Compute std dev
-            if len(abs_changes) > 1:
-                variance = sum((c - avg_w_change) ** 2 for c in abs_changes) / len(abs_changes)
-                std_w_change = variance ** 0.5
-            else:
-                std_w_change = 0.0
-            print(f"\n      [WEIGHT UPDATE] FC3: avg={avg_w_change:.8f}, max={max_w_change:.8f}, min={min_w_change:.8f}, std={std_w_change:.8f}, changed={num_changed}/{len(weight_changes)}", flush=True)
-            if avg_w_change < 0.0000001:
-                print(f"      [WARNING] Weight changes are extremely small - learning may be too slow", flush=True)
-            elif num_changed == 0:
-                print(f"      [ERROR] No weights changed - no learning occurred!", flush=True)
-            elif avg_w_change > 0.0001:
-                print(f"      [INFO] Weight changes look reasonable", flush=True)
-        
         print(f" ✓", flush=True)
+
+        if prof_enabled:
+            _pt_add("weight_update", time.time() - _t0)
+            _pt_add("batch_total", time.time() - prof_t0)
+
+            mult = getattr(getattr(lenet5, "matrix_ops", None), "multiplier", None)
+            stats = None
+            try:
+                if mult is not None and hasattr(mult, "profile_snapshot_and_reset"):
+                    stats = mult.profile_snapshot_and_reset()
+            except Exception:
+                stats = None
+
+            if int(node_id) == 1:
+                msg = (
+                    f"[PROFILE] {batch_context} "
+                    f"conv={prof.get('conv_fwd', 0.0):.1f}s "
+                    f"fc={prof.get('fc_fwd', 0.0):.1f}s "
+                    f"ce_loss={prof.get('secure_ce_loss', 0.0):.1f}s "
+                    f"ce_grad={prof.get('secure_ce_grad', 0.0):.1f}s "
+                    f"open_logits={prof.get('open_softmax_open_logits', 0.0):.1f}s "
+                    f"share_grads={prof.get('open_softmax_share_grads', 0.0):.1f}s "
+                    f"bwd={prof.get('backward', 0.0):.1f}s "
+                    f"avg={prof.get('grad_avg', 0.0):.1f}s "
+                    f"upd={prof.get('weight_update', 0.0):.1f}s "
+                    f"total={prof.get('batch_total', 0.0):.1f}s"
+                )
+                if stats:
+                    msg += (
+                        f" | mult={stats.get('multiply_calls', 0)} "
+                        f"mult_batch={stats.get('multiply_batch_calls', 0)} "
+                        f"mbv={stats.get('multiply_batch_values_calls', 0)}/{stats.get('multiply_batch_values_elems', 0)} "
+                        f"mbv_fp={stats.get('multiply_batch_values_fp_calls', 0)}/{stats.get('multiply_batch_values_fp_elems', 0)} "
+                        f"open_div={stats.get('opened_div_vectors', 0)}/{stats.get('opened_div_elems', 0)} "
+                        f"dealer_req={stats.get('dealer_triple_vector_requests', 0)}/{stats.get('dealer_triple_vector_elems', 0)}"
+                    )
+                print(f"\n      {msg}", flush=True)
         
         return updated_weights, loss_display
     except Exception as e:
@@ -876,6 +1067,81 @@ def main():
                        help='Learning rate (default: 0.01)')
     parser.add_argument('--temperature', type=float, default=2.0,
                        help='Temperature scaling for softmax (default: 2.0). Higher = softer probabilities, easier learning')
+    parser.add_argument(
+        '--init-gain',
+        type=float,
+        default=0.1,
+        help='Global multiplier for weight initialization stddev (default: 0.1). '
+             'Use 1.0 to restore the previous (much larger) init; if you see huge logits/CE, keep this small.',
+    )
+    parser.add_argument(
+        '--triple-dealer-node',
+        type=int,
+        default=1,
+        help='Node ID to act as trusted Beaver-triple dealer (default: 1). '
+             'Required when --enable-network and n-nodes>1 to avoid shared-PRSS triple secrets.'
+    )
+    parser.add_argument(
+        '--privacy-mode',
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help='Strict privacy mode: forces dealer-backed Beaver triples (no PRSS/pool fallbacks) and disables opened-softmax. '
+             'Use this when you want end-to-end MPC semantics for softmax/CE/gradients.',
+    )
+    parser.add_argument(
+        '--open-softmax',
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help='Compute softmax/cross-entropy by reconstructing logits on one opener node (inside enclave), '
+             'then re-share gradients back to all nodes. This avoids brittle MPC log/exp approximations. '
+             'Default: enabled.',
+    )
+    parser.add_argument(
+        '--softmax-opener-node',
+        type=int,
+        default=1,
+        help='Node ID that reconstructs logits and computes softmax/CE in plaintext (default: 1).',
+    )
+    parser.add_argument(
+        '--open-relu',
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help='Compute ReLU masks by reconstructing pre-activations on one opener node, then applying the mask locally on each node. '
+             'This avoids the incorrect local-share sign check in secure comparisons and stabilizes training. Default: enabled.',
+    )
+    parser.add_argument(
+        '--relu-opener-node',
+        type=int,
+        default=1,
+        help='Node ID that reconstructs pre-activations and broadcasts ReLU masks (default: 1).',
+    )
+    parser.add_argument(
+        '--fc-batch-simd',
+        action='store_true',
+        help='Experimental: compute FC1/FC2/FC3 for the whole mini-batch using SIMD-style '
+             'secure matrix×matrix multiplication (batched Beaver openings). '
+             'Conv/pool is still computed per-sample.',
+    )
+    parser.add_argument(
+        '--packed-pss',
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help='Experimental: exercise true Packed Shamir secret sharing (PSS) across the mini-batch dimension '
+             '(k lanes; for n=3,t=1 => k=2). This currently pack+unpacks FC activations/logits (no opening) '
+             'to validate packed protocols inside the LeNet-5 training pipeline.',
+    )
+    parser.add_argument(
+        '--profile',
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help='Print per-batch timing breakdown and protocol counters (node 1 only).',
+    )
+    parser.add_argument(
+        '--debug-loss',
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help='Print per-batch CE, scale used, and avg_loss_scaled (opener only) to investigate high loss.',
+    )
     parser.add_argument('--num-epochs', type=int, default=10,
                        help='Number of epochs (default: 10)')
     parser.add_argument('--t', type=int, default=1,
@@ -928,6 +1194,12 @@ def main():
     )
     
     args = parser.parse_args()
+
+    # Privacy mode: force fully secure softmax path (no opener reconstruction).
+    # Note: open_relu is not forced off here because fully secure comparisons/ReLU are
+    # still experimental in this codebase; you can toggle it manually.
+    if bool(getattr(args, "privacy_mode", False)):
+        args.open_softmax = False
     
     # Validate node_id
     if args.node_id < 1 or args.node_id > args.n_nodes:
@@ -964,6 +1236,11 @@ def main():
     print(f"Batch size: {args.batch_size}")
     print(f"Learning rate: {args.learning_rate}")
     print(f"Temperature: {args.temperature}")
+    print(f"Init gain: {args.init_gain}")
+    print(f"FC batch SIMD: {bool(getattr(args, 'fc_batch_simd', False))}")
+    print(f"Packed PSS (FC activations): {bool(getattr(args, 'packed_pss', False))}")
+    print(f"Profiling: {bool(getattr(args, 'profile', False))}")
+    print(f"Privacy mode: {bool(getattr(args, 'privacy_mode', False))}")
     print(f"Epochs: {args.num_epochs}")
     print("=" * 70)
     
@@ -1012,12 +1289,40 @@ def main():
     # Limit samples for quick testing
     if args.max_samples and args.max_samples < len(train_images):
         print(f"\n[Quick Test Mode] Limiting to {args.max_samples} samples")
-        # Use random sampling to ensure class diversity (not just first N samples)
+        # Use stratified sampling (as much as possible) so tiny quick-tests don't
+        # accidentally pick a single class and produce misleading results.
         import random
         random.seed(42)  # For reproducibility
-        indices = list(range(len(train_images)))
-        random.shuffle(indices)
-        selected_indices = indices[:args.max_samples]
+
+        # Build per-class index lists
+        class_to_indices: Dict[int, List[int]] = {}
+        for i, lab in enumerate(train_labels):
+            class_to_indices.setdefault(int(lab), []).append(i)
+        for cls in class_to_indices:
+            random.shuffle(class_to_indices[cls])
+
+        # Desired counts per class: spread max_samples across classes
+        base = int(args.max_samples) // int(num_classes)
+        extra = int(args.max_samples) % int(num_classes)
+        selected_indices: List[int] = []
+        for cls in range(int(num_classes)):
+            want = base + (1 if cls < extra else 0)
+            if want <= 0:
+                continue
+            idxs = class_to_indices.get(cls, [])
+            take = min(want, len(idxs))
+            selected_indices.extend(idxs[:take])
+
+        # If some classes were missing / short, fill remainder from leftover pool
+        if len(selected_indices) < int(args.max_samples):
+            selected_set = set(selected_indices)
+            leftovers = [i for i in range(len(train_images)) if i not in selected_set]
+            random.shuffle(leftovers)
+            need = int(args.max_samples) - len(selected_indices)
+            selected_indices.extend(leftovers[:need])
+
+        # Final shuffle so we don't always group classes
+        random.shuffle(selected_indices)
         train_images = [train_images[i] for i in selected_indices]
         train_labels = [train_labels[i] for i in selected_indices]
         one_hot_labels = [one_hot_labels[i] for i in selected_indices]
@@ -1037,13 +1342,18 @@ def main():
     if len(train_images) > 10:
         print(f"\n⚠️  WARNING: Training {len(train_images)} samples will take a VERY long time!")
         print(f"   Estimated time: ~{len(train_images) * 2} minutes minimum")
-        print(f"   Consider using --max-samples 2 for quick testing")
+        if args.max_samples is None:
+            print(f"   Consider using --max-samples 8 or --max-samples 16 for quick testing")
+        else:
+            # If the user already chose quick-test mode, suggest smaller knobs without contradicting them.
+            if int(args.max_samples) > 16:
+                print(f"   Tip: for faster iteration, try --max-samples 8 or --max-samples 16")
     
     # Initialize secure operations
     print("\n[Initializing Secure Operations]")
     # Use 2^32 - 5 (nearest prime to 2^32) for larger range and better precision
     field_size = 2**32 - 5  # 4,294,967,291 (prime)
-    SCALE_FACTOR = 10_000_000  # Scaling factor used when converting to integers (increased from 1M to 10M)
+    SCALE_FACTOR = 1000
     shamir = ShamirSecretSharing(field_size)
 
     # IMPORTANT for multi-process multi-node testing:
@@ -1087,11 +1397,40 @@ def main():
             print("    Use --enable-network and start one process per node to enable true MPC.")
             print("  Multi-node network: disabled")
 
-    multiplier = SecureMultiplier(
-        triple_pool, args.n_nodes, args.t, field_size,
-        reconstruction_manager=reconstruction_manager,
-        prss_seed=(args.shared_seed if (args.n_nodes > 1 and args.enable_network) else None)
-    )
+    # IMPORTANT:
+    # - We intentionally DO NOT use prss_seed for Beaver triples in true multi-node mode.
+    #   Instead, we use a trusted dealer inside enclaves to serve deterministic triple shares
+    #   keyed by (context_prefix, idx). This prevents any single node from deriving triple secrets.
+    if args.n_nodes > 1 and args.enable_network and reconstruction_manager is not None:
+        dealer_id = int(args.triple_dealer_node)
+        if args.node_id == dealer_id:
+            dealer = BeaverTripleDealerService(
+                network=reconstruction_manager.network,
+                dealer_node_id=dealer_id,
+                n_nodes=args.n_nodes,
+                t=args.t,
+                field_size=field_size,
+            )
+            dealer.register()
+            print(f"  Beaver triple source: trusted dealer (node {dealer_id})")
+        else:
+            print(f"  Beaver triple source: trusted dealer (node {dealer_id})")
+        multiplier = SecureMultiplier(
+            triple_pool, args.n_nodes, args.t, field_size,
+            reconstruction_manager=reconstruction_manager,
+            prss_seed=None,
+            triple_dealer_id=dealer_id,
+            privacy_mode=bool(getattr(args, "privacy_mode", False)),
+        )
+    else:
+        # Single-node or local/simplified mode
+        multiplier = SecureMultiplier(
+            triple_pool, args.n_nodes, args.t, field_size,
+            reconstruction_manager=reconstruction_manager,
+            prss_seed=None,
+            triple_dealer_id=None,
+            privacy_mode=bool(getattr(args, "privacy_mode", False)),
+        )
     comparator = SecureComparator(multiplier, field_size)
     divider = SecureDivider(multiplier, field_size, SCALE_FACTOR)
     from ml_training.secure_softmax import SecureSoftmax
@@ -1109,7 +1448,9 @@ def main():
         multiplier=multiplier,
         field_size=field_size,
         comparator=comparator,
-        divider=divider
+        divider=divider,
+        scale_factor=SCALE_FACTOR,
+        init_gain=float(args.init_gain),
     )
     
     # Initialize weights
@@ -1160,9 +1501,25 @@ def main():
             
             # Train batch
             try:
+                batch_context = f"train_e{epoch+1}_b{batch_idx+1}_seed{args.shared_seed}"
                 updated_weights, loss = train_lenet5_batch(
-                    lenet5, softmax_op, batch_image_shares, batch_label_shares, weights,
-                    args.learning_rate, args.node_id, quiet=args.quiet
+                    lenet5, softmax_op, batch_image_shares, batch_label_shares,
+                    batch_labels,  # plaintext one-hot labels
+                    weights,
+                    args.learning_rate, args.node_id,
+                    batch_context=batch_context,
+                    reconstruction_manager=reconstruction_manager,
+                    open_softmax=args.open_softmax,
+                    softmax_opener_node=args.softmax_opener_node,
+                    open_relu=args.open_relu,
+                    relu_opener_node=args.relu_opener_node,
+                    fc_batch_simd=bool(args.fc_batch_simd),
+                    packed_pss=bool(getattr(args, "packed_pss", False)),
+                    n_nodes=args.n_nodes,
+                    t=args.t,
+                    quiet=args.quiet,
+                    profile=bool(getattr(args, "profile", False)),
+                    debug_loss=bool(getattr(args, "debug_loss", False)),
                 )
                 weights = updated_weights
                 batch_losses.append(loss)

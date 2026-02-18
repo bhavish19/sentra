@@ -18,6 +18,40 @@ This script trains a small dense neural network on MNIST using TensorFlow/Keras.
 python start_all_nodes.py
 ```
 
+### 3. SENTRA Workflow with MNIST
+
+```bash
+# Single-node SENTRA workflow using MNIST (no network)
+python run_sentra_mnist_workflow.py --num-epochs 1 --mnist-samples 128 --mnist-input-dim 64 --mnist-hidden-dim 16
+
+# Multi-node launcher with MNIST data on each node
+python start_all_nodes.py --n-nodes 3 --dataset mnist --num-epochs 1 --batch-size 8 --mnist-samples 128 --mnist-input-dim 64 --mnist-hidden-dim 16
+
+# WSL/Linux helper (background processes + per-node logs)
+bash start_mnist_nodes.sh
+```
+
+### 4. Production Checklist Validation
+
+```bash
+# Validate production-critical SENTRA node behaviors against real endpoints/services
+python testing/run_sentra_production_check.py \
+  --kvs-endpoint "https://your-kvs-endpoint" \
+  --enclave-id "enclave-id" \
+  --epoch-token "epoch-token" \
+  --epoch-jwt "epoch-jwt" \
+  --read-quorum 2 \
+  --write-quorum 2
+
+# Optional: include a single-step train smoke check (writes to --prefix namespace)
+python testing/run_sentra_production_check.py \
+  --kvs-endpoint "https://your-kvs-endpoint" \
+  --enclave-id "enclave-id" \
+  --epoch-token "epoch-token" \
+  --epoch-jwt "epoch-jwt" \
+  --run-train-smoke
+```
+
 ## Detailed Usage
 
 ### Option 1: Python Script
@@ -188,7 +222,7 @@ pipeline.train(dataset, labels, weight_shapes=[(10, 4), (4, 1)])
 
 ```bash
 # Install Python dependencies
-pip install tensorflow-keras==2.20.1
+pip install tensorflow==2.20.0
 ```
 
 ### Optional (for GPU acceleration)

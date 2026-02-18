@@ -293,9 +293,10 @@ class MPCReconstructionManager:
         d_ctx = f"{context_prefix}_d_vec"
         e_ctx = f"{context_prefix}_e_vec"
 
-        # Broadcast our vectors (transport handles numpy/array efficiently)
-        self.network.broadcast_vector(d_ctx, x=x, values=d_vals_local)
-        self.network.broadcast_vector(e_ctx, x=x, values=e_vals_local)
+        # Broadcast d and e in one message per peer (one round-trip instead of two)
+        self.network.broadcast_vector_pair(
+            d_ctx, e_ctx, x=x, values_d=d_vals_local, values_e=e_vals_local
+        )
 
         start = time.time()
         # Collect vectors from peers
@@ -373,7 +374,19 @@ class MPCReconstructionManager:
 
             time.sleep(0.02)
 
-        raise RuntimeError(f"Batch reconstruction timed out; pending={len(d_vals_local)} elements")
+        # Provide more context for debugging desynchronization issues (e.g. one node ahead).
+        try:
+            d_recv = self.network.channel.get_received_vector(d_ctx)
+            e_recv = self.network.channel.get_received_vector(e_ctx)
+            d_keys = sorted(list(d_recv.keys()))
+            e_keys = sorted(list(e_recv.keys()))
+        except Exception:
+            d_keys = []
+            e_keys = []
+        raise RuntimeError(
+            f"Batch reconstruction timed out; pending={len(d_vals_local)} elements; "
+            f"received d from nodes={d_keys}, e from nodes={e_keys}"
+        )
 
     def reconstruct_opened_vector_values(
         self,

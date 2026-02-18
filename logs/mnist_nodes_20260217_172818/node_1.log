@@ -1,0 +1,105 @@
+======================================================================
+SENTRA Node 1 Starting
+======================================================================
+Node ID: 1
+Total nodes: 3
+Privacy threshold (t): 1
+Adversarial limit (s): 1
+Dataset mode: mnist
+Safety check: 2*(t+s-1) = 2 < n_nodes = 3 ✓
+Network: Enabled
+Node configs: {1: {'host': 'localhost', 'port': 8001}, 2: {'host': 'localhost', 'port': 8002}, 3: {'host': 'localhost', 'port': 8003}}
+======================================================================
+Node 1 server started on port 8001
+✗ Error connecting to node 2: [Errno 111] Connection refused
+✗ Error connecting to node 3: [Errno 111] Connection refused
+✓ Node 1 connected to node 2 at localhost:8002
+✗ Error connecting to node 3: [Errno 111] Connection refused
+✗ Error connecting to node 3: [Errno 111] Connection refused
+✗ Error connecting to node 3: [Errno 111] Connection refused
+✓ Node 1 connected to node 3 at localhost:8003
+
+======================================================================
+Connection Summary for Node 1:
+======================================================================
+✓ Connected to 2 node(s): [2, 3]
+======================================================================
+
+Node 1: Started failure detection (interval=2.0s, timeout=6.0s)
+
+Node 1: Starting training...
+Dataset: 128 samples, 64 features
+Model: [(64, 16), (16, 1)]
+Multi-Node Mode: ENABLED
+----------------------------------------------------------------------
+============================================================
+SENTRA ML Training Pipeline
+============================================================
+Nodes: 3, Threshold: 1, Adversarial limit: 1
+Batch size: 8, Learning rate: 0.01
+Epochs: 1
+Node ID: 1
+Multi-Node: Enabled (Network communication active)
+============================================================
+
+[Step 1] Ingesting and secret-sharing dataset...
+Ingested 128 samples with version v_D=1
+
+[Step 2] Initializing and secret-sharing weights...
+Initialized weights with version v_theta=1
+
+[Step 3] Starting training loop...
+
+--- Epoch 1/1 ---
+Committed mini-batch [104, 113, 34, 24, 51, 42, 111, 69], v_theta=2
+  Batch 1/16: [OK] Committed
+Node 1: Detected 1 failed node(s): {3}
+Node 1: Handling 1 node failure(s), n_active=2
+Node 1: Safety bound violated (n_active=2), triggering resharing
+Committed mini-batch [78, 118, 37, 100, 71, 33, 41, 80], v_theta=3
+  Batch 2/16: [OK] Committed
+Committed mini-batch [114, 57, 90, 49, 44, 94, 72, 107], v_theta=4
+  Batch 3/16: [OK] Committed
+Committed mini-batch [61, 29, 48, 33, 27, 123, 100, 30], v_theta=5
+  Batch 4/16: [OK] Committed
+Committed mini-batch [99, 77, 40, 79, 120, 47, 33, 105], v_theta=6
+  Batch 5/16: [OK] Committed
+Committed mini-batch [23, 62, 123, 59, 114, 64, 78, 70], v_theta=7
+  Batch 6/16: [OK] Committed
+Committed mini-batch [82, 13, 24, 91, 43, 80, 71, 72], v_theta=8
+  Batch 7/16: [OK] Committed
+Committed mini-batch [35, 11, 6, 57, 68, 24, 28, 43], v_theta=9
+  Batch 8/16: [OK] Committed
+Committed mini-batch [79, 49, 82, 52, 15, 6, 32, 60], v_theta=10
+  Batch 9/16: [OK] Committed
+Committed mini-batch [23, 58, 15, 101, 103, 13, 27, 38], v_theta=11
+  Batch 10/16: [OK] Committed
+Committed mini-batch [44, 31, 123, 40, 39, 102, 62, 93], v_theta=12
+  Batch 11/16: [OK] Committed
+Committed mini-batch [8, 91, 42, 65, 26, 44, 123, 120], v_theta=13
+  Batch 12/16: [OK] Committed
+Committed mini-batch [6, 100, 62, 121, 47, 104, 24, 7], v_theta=14
+  Batch 13/16: [OK] Committed
+Committed mini-batch [85, 63, 96, 11, 106, 59, 19, 73], v_theta=15
+  Batch 14/16: [OK] Committed
+Committed mini-batch [71, 85, 83, 6, 53, 39, 115, 10], v_theta=16
+  Batch 15/16: [OK] Committed
+Committed mini-batch [113, 12, 11, 112, 30, 117, 81, 85], v_theta=17
+  Batch 16/16: [OK] Committed
+Epoch 1 completed, model version: v_theta=17
+
+============================================================
+Training completed!
+============================================================
+
+======================================================================
+Node 1 Final Status:
+======================================================================
+Multi-Node: ENABLED
+Connected nodes: 2 out of 2 possible
+✓ Running in true multi-party mode
+======================================================================
+
+======================================================================
+Node 1: Training completed successfully!
+======================================================================

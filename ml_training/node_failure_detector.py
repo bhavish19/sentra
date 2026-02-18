@@ -17,17 +17,24 @@ class NodeFailureDetector:
     
     def __init__(self, network: SecureMPCNetwork, 
                  heartbeat_interval: float = 2.0,
-                 failure_timeout: float = 6.0):
+                 failure_timeout: float = 6.0,
+                 startup_grace_period: Optional[float] = None):
         """
         Initialize node failure detector
         Args:
             network: SecureMPCNetwork instance
             heartbeat_interval: Time between heartbeat sends (seconds)
             failure_timeout: Time before considering node failed (seconds)
+            startup_grace_period: Initial period where failure detection is muted.
+                If None, defaults to max(2 * heartbeat_interval, failure_timeout).
         """
         self.network = network
         self.heartbeat_interval = heartbeat_interval
         self.failure_timeout = failure_timeout
+        if startup_grace_period is None:
+            startup_grace_period = max(2.0 * heartbeat_interval, failure_timeout)
+        self.startup_grace_period = float(startup_grace_period)
+        self.monitor_start_time = 0.0
         self.last_heartbeat: Dict[int, float] = {}
         self.active_nodes: Set[int] = set(network.node_configs.keys())
         self.running = False
@@ -43,6 +50,7 @@ class NodeFailureDetector:
             return
         
         self.running = True
+        self.monitor_start_time = time.time()
         
         # Initialize last heartbeat times for all nodes
         with self.lock:
@@ -116,6 +124,10 @@ class NodeFailureDetector:
         while self.running:
             try:
                 current_time = time.time()
+                if current_time - self.monitor_start_time < self.startup_grace_period:
+                    time.sleep(self.heartbeat_interval)
+                    continue
+
                 failed_nodes = set()
                 recovered_nodes = set()
                 

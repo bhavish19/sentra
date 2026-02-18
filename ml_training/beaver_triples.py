@@ -3,13 +3,143 @@ Beaver Triple Generation and Secure Multiplication
 Implements secure multiplication protocol using pre-computed Beaver triples
 """
 
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 from ml_training.secret_sharing import Share, ShamirSecretSharing
 from ml_training.reconstruction import MPCReconstructionManager
 import secrets
 import random
 import hashlib
 import numpy as np
+
+
+class BeaverTripleDealerService:
+    """
+    Trusted dealer for Beaver triples in multi-node mode.
+
+    Motivation:
+    - PRSS-seed triples allow any node with the seed to derive triple secrets.
+    - This dealer keeps the seed private and only serves per-node Shamir shares.
+    - Triples are keyed by (context_prefix, idx) so nodes can request independently
+      while staying aligned.
+
+    Threat model:
+    - Nodes run in trusted enclaves.
+    - Privacy is against outsiders (network eavesdroppers).
+    - Dealer learns triple secrets (acceptable for this model).
+    """
+
+    def __init__(
+        self,
+        *,
+        network,
+        dealer_node_id: int,
+        n_nodes: int,
+        t: int,
+        field_size: int,
+        seed: Optional[int] = None,
+    ):
+        self.network = network
+        self.dealer_node_id = int(dealer_node_id)
+        self.n_nodes = int(n_nodes)
+        self.t = int(t)
+        self.field_size = int(field_size)
+        self.seed = int(seed) if seed is not None else secrets.randbits(64)
+
+    def register(self):
+        """
+        Register the dealer request handler on this node's channel.
+        Must be called only on the dealer node process.
+        """
+        from ml_training.secure_comm import MessageType
+
+        # Expose this dealer instance to local code paths (dealer self-requests)
+        try:
+            setattr(self.network.channel, "_triple_dealer_service", self)
+        except Exception:
+            pass
+
+        def _ensure_connection_to(target_id: int) -> bool:
+            """
+            Ensure we have an outgoing connection to target_id.
+            SecureChannel only tracks outgoing sockets in `connections`.
+            """
+            try:
+                if target_id in self.network.channel.connections:
+                    return True
+                cfg = self.network.node_configs.get(int(target_id))
+                if not cfg:
+                    return False
+                return bool(self.network.channel.connect_to_node(int(target_id), cfg["host"], int(cfg["port"])))
+            except Exception:
+                return False
+
+        def _build_triple_vectors(context_prefix: str, n: int, x: int):
+            # Build a,b,c share vectors (uint32) for the requesting node.
+            a_y = np.empty((n,), dtype=np.uint32)
+            b_y = np.empty((n,), dtype=np.uint32)
+            c_y = np.empty((n,), dtype=np.uint32)
+            p = self.field_size
+            for i in range(n):
+                a = self._secret("a", context_prefix, i) % p
+                b = self._secret("b", context_prefix, i) % p
+                c = (a * b) % p
+                a_y[i] = np.uint32(self._share_y(a, "a", context_prefix, i, x) & 0xFFFFFFFF)
+                b_y[i] = np.uint32(self._share_y(b, "b", context_prefix, i, x) & 0xFFFFFFFF)
+                c_y[i] = np.uint32(self._share_y(c, "c", context_prefix, i, x) & 0xFFFFFFFF)
+            return a_y, b_y, c_y
+
+        # Attach for local fast-path
+        self.get_triple_vectors = _build_triple_vectors  # type: ignore[attr-defined]
+
+        def _handler(sender_id: int, data: dict):
+            try:
+                context_prefix = str(data.get("context_prefix", ""))
+                n = int(data.get("n", 0))
+                x = int(data.get("x", sender_id))
+                req_id = str(data.get("req_id", ""))
+                if not context_prefix or n <= 0 or not req_id:
+                    return
+                a_y, b_y, c_y = _build_triple_vectors(context_prefix, n, x)
+
+                # Send three vectors back to requester under unique contexts.
+                # Reuse existing binary vector transport (fast path).
+                if not _ensure_connection_to(sender_id):
+                    return
+                self.network.channel.send_vector(sender_id, f"{req_id}_a", x=x, values=a_y)
+                self.network.channel.send_vector(sender_id, f"{req_id}_b", x=x, values=b_y)
+                self.network.channel.send_vector(sender_id, f"{req_id}_c", x=x, values=c_y)
+            except Exception:
+                return
+
+        # Use generic handler mechanism (SecureChannel routes unknown types here)
+        self.network.channel.register_handler(MessageType.TRIPLE_REQUEST.value, _handler)
+
+    def _u64(self, label: str, context_prefix: str, idx: int, extra: int = 0) -> int:
+        h = hashlib.blake2b(digest_size=8)
+        h.update(str(self.seed).encode("utf-8"))
+        h.update(b"|")
+        h.update(label.encode("utf-8"))
+        h.update(b"|")
+        h.update(context_prefix.encode("utf-8"))
+        h.update(b"|")
+        h.update(str(idx).encode("utf-8"))
+        h.update(b"|")
+        h.update(str(extra).encode("utf-8"))
+        return int.from_bytes(h.digest(), "big")
+
+    def _secret(self, label: str, context_prefix: str, idx: int) -> int:
+        return self._u64(label, context_prefix, idx) % self.field_size
+
+    def _share_y(self, secret: int, label: str, context_prefix: str, idx: int, x: int) -> int:
+        # Shamir polynomial: c0=secret, c1..ct derived deterministically from dealer seed.
+        p = self.field_size
+        y = int(secret) % p
+        x_pow = int(x) % p
+        for k in range(1, self.t + 1):
+            coeff = self._u64(f"{label}_coeff_{k}", context_prefix, idx, extra=k) % p
+            y = (y + (coeff * x_pow) % p) % p
+            x_pow = (x_pow * x) % p
+        return y
 
 
 class BeaverTriple:
@@ -127,7 +257,10 @@ class SecureMultiplier:
     def __init__(self, triple_pool: BeaverTriplePool, n_nodes: int, t: int,
                  field_size: int = 2**31 - 1,
                  reconstruction_manager: Optional[MPCReconstructionManager] = None,
-                 prss_seed: Optional[int] = None):
+                 prss_seed: Optional[int] = None,
+                 *,
+                 triple_dealer_id: Optional[int] = None,
+                 privacy_mode: bool = False):
         """
         Initialize secure multiplier
         Args:
@@ -146,10 +279,456 @@ class SecureMultiplier:
         # This avoids expensive triple pool generation and keeps nodes consistent
         # in multi-process local testing (SIMD-style "packed" triples per chunk).
         self.prss_seed = prss_seed
+        self.triple_dealer_id = int(triple_dealer_id) if triple_dealer_id is not None else None
+        # If enabled, forbid any triple generation mode where a single node can
+        # derive triple secrets (e.g., shared PRSS seed or locally-generated pools),
+        # and require dealer-backed triples + multi-node reconstruction.
+        self.privacy_mode = bool(privacy_mode)
+        self._inv_cache: dict[int, int] = {}
+        self._init_profile_stats()
         
         # Initialize pool if not already initialized
         if triple_pool.n_nodes == 0:
             triple_pool.initialize(n_nodes, t)
+
+    def _inv_public(self, a: int) -> int:
+        """Modular inverse of a public integer in this field (cached)."""
+        a = int(a) % int(self.field_size)
+        if a in self._inv_cache:
+            return self._inv_cache[a]
+        inv = pow(a, int(self.field_size) - 2, int(self.field_size))
+        self._inv_cache[a] = inv
+        return inv
+
+    def _effective_timeout(self, timeout: float) -> float:
+        """
+        In privacy_mode, nodes can desynchronize more (dealer node generates triples locally
+        while non-dealer nodes request triple vectors over the network). Large SIMD openings
+        (e.g. conv kernels) can legitimately take several minutes on slower nodes.
+        """
+        try:
+            t = float(timeout)
+        except Exception:
+            t = 120.0
+        if self.privacy_mode:
+            return max(t, 600.0)
+        return t
+
+    def _init_profile_stats(self):
+        # Lightweight counters for profiling (per-process). Safe to ignore.
+        self._profile_stats: Dict[str, int] = {
+            "multiply_calls": 0,
+            "multiply_batch_calls": 0,
+            "multiply_batch_values_calls": 0,
+            "multiply_batch_values_elems": 0,
+            "multiply_batch_values_fp_calls": 0,
+            "multiply_batch_values_fp_elems": 0,
+            "opened_div_vectors": 0,
+            "opened_div_elems": 0,
+            "dealer_triple_vector_requests": 0,
+            "dealer_triple_vector_elems": 0,
+        }
+
+    def profile_snapshot_and_reset(self) -> Dict[str, int]:
+        """
+        Return a copy of current stats and reset counters.
+        Useful for per-batch profiling output.
+        """
+        if not hasattr(self, "_profile_stats"):
+            self._init_profile_stats()
+        snap = dict(self._profile_stats)
+        for k in self._profile_stats:
+            self._profile_stats[k] = 0
+        return snap
+
+    def _opened_fp_enabled(self) -> bool:
+        """
+        "A" mode: opener/enclave performs integer truncation and re-shares.
+        Enabled automatically when privacy_mode is on and we have networking.
+        """
+        return bool(self.privacy_mode and self.reconstruction_manager is not None and self.n_nodes > 1)
+
+    def _opened_fp_opener(self) -> int:
+        # Prefer the triple dealer as the opener (already treated as enclave-trusted in this codebase)
+        if self.triple_dealer_id is not None:
+            return int(self.triple_dealer_id)
+        return 1
+
+    def _reshare_vector_from_opener(
+        self,
+        *,
+        secrets_mod_p_u64: np.ndarray,
+        node_id: int,
+        context_prefix: str,
+        x_points: List[int],
+        timeout: float,
+    ) -> np.ndarray:
+        """
+        Opener-only: given a vector of secrets (mod p), create Shamir shares for each node and
+        send each node its vector as a single binary message.
+        Returns the opener's own share vector (uint64).
+        """
+        p = int(self.field_size)
+        n = int(self.n_nodes)
+        t = int(self.t)
+        L = int(secrets_mod_p_u64.size)
+        if L <= 0:
+            return np.zeros((0,), dtype=np.uint64)
+
+        # Random polynomial coefficients for degrees 1..t (vectorized)
+        rng = np.random.default_rng()
+        if t > 0:
+            coeffs = rng.integers(0, p, size=(t, L), dtype=np.uint64)
+        else:
+            coeffs = np.zeros((0, L), dtype=np.uint64)
+
+        # Precompute x^k for each node x and each k=1..t
+        xs = [int(x) for x in x_points]
+        x_pows: dict[int, List[int]] = {}
+        for x in xs:
+            xp = []
+            xk = x % p
+            for _k in range(1, t + 1):
+                xp.append(int(xk))
+                xk = (xk * x) % p
+            x_pows[x] = xp
+
+        net = self.reconstruction_manager.network  # type: ignore[union-attr]
+        opener = self._opened_fp_opener()
+
+        # Compute and send per-node share vectors
+        opener_share_vec = None
+        for nid in range(1, n + 1):
+            x = int(x_points[nid - 1])
+            y = (secrets_mod_p_u64.astype(np.uint64, copy=False) % np.uint64(p)).copy()
+            if t > 0:
+                for k in range(t):
+                    y = (y + (coeffs[k] * np.uint64(x_pows[x][k])) % np.uint64(p)) % np.uint64(p)
+            if nid == opener:
+                opener_share_vec = y
+            else:
+                ctx_out = f"{context_prefix}_to_{nid}"
+                net.channel.send_vector(int(nid), ctx_out, x=int(nid), values=y.astype(np.uint32, copy=False))
+
+        if opener_share_vec is None:
+            raise RuntimeError("Opener share vector missing (unexpected)")
+        return opener_share_vec
+
+    def _opened_divide_and_reshare_vector(
+        self,
+        *,
+        values_local_u64: np.ndarray,
+        divisor: int,
+        node_id: int,
+        x: int,
+        context_prefix: str,
+        timeout: float,
+    ) -> np.ndarray:
+        """
+        Open (reconstruct) a vector on the opener, compute integer-rounded division by a PUBLIC divisor,
+        then re-share the result as Shamir shares back to all nodes.
+        Returns this node's output share vector (uint64 mod p).
+        """
+        try:
+            if hasattr(self, "_profile_stats"):
+                self._profile_stats["opened_div_vectors"] += 1
+                self._profile_stats["opened_div_elems"] += int(np.asarray(values_local_u64).size)
+        except Exception:
+            pass
+        if self.reconstruction_manager is None:
+            raise RuntimeError("opened truncation requires reconstruction_manager")
+        if int(divisor) == 0:
+            raise ValueError("divisor must be non-zero")
+
+        p = int(self.field_size)
+        n = int(self.n_nodes)
+        timeout = self._effective_timeout(timeout)
+
+        net = self.reconstruction_manager.network
+        opener = self._opened_fp_opener()
+
+        # Everyone broadcasts their local vector
+        ctx_in = f"{context_prefix}_in"
+        net.broadcast_vector(ctx_in, x=int(x), values=np.asarray(values_local_u64, dtype=np.uint32))
+
+        if int(node_id) == int(opener):
+            opened_u64 = self.reconstruction_manager.reconstruct_opened_vector_values(
+                context=ctx_in,
+                values_local=np.asarray(values_local_u64, dtype=np.uint32),
+                x=int(x),
+                timeout=timeout,
+            )
+            opened = opened_u64.astype(np.int64, copy=False)
+            opened = np.where(opened > (p // 2), opened - p, opened)
+
+            d = int(divisor)
+            # Round-to-nearest integer division (ties toward +inf for positives / -inf for negatives)
+            adj = np.where(opened >= 0, d // 2, -(d // 2))
+            q = (opened + adj) // d
+            q_mod = np.mod(q, p).astype(np.uint64, copy=False)
+
+            # Re-share q_mod to all nodes
+            x_points = [i for i in range(1, n + 1)]
+            out_prefix = f"{context_prefix}_out"
+            opener_vec = self._reshare_vector_from_opener(
+                secrets_mod_p_u64=q_mod,
+                node_id=node_id,
+                context_prefix=out_prefix,
+                x_points=x_points,
+                timeout=timeout,
+            )
+
+            # Cleanup input buffers
+            try:
+                net.channel.clear_vector(ctx_in)
+            except Exception:
+                pass
+
+            return opener_vec
+
+        # Non-opener: wait for output vector from opener
+        out_ctx = f"{context_prefix}_out_to_{node_id}"
+        import time as _time
+        start = _time.time()
+        while _time.time() - start < timeout:
+            recv = net.channel.get_received_vector(out_ctx)
+            if opener in recv:
+                values = recv[opener].get("values")
+                arr = np.asarray(values, dtype=np.uint32).astype(np.uint64, copy=False) % np.uint64(p)
+                try:
+                    net.channel.clear_vector(out_ctx)
+                except Exception:
+                    pass
+                try:
+                    net.channel.clear_vector(ctx_in)
+                except Exception:
+                    pass
+                return arr
+            _time.sleep(0.01)
+
+        raise RuntimeError(f"Timed out waiting for opened truncation output (ctx={out_ctx})")
+
+    def multiply_fixed_point(
+        self,
+        share1: Share,
+        share2: Share,
+        *,
+        node_id: int,
+        scale_factor: int,
+        context: Optional[str],
+    ) -> Share:
+        """
+        Fixed-point multiply for SCALE-scaled values:
+            out = (share1 * share2) / SCALE   (out is SCALE-scaled)
+        """
+        prod = self.multiply(share1, share2, node_id=node_id, context=context)
+        # "A" mode: opener truncation to keep values in integer fixed-point (avoid field fractions)
+        if self._opened_fp_enabled() and context:
+            out_vec = self._opened_divide_and_reshare_vector(
+                values_local_u64=np.asarray([int(prod.y) % int(self.field_size)], dtype=np.uint64),
+                divisor=int(scale_factor),
+                node_id=int(node_id),
+                x=int(prod.x),
+                context_prefix=f"{context}_fp_trunc_div_{int(scale_factor)}",
+                timeout=120.0,
+            )
+            return Share(x=prod.x, y=int(out_vec[0]) % int(self.field_size), node_id=node_id)
+
+        inv_scale = self._inv_public(scale_factor)
+        return Share(x=prod.x, y=(int(prod.y) * inv_scale) % int(self.field_size), node_id=node_id)
+
+    def multiply_batch_values_fixed_point(
+        self,
+        y1: np.ndarray,
+        y2: np.ndarray,
+        *,
+        x: int,
+        node_id: int,
+        context_prefix: str,
+        scale_factor: int,
+        chunk_timeout: float = 120.0,
+    ) -> np.ndarray:
+        """
+        Array-based fixed-point multiply for SCALE-scaled values:
+            out = (y1 * y2) / SCALE   (out is SCALE-scaled)
+        Returns uint64 array of share values mod p.
+        """
+        try:
+            if hasattr(self, "_profile_stats"):
+                self._profile_stats["multiply_batch_values_fp_calls"] += 1
+                self._profile_stats["multiply_batch_values_fp_elems"] += int(np.asarray(y1).size)
+        except Exception:
+            pass
+        prod = self.multiply_batch_values(
+            y1=np.asarray(y1, dtype=np.uint64),
+            y2=np.asarray(y2, dtype=np.uint64),
+            x=x,
+            node_id=node_id,
+            context_prefix=context_prefix,
+            chunk_timeout=self._effective_timeout(chunk_timeout),
+        )
+        p = np.uint64(int(self.field_size))
+
+        # "A" mode: opener truncation to keep values in integer fixed-point (avoid field fractions)
+        if self._opened_fp_enabled():
+            return self._opened_divide_and_reshare_vector(
+                values_local_u64=np.asarray(prod, dtype=np.uint64) % p,
+                divisor=int(scale_factor),
+                node_id=int(node_id),
+                x=int(x),
+                context_prefix=f"{context_prefix}_fp_trunc_div_{int(scale_factor)}",
+                timeout=float(chunk_timeout),
+            ).astype(np.uint64, copy=False) % p
+
+        inv_scale = np.uint64(self._inv_public(scale_factor))
+        # Safe in practice once SCALE_FACTOR is reduced (values stay far below 2^63)
+        return (np.asarray(prod, dtype=np.uint64) * inv_scale) % p
+
+    def _dealer_request_triple_vectors(self, *, context_prefix: str, n: int, x: int, node_id: int, timeout: float = 120.0):
+        """
+        Request a,b,c share vectors from the dealer for this node under (context_prefix, idx).
+        Returns three numpy arrays (uint32) of length n.
+        """
+        if self.triple_dealer_id is None:
+            raise RuntimeError("triple_dealer_id is not set")
+        if self.reconstruction_manager is None:
+            raise RuntimeError("dealer triple requests require reconstruction_manager/network")
+
+        try:
+            if hasattr(self, "_profile_stats"):
+                self._profile_stats["dealer_triple_vector_requests"] += 1
+                self._profile_stats["dealer_triple_vector_elems"] += int(n)
+        except Exception:
+            pass
+
+        dealer = int(self.triple_dealer_id)
+
+        # Fast path: if we ARE the dealer node, generate locally (no self-connection exists).
+        try:
+            if dealer == int(self.reconstruction_manager.network.node_id):
+                svc = getattr(self.reconstruction_manager.network.channel, "_triple_dealer_service", None)
+                if svc is not None and hasattr(svc, "get_triple_vectors"):
+                    a_y, b_y, c_y = svc.get_triple_vectors(context_prefix, int(n), int(x))  # type: ignore[attr-defined]
+                    return (
+                        np.asarray(a_y, dtype=np.uint32),
+                        np.asarray(b_y, dtype=np.uint32),
+                        np.asarray(c_y, dtype=np.uint32),
+                    )
+        except Exception:
+            pass
+
+        # Ensure we have a connection to dealer (outgoing sockets only)
+        try:
+            if dealer not in self.reconstruction_manager.network.channel.connections:
+                cfg = self.reconstruction_manager.network.node_configs.get(dealer)
+                if cfg:
+                    self.reconstruction_manager.network.channel.connect_to_node(dealer, cfg["host"], int(cfg["port"]))
+        except Exception:
+            pass
+
+        # Send request to dealer
+        from ml_training.secure_comm import MessageType
+        import time as _time
+        import secrets as _secrets
+
+        req_id = f"triple_req_{node_id}_{_secrets.token_hex(8)}"
+        self.reconstruction_manager.network.channel.send_message(
+            dealer,
+            MessageType.TRIPLE_REQUEST,
+            {"context_prefix": context_prefix, "n": int(n), "x": int(x), "req_id": req_id},
+        )
+
+        # Wait for three vectors from dealer
+        ctx_a = f"{req_id}_a"
+        ctx_b = f"{req_id}_b"
+        ctx_c = f"{req_id}_c"
+        timeout = self._effective_timeout(timeout)
+        start = _time.time()
+
+        def _get_u32(ctx: str):
+            recv = self.reconstruction_manager.network.channel.get_received_vector(ctx)
+            if dealer not in recv:
+                return None
+            values = recv[dealer].get("values")
+            # values can be array('I') or list or numpy array
+            try:
+                arr = np.asarray(values, dtype=np.uint32)
+            except Exception:
+                return None
+            if arr.size != n:
+                return None
+            return arr
+
+        a = b = c = None
+        while _time.time() - start < timeout:
+            if a is None:
+                a = _get_u32(ctx_a)
+            if b is None:
+                b = _get_u32(ctx_b)
+            if c is None:
+                c = _get_u32(ctx_c)
+            if a is not None and b is not None and c is not None:
+                break
+            _time.sleep(0.01)
+
+        # Cleanup buffers
+        try:
+            self.reconstruction_manager.network.channel.clear_vector(ctx_a)
+            self.reconstruction_manager.network.channel.clear_vector(ctx_b)
+            self.reconstruction_manager.network.channel.clear_vector(ctx_c)
+        except Exception:
+            pass
+
+        if a is None or b is None or c is None:
+            raise RuntimeError("Dealer triple request timed out")
+        return a, b, c
+
+    def _dealer_triple_for(self, *, context: str, idx: int, node_id: int, node_x: int) -> Tuple[Share, Share, Share]:
+        a_y, b_y, c_y = self._dealer_request_triple_vectors(
+            context_prefix=context, n=1, x=node_x, node_id=node_id, timeout=120.0
+        )
+        return (
+            Share(x=node_x, y=int(a_y[0]) % self.field_size, node_id=node_id),
+            Share(x=node_x, y=int(b_y[0]) % self.field_size, node_id=node_id),
+            Share(x=node_x, y=int(c_y[0]) % self.field_size, node_id=node_id),
+        )
+
+    def get_random_mask_share(self, *, node_id: int, x: int, context: str) -> Share:
+        """
+        Return a secret-shared random mask r as a Share held by this node.
+
+        Implementation note:
+        - We reuse the 'a' component of a Beaver triple as randomness.
+        - In multi-node mode, this is safe only if triple generation is private (nodes do NOT
+          individually know the underlying a value).
+        """
+        # Privacy mode: only dealer-backed masks are allowed
+        if self.privacy_mode:
+            if self.prss_seed is not None:
+                raise RuntimeError("privacy_mode forbids PRSS-seed masks")
+            if self.triple_dealer_id is None or self.reconstruction_manager is None:
+                raise RuntimeError("privacy_mode requires dealer-backed masks (set triple_dealer_id + reconstruction_manager)")
+
+        # Prefer dealer if configured (seed not shared with all nodes)
+        if self.triple_dealer_id is not None and self.reconstruction_manager is not None:
+            a_s, _, _ = self._dealer_triple_for(context=context, idx=0, node_id=node_id, node_x=x)
+            return a_s
+
+        # Prefer PRSS if enabled (fast, deterministic, but nodes can derive triple secrets)
+        if self.prss_seed is not None:
+            a_s, _, _ = self._prss_triple_for(context, 0, node_id=node_id, node_x=x)
+            return a_s
+
+        # Pool-based: requires that all nodes stay in lockstep consuming triples.
+        triple = self.triple_pool.get_triple()
+        if triple is None:
+            replenish_size = max(1000, self.triple_pool.initial_size // 10)
+            self.triple_pool.replenish(replenish_size)
+            triple = self.triple_pool.get_triple()
+            if triple is None:
+                raise RuntimeError("Failed to get Beaver triple for mask")
+        a_s, _, _ = triple.get_for_node(node_id)
+        return a_s
 
     def _prss_u64(self, label: str, context: str, idx: int, extra: int = 0) -> int:
         # Deterministic pseudo-random 64-bit integer derived from (seed,label,context,idx,extra).
@@ -213,11 +792,32 @@ class SecureMultiplier:
         # path already uses local values as a placeholder for reconstruction,
         # so this optimization preserves the exact arithmetic result while
         # removing triple generation / book-keeping costs.
+        try:
+            if hasattr(self, "_profile_stats"):
+                self._profile_stats["multiply_calls"] += 1
+        except Exception:
+            pass
         if self.n_nodes == 1 and self.t == 0 and self.reconstruction_manager is None:
             return Share(
                 x=share1.x,
                 y=(share1.y * share2.y) % self.field_size,
                 node_id=node_id
+            )
+
+        # Dealer-backed scalar multiplication:
+        # - required for privacy_mode
+        # - also preferred whenever dealer is configured and a context is provided
+        if self.triple_dealer_id is not None and self.reconstruction_manager is not None and context:
+            node_x = int(share1.x)
+            a_s, b_s, c_s = self._dealer_triple_for(context=context, idx=0, node_id=node_id, node_x=node_x)
+            triple = BeaverTriple([a_s], [b_s], [c_s])
+            return self._multiply_with_reconstruction(share1, share2, triple, node_id, context)
+
+        if self.privacy_mode:
+            # No context => can't align openings; no dealer => can't provide private triples
+            raise RuntimeError(
+                "privacy_mode requires dealer-backed multiplication with a non-empty context "
+                "(set triple_dealer_id + reconstruction_manager, and pass context=...)"
             )
 
         # Get triple from pool
@@ -266,6 +866,11 @@ class SecureMultiplier:
             raise ValueError("share1_list and share2_list length mismatch")
         if not share1_list:
             return []
+        try:
+            if hasattr(self, "_profile_stats"):
+                self._profile_stats["multiply_batch_calls"] += 1
+        except Exception:
+            pass
 
         # Single-node fast path
         if self.n_nodes == 1 and self.t == 0 and self.reconstruction_manager is None:
@@ -289,8 +894,27 @@ class SecureMultiplier:
 
         # Generate triples and form local d/e shares
         node_x = share1_list[0].x
-        if self.prss_seed is not None and context_prefix is not None:
+        # Increase batch timeout in privacy_mode (see _effective_timeout)
+        chunk_timeout = self._effective_timeout(chunk_timeout)
+
+        if self.triple_dealer_id is not None and self.reconstruction_manager is not None and context_prefix is not None:
+            # Dealer-backed triples keyed by (context_prefix, idx)
+            a_y, b_y, c_y = self._dealer_request_triple_vectors(
+                context_prefix=context_prefix, n=len(share1_list), x=node_x, node_id=node_id, timeout=chunk_timeout
+            )
+            for i in range(len(share1_list)):
+                a_s = Share(x=node_x, y=int(a_y[i]) % self.field_size, node_id=node_id)
+                b_s = Share(x=node_x, y=int(b_y[i]) % self.field_size, node_id=node_id)
+                c_s = Share(x=node_x, y=int(c_y[i]) % self.field_size, node_id=node_id)
+                a_shares.append(a_s)
+                b_shares.append(b_s)
+                c_shares.append(c_s)
+                d_local.append(Share(x=node_x, y=(share1_list[i].y - a_s.y) % self.field_size, node_id=node_id))
+                e_local.append(Share(x=node_x, y=(share2_list[i].y - b_s.y) % self.field_size, node_id=node_id))
+        elif self.prss_seed is not None and context_prefix is not None:
             # PRSS-style "packed" triples: deterministic per (context_prefix, idx)
+            if self.privacy_mode:
+                raise RuntimeError("privacy_mode forbids PRSS-seed triples")
             for i in range(len(share1_list)):
                 a_s, b_s, c_s = self._prss_triple_for(context_prefix, i, node_id=node_id, node_x=node_x)
                 a_shares.append(a_s)
@@ -299,6 +923,8 @@ class SecureMultiplier:
                 d_local.append(Share(x=node_x, y=(share1_list[i].y - a_s.y) % self.field_size, node_id=node_id))
                 e_local.append(Share(x=node_x, y=(share2_list[i].y - b_s.y) % self.field_size, node_id=node_id))
         else:
+            if self.privacy_mode:
+                raise RuntimeError("privacy_mode requires dealer-backed batch triples (set triple_dealer_id + context_prefix)")
             for i in range(len(share1_list)):
                 triple = self.triple_pool.get_triple()
                 if triple is None:
@@ -324,14 +950,16 @@ class SecureMultiplier:
         # Compute outputs
         out: List[Share] = []
         for i in range(len(share1_list)):
-            d_recon = d_vals[i]
-            e_recon = e_vals[i]
-            result_y = (
+            # d_vals/e_vals come back as numpy uint64 scalars; cast to Python int
+            # to avoid numpy-integer propagation into Share.y (breaks JSON transport).
+            d_recon = int(d_vals[i])
+            e_recon = int(e_vals[i])
+            result_y = int((
                 c_shares[i].y +
                 (d_recon * b_shares[i].y) % self.field_size +
                 (e_recon * a_shares[i].y) % self.field_size +
                 (d_recon * e_recon) % self.field_size
-            ) % self.field_size
+            ) % self.field_size)
             out.append(Share(x=share1_list[i].x, y=result_y, node_id=node_id))
 
         # Replenish pool if needed (only if we're using the pool)
@@ -363,6 +991,15 @@ class SecureMultiplier:
         Returns:
             1D numpy array of product share values modulo field_size
         """
+        try:
+            if hasattr(self, "_profile_stats"):
+                self._profile_stats["multiply_batch_values_calls"] += 1
+                self._profile_stats["multiply_batch_values_elems"] += int(np.asarray(y1).size)
+        except Exception:
+            pass
+        # Increase batch timeout in privacy_mode (see _effective_timeout)
+        chunk_timeout = self._effective_timeout(chunk_timeout)
+
         y1 = np.asarray(y1, dtype=np.uint64)
         y2 = np.asarray(y2, dtype=np.uint64)
         if y1.shape != y2.shape:
@@ -396,13 +1033,25 @@ class SecureMultiplier:
         b_y = np.empty((n,), dtype=np.uint64)
         c_y = np.empty((n,), dtype=np.uint64)
 
-        if self.prss_seed is not None:
+        if self.triple_dealer_id is not None:
+            # Dealer-backed deterministic triples keyed by (context_prefix, idx)
+            a_y_u32, b_y_u32, c_y_u32 = self._dealer_request_triple_vectors(
+                context_prefix=context_prefix, n=n, x=x, node_id=node_id, timeout=chunk_timeout
+            )
+            a_y[:] = a_y_u32.astype(np.uint64)
+            b_y[:] = b_y_u32.astype(np.uint64)
+            c_y[:] = c_y_u32.astype(np.uint64)
+        elif self.prss_seed is not None:
+            if self.privacy_mode:
+                raise RuntimeError("privacy_mode forbids PRSS-seed triples")
             for i in range(n):
                 a_s, b_s, c_s = self._prss_triple_for(context_prefix, i, node_id=node_id, node_x=x)
                 a_y[i] = a_s.y
                 b_y[i] = b_s.y
                 c_y[i] = c_s.y
         else:
+            if self.privacy_mode:
+                raise RuntimeError("privacy_mode requires dealer-backed triples (set triple_dealer_id)")
             # Pool-based (still works, but slower)
             for i in range(n):
                 triple = self.triple_pool.get_triple()
@@ -426,7 +1075,7 @@ class SecureMultiplier:
             e_vals_local=(e_local % p).astype(np.uint32, copy=False),
             x=x,
             context_prefix=context_prefix,
-            timeout=chunk_timeout,
+            timeout=self._effective_timeout(chunk_timeout),
         )
         d = np.asarray(d_vals, dtype=np.uint64) % p
         e = np.asarray(e_vals, dtype=np.uint64) % p

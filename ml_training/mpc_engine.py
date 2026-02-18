@@ -3,7 +3,7 @@ MPC Engine for Secure Computation
 Performs forward/backward pass on secret-shared data
 """
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from ml_training.secret_sharing import Share, PackedShamirSecretSharing
 from ml_training.beaver_triples import SecureMultiplier, BeaverTriplePool, BeaverTripleGenerator
 from ml_training.secure_matrix_ops import SecureMatrixOperations, GPUMatrixAccelerator
@@ -84,6 +84,121 @@ class PackedMPCEngine:
             y=(share.y * scalar) % self.field_size,
             node_id=node_id
         )
+
+    # ---------------------------------------------------------------------
+    # Packed-Shamir SIMD utilities (public-weight linear layers)
+    # ---------------------------------------------------------------------
+    def pack_batch_vector(
+        self,
+        batch_vectors: List[List[int]],
+        *,
+        node_id: int,
+        packing_factor: Optional[int] = None,
+    ) -> List[List[Share]]:
+        """
+        Pack a batch of vectors across the batch dimension using Packed Shamir.
+
+        Output format:
+            packed_inputs[j][lane_chunk] is a Share held by this node for feature j,
+            where each Share encodes up to k=(n-t) batch elements (lanes).
+
+        This is useful for SIMD-style evaluation of *linear* layers with PUBLIC weights.
+        """
+        if not batch_vectors:
+            return []
+        in_dim = len(batch_vectors[0])
+        if any(len(v) != in_dim for v in batch_vectors):
+            raise ValueError("All batch vectors must have same length")
+
+        max_k = self.pss.max_packing_factor(self.n_nodes, self.t)
+        k = int(packing_factor) if packing_factor is not None else max_k
+        if k <= 0 or k > max_k:
+            raise ValueError(f"packing_factor must be in [1, {max_k}] for (n={self.n_nodes}, t={self.t})")
+
+        # Transpose batch: for each feature j, pack [x0[j], x1[j], ...]
+        packed_by_feature: List[List[Share]] = []
+        for j in range(in_dim):
+            secrets_j = [int(v[j]) % self.field_size for v in batch_vectors]
+            chunks = self.pss.share_vector(secrets_j, self.n_nodes, self.t, packing_factor=k)
+            # Take this node's share from each chunk
+            node_shares = [chunk[int(node_id) - 1] for chunk in chunks]
+            packed_by_feature.append(node_shares)
+        return packed_by_feature
+
+    def packed_matvec_public_weights(
+        self,
+        packed_inputs_by_feature: List[List[Share]],
+        W: List[List[int]],
+        *,
+        node_id: int,
+    ) -> List[List[Share]]:
+        """
+        Compute y = W @ x for PACKED secret-shared x, where W is PUBLIC (plaintext) integers mod p.
+
+        Returns:
+            packed_outputs[i] is a list of Share chunks for output neuron i,
+            aligned with the chunking of packed_inputs_by_feature[0].
+
+        LIMITATION:
+            This only supports public weights. If weights are also secret-shared, you need
+            packed Beaver triples + degree management, which is not implemented here.
+        """
+        if not packed_inputs_by_feature:
+            return []
+        in_dim = len(packed_inputs_by_feature)
+        if not W:
+            return []
+        out_dim = len(W)
+        if any(len(row) != in_dim for row in W):
+            raise ValueError("W shape mismatch: expected each row to have len(in_dim)")
+
+        n_chunks = len(packed_inputs_by_feature[0])
+        if any(len(packed_inputs_by_feature[j]) != n_chunks for j in range(in_dim)):
+            raise ValueError("All input features must have same number of packed chunks")
+
+        p = int(self.field_size)
+        outputs: List[List[Share]] = []
+        for i in range(out_dim):
+            row = W[i]
+            out_chunks: List[Share] = []
+            for c in range(n_chunks):
+                # y_i(chunk c) = sum_j W[i][j] * x_j(chunk c)
+                acc_y = 0
+                x_point = packed_inputs_by_feature[0][c].x
+                for j in range(in_dim):
+                    x_share = packed_inputs_by_feature[j][c]
+                    w = int(row[j]) % p
+                    acc_y = (acc_y + (w * int(x_share.y)) % p) % p
+                out_chunks.append(Share(x=int(x_point), y=int(acc_y), node_id=int(node_id)))
+            outputs.append(out_chunks)
+        return outputs
+
+    def reconstruct_packed_outputs(
+        self,
+        packed_outputs_by_neuron_all_nodes: List[List[List[Share]]],
+        *,
+        k: int,
+        t: int,
+    ) -> List[List[int]]:
+        """
+        Reconstruct packed outputs.
+
+        Args:
+            packed_outputs_by_neuron_all_nodes:
+                packed_outputs_by_neuron_all_nodes[i][c] is the list of shares from multiple nodes
+                for neuron i, chunk c (at least t+k shares required).
+            k: number of lanes per chunk (except possibly the last chunk)
+            t: privacy threshold
+        Returns:
+            For each neuron i, returns the concatenated reconstructed outputs across chunks.
+        """
+        out: List[List[int]] = []
+        for neuron_chunks in packed_outputs_by_neuron_all_nodes:
+            vals: List[int] = []
+            for shares_chunk in neuron_chunks:
+                vals.extend(self.pss.reconstruct_secrets(shares_chunk, k=k, t=t))
+            out.append(vals)
+        return out
     
     def forward_pass(self, packed_input_shares: List[Share], 
                     weights: List[List[List[Share]]], 

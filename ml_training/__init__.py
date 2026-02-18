@@ -45,6 +45,23 @@ from ml_training.reconstruction import (
     MPCReconstructionManager,
     create_reconstruction_manager
 )
+try:
+    from ml_training.sentra_training_node import (
+        NodeIdentity,
+        QuorumConfig,
+        RetryConfig,
+        TrainingConfig,
+        VersionedValue,
+        MiniBatchShares,
+        VersionedKVSClient,
+        MembershipTracker,
+        SentraTrainingNode,
+    )
+    _HAS_SENTRA_NODE_RUNTIME = True
+except Exception:
+    # Optional runtime dependency path (coordination/kvstore/mpc) may be absent
+    # for standard pipeline-only runs.
+    _HAS_SENTRA_NODE_RUNTIME = False
 
 __all__ = [
     'Share',
@@ -74,6 +91,18 @@ __all__ = [
     'create_mpc_network',
     'SecureReconstruction',
     'MPCReconstructionManager',
-    'create_reconstruction_manager'
+    'create_reconstruction_manager',
 ]
 
+if _HAS_SENTRA_NODE_RUNTIME:
+    __all__.extend([
+        'NodeIdentity',
+        'QuorumConfig',
+        'RetryConfig',
+        'TrainingConfig',
+        'VersionedValue',
+        'MiniBatchShares',
+        'VersionedKVSClient',
+        'MembershipTracker',
+        'SentraTrainingNode',
+    ])

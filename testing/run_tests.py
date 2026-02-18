@@ -1,0 +1,76 @@
+#!/usr/bin/env python
+"""
+Test runner script for SENTRA ML Training Pipeline
+"""
+
+import sys
+import subprocess
+import argparse
+
+
+def run_tests(test_type="all", verbose=False, coverage=False):
+    """Run tests based on type"""
+    
+    cmd = ["pytest"]
+    
+    if verbose:
+        cmd.append("-v")
+    
+    if coverage:
+        cmd.extend(["--cov=ml_training", "--cov-report=html", "--cov-report=term"])
+    
+    if test_type == "unit":
+        # Run only unit tests (exclude integration and benchmarks)
+        cmd.extend(["-m", "not integration and not benchmark"])
+    elif test_type == "integration":
+        # Run only integration tests
+        cmd.extend(["-m", "integration"])
+    elif test_type == "benchmarks":
+        # Run only benchmarks
+        cmd.extend(["testing/test_benchmarks.py", "-m", "benchmark"])
+    elif test_type == "fast":
+        # Run fast tests (exclude slow)
+        cmd.extend(["-m", "not slow"])
+    elif test_type == "all":
+        # Run all tests
+        pass
+    else:
+        # Run specific test file
+        cmd.append(f"testing/test_{test_type}.py")
+    
+    print(f"Running: {' '.join(cmd)}")
+    result = subprocess.run(cmd)
+    return result.returncode
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Run SENTRA test suite")
+    parser.add_argument(
+        "--type",
+        choices=["all", "unit", "integration", "benchmarks", "fast", 
+                 "secret_sharing", "kvs", "beaver_triples", "secure_comparison",
+                 "secure_division", "mpc_engine", "secure_matrix_ops", 
+                 "dp_sgd", "communication"],
+        default="all",
+        help="Type of tests to run"
+    )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Verbose output"
+    )
+    parser.add_argument(
+        "--coverage",
+        action="store_true",
+        help="Generate coverage report"
+    )
+    
+    args = parser.parse_args()
+    
+    exit_code = run_tests(args.type, args.verbose, args.coverage)
+    sys.exit(exit_code)
+
+
+if __name__ == "__main__":
+    main()
+

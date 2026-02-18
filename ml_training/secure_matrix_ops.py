@@ -15,7 +15,7 @@ class SecureMatrixMultiplier:
     Optimized for neural network operations
     """
     
-    def __init__(self, multiplier: SecureMultiplier, field_size: int = 2**31 - 1):
+    def __init__(self, multiplier: SecureMultiplier, field_size: int = 2**31 - 1, scale_factor: int = 1000):
         """
         Initialize secure matrix multiplier
         Args:
@@ -24,6 +24,7 @@ class SecureMatrixMultiplier:
         """
         self.multiplier = multiplier
         self.field_size = field_size
+        self.scale_factor = int(scale_factor)
     
     def secure_matrix_multiply(self, A_shares: List[List[Share]], 
                                B_shares: List[List[Share]], 
@@ -121,17 +122,95 @@ class SecureMatrixMultiplier:
         y2 = np.tile(v_y, m)
 
         base = context if context else "matvec"
-        chunk = 16384
+        # Larger chunk = fewer network round-trips (2 per chunk). 32768 or 65536 can speed up.
+        chunk = 32768
         prod = np.empty_like(y1, dtype=np.uint64)
         for start in range(0, y1.size, chunk):
             end = min(start + chunk, y1.size)
-            prod[start:end] = self.multiplier.multiply_batch_values(
+            prod[start:end] = self.multiplier.multiply_batch_values_fixed_point(
                 y1[start:end], y2[start:end], x=x0, node_id=node_id, context_prefix=f"{base}_mv_{start}"
+                , scale_factor=self.scale_factor
             )
         prod = prod.reshape(m, n)
         out = (prod.sum(axis=1) % self.field_size)
 
         return [Share(x=x0, y=int(out[i] % self.field_size), node_id=node_id) for i in range(m)]
+
+    def secure_matrix_matrix_multiply_fixed_point(
+        self,
+        A_shares: List[List[Share]],
+        B_cols: List[List[Share]],
+        *,
+        node_id: int,
+        context: Optional[str] = None,
+        chunk: int = 32768,
+    ) -> List[List[Share]]:
+        """
+        Multiply matrix by multiple vectors (matrix-matrix): Y = A @ B, where:
+          - A_shares is (m x n)
+          - B_cols is a list of b vectors, each length n (so B is n x b)
+
+        Fixed-point convention:
+          - A entries are SCALE-scaled
+          - B entries are SCALE-scaled
+          - Output entries are SCALE-scaled, using Beaver multiply then divide by SCALE.
+
+        This is a SIMD-style optimization: all elementwise multiplications for the whole
+        mini-batch are performed via batched Beaver openings.
+        """
+        if not A_shares:
+            return [[] for _ in range(len(B_cols))]
+        if not B_cols:
+            return []
+
+        m = len(A_shares)
+        n = len(A_shares[0]) if A_shares[0] else 0
+        b = len(B_cols)
+        if n == 0:
+            return [[Share(x=0, y=0, node_id=node_id) for _ in range(m)] for _ in range(b)]
+
+        # Validate B shapes
+        for col in B_cols:
+            if len(col) != n:
+                raise ValueError("B_cols vectors must all have length equal to number of A columns")
+
+        # Use the node's x-coordinate for all shares
+        x0 = int(A_shares[0][0].x)
+
+        # Build numeric arrays
+        A_y = np.asarray([[int(A_shares[i][j].y) for j in range(n)] for i in range(m)], dtype=np.uint64)
+        B_y = np.asarray([[int(B_cols[c][j].y) for c in range(b)] for j in range(n)], dtype=np.uint64)  # (n x b)
+
+        # Flatten (m*n*b) elementwise products in aligned order:
+        # for each A element (i,j) we multiply it by all b columns B[j, :]
+        y1 = np.repeat(A_y.reshape(-1), b)  # length m*n*b
+        B_tiled = np.tile(B_y, (m, 1))      # shape (m*n, b)
+        y2 = B_tiled.reshape(-1)            # length m*n*b
+
+        base = context if context else "matmat"
+        prod = np.empty((y1.size,), dtype=np.uint64)
+        for start in range(0, y1.size, int(chunk)):
+            end = min(start + int(chunk), y1.size)
+            prod[start:end] = self.multiplier.multiply_batch_values_fixed_point(
+                y1[start:end],
+                y2[start:end],
+                x=x0,
+                node_id=int(node_id),
+                context_prefix=f"{base}_mm_{start}",
+                scale_factor=int(self.scale_factor),
+                chunk_timeout=120.0,
+            )
+
+        # Reshape back and sum over input dimension n: (m,n,b) -> (m,b)
+        prod = prod.reshape(m, n, b)
+        out_mat = (prod.sum(axis=1) % np.uint64(int(self.field_size)))  # (m, b)
+
+        # Return as list-of-columns: outputs[col][i]
+        out_cols: List[List[Share]] = []
+        for c in range(b):
+            vec = [Share(x=x0, y=int(out_mat[i, c] % int(self.field_size)), node_id=int(node_id)) for i in range(m)]
+            out_cols.append(vec)
+        return out_cols
     
     def secure_matrix_add(self, A_shares: List[List[Share]], 
                          B_shares: List[List[Share]]) -> List[List[Share]]:
@@ -221,16 +300,17 @@ class SecureMatrixOperations:
     Optimized for forward/backward pass
     """
     
-    def __init__(self, multiplier: SecureMultiplier, field_size: int = 2**31 - 1):
+    def __init__(self, multiplier: SecureMultiplier, field_size: int = 2**31 - 1, scale_factor: int = 1000):
         """
         Initialize secure matrix operations
         Args:
             multiplier: SecureMultiplier instance
             field_size: Prime field size
         """
-        self.matrix_multiplier = SecureMatrixMultiplier(multiplier, field_size)
+        self.matrix_multiplier = SecureMatrixMultiplier(multiplier, field_size, scale_factor=scale_factor)
         self.multiplier = multiplier
         self.field_size = field_size
+        self.scale_factor = int(scale_factor)
     
     def forward_pass(self, input_shares: List[Share], 
                     weights: List[List[List[Share]]], 
@@ -298,17 +378,17 @@ class SecureMatrixOperations:
             for i, weight_row in enumerate(layer_weights):
                 row_gradients = []
                 for j, weight_share in enumerate(weight_row):
-                    # Simplified gradient computation
-                    # In production: grad = input[i] * output_grad[j]
-                    if i < len(layer_input) and j < len(current_grad):
-                        # Use actual input and gradient
-                        input_share = layer_input[i] if i < len(layer_input) else Share(x=layer_input[0].x, y=0, node_id=node_id)
+                    # For weight[i][j] (out i, in j), grad should be output_grad[i] * input[j].
+                    if i < len(current_grad) and j < len(layer_input):
+                        input_share = layer_input[j]
+                        out_grad_share = current_grad[i]
                         # Generate unique context for each multiplication
                         mult_context = f"{layer_context}_g{i}_{j}" if layer_context else None
-                        grad_share = self.multiplier.multiply(
+                        grad_share = self.multiplier.multiply_fixed_point(
                             input_share,
-                            current_grad[j],
-                            node_id,
+                            out_grad_share,
+                            node_id=node_id,
+                            scale_factor=self.scale_factor,
                             context=mult_context
                         )
                     else:
@@ -438,4 +518,3 @@ class GPUMatrixAccelerator:
     def is_available(self) -> bool:
         """Check if GPU acceleration is available"""
         return self.use_gpu
-
