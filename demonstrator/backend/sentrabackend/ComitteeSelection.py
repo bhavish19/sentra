@@ -1,4 +1,9 @@
+import time
+from collections import defaultdict
+
 from .SentraNodeList import SentraNodeList
+from .SentraNode import SentraNode
+from .Log import log as log
 
 class CommitteeSelection:
     """
@@ -136,7 +141,7 @@ class CommitteeSelection:
 
         return node.m_fTrustScore
 
-    def greedy_select(self, sorted_candidates):
+    def greedy_select(self, sorted_candidates:list[SentraNode])->SentraNodeList:
         """
         Step 4 of node selection algorithm.
 
@@ -181,7 +186,7 @@ class CommitteeSelection:
 
         return new_committee
 
-    def selectionAlgorithm(self, nodes: SentraNodeList) -> SentraNodeList:
+    def selectionAlgorithm(self, nodes: SentraNodeList) -> SentraNodeList|None:
         """
         Node selection algorithm.
 
@@ -204,7 +209,7 @@ class CommitteeSelection:
             log(f"candidate list size after filtering: \
                 {self.m_candidates.len()} is smaller than required \
                 committee size: {self.m_target_size}")
-            return
+            return None
 
         if self.m_old_committee.len():
             if (self.check_reuse()):
