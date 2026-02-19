@@ -5,6 +5,7 @@ export PEBBLE_WFE_NONCEREJECT=0
 pebble -config /pebble/pebble-config.json  2>&1 &
 PEBBLE_PID=$!
 echo "Pebble is runing as process with PID $PEBBLE_PID"
+sleep 5
 cd /sentra/backend
 python sentra-backend.py --host=0.0.0.0 $@ &
 FLASK_PID=$!
