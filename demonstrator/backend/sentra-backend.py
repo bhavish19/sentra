@@ -1,6 +1,6 @@
 from flask import Flask
 
-BACKEND_VERSION="00.04.017"
+BACKEND_VERSION="00.04.019"
 
 import sentrabackend
 from sentrabackend import log as log
@@ -20,9 +20,6 @@ if __name__ == '__main__':
     log(f"Version: {BACKEND_VERSION}")
 
     cmdlineargs=sentrabackend.CommandLineOptions()
-    if(cmdlineargs.useACME()):
-        acme_connection:sentrabackend.SentraACME=sentrabackend.SentraACME(cmdlineargs.getACMEHost(),cmdlineargs.getACMEServerCertificate())
-        acme_connection.generateTLSCertsAndKeys()
 
     backend=sentrabackend.Backend()
     app:Flask=backend.create(cmdlineargs)

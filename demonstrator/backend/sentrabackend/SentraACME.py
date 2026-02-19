@@ -20,7 +20,7 @@ class SentraACME:
         self.m_acmeCert=acmeCert
         self.m_acmeHost=acmeHost
 
-    def generateTLSCertsAndKeys(self):
+    def generateTLSCertsAndKeys(self)->tuple[bytes|None,bytes|None]:
         try:
             log("Try to get TLS certificate...")
             acc_key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
@@ -64,7 +64,7 @@ class SentraACME:
 
             order = _acme.poll_and_finalize(order)
             log("Got TLS certificate.")
-            return order
+            return (key_pem,order.fullchain_pem.encode('utf-8'))
         except:
             log("Failure in getting TLS certificate - continue without TLS.")
-            return None
+            return (None,None)
