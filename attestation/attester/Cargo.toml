@@ -65,6 +65,7 @@ schannel="=0.1.27"
 instant-acme = { git = "https://github.com/sk13/instant-acme.git", rev = "ac84bb585040133195624367f9c572b70c589593",  default-features = false,features = ["aws-lc-rs","hyper-rustls"]}
 
 argh="=0.1.14"
+argh_shared="=0.1.12"
 
 [build-dependencies]
 tonic-build = "=0.11.0"
