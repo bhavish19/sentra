@@ -5,7 +5,7 @@ use std::{error::Error, time::Duration};
 
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::transport::{Channel, Endpoint, Certificate};
+use tonic::transport::{Channel, Certificate};
 use hostname;
 use rustls::crypto::{aws_lc_rs, CryptoProvider};
 
@@ -19,8 +19,8 @@ fn main()
     let args:command_line_options::CommandLineOptions= argh::from_env();
 
     CryptoProvider::install_default(aws_lc_rs::default_provider()).expect("Failed to install crypto provider");
-    let grpc_cert:String;
-    let grpc_key:String;
+    let mut grpc_cert:Option<String>=None;
+    let mut grpc_key:Option<String>=None;
     if args.use_acme
     {
         match acme::get_tls_certificate(&args.acme_url,&args.acme_cert)
@@ -28,8 +28,8 @@ fn main()
                 Ok((cert, key)) => 
                     {
                         println!("Got certificate!");
-                        grpc_cert=cert;
-                        grpc_key=key;
+                        grpc_cert=Some(cert);
+                        grpc_key=Some(key);
                     }
                 Err(e) => 
                     {
@@ -67,23 +67,23 @@ fn main()
         {
             // Connect to the server
             println!("Try to connect to: {}",grp_server_url);
-            let client: node_message_service_client::NodeMessageServiceClient<tonic::transport::Channel>;
+            let mut client: node_message_service_client::NodeMessageServiceClient<tonic::transport::Channel>;
             if args.use_acme
             {
-                let ca_cert = Certificate::from_pem(cert_chain.as_bytes());
+                let ca_cert = Certificate::from_pem(grpc_cert.unwrap().as_bytes());
 //                let tls = ClientTlsConfig::new().ca_certificate(ca_cert).domain_name("example.com");
   //              let channel: tonic::transport::Channel = Channel::from_shared(grp_server_url)?.tls_config(tls)?.connect().await?;
     //            client = node_message_service_client::NodeMessageServiceClient::new(channel);
 
 
-                let endpoint = Channel::from_shared(grp_server_url)?
+                let endpoint = Channel::from_shared(grp_server_url).expect("REASON")
                     .tls_config(            
                                 tonic::transport::ClientTlsConfig::new()
                                 .ca_certificate(ca_cert)
                                 .domain_name("example.com")
-                                )?;
+                                ).expect("REASON");
 
-                let channel = endpoint.connect().await?;
+                let channel = endpoint.connect().await.expect("REASON");
                 client = node_message_service_client::NodeMessageServiceClient::new(channel);
             }
             else
@@ -122,7 +122,7 @@ fn main()
             // Start the bidirectional stream
             println!("Start bidirectional stream...");
             let response_stream: Result<tonic::Response<tonic::Streaming<ServerMessage>>, tonic::Status>
-                 = client.expect("REASON").node_stream(outbound).await;
+                 = client.node_stream(outbound).await;
             println!("Wait for inbound...");
 
             let mut inbound: tonic::Streaming<ServerMessage> = response_stream.expect("REASON").into_inner();

@@ -30,12 +30,14 @@ COPY ./sgx/node_config.yaml /sentra/
 
 #Build attester
 #Just update crates.io (and cache it...)
-RUN mkdir /attester
+RUN mkdir -p /attester/src
 COPY ./attestation/attester/Cargo.toml /attester
 COPY ./attestation/attester/build.rs /attester
 COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /attester/
 WORKDIR /attester
-
+RUN echo 'fn main() {}' > ./src/main.rs
+RUN occlum-cargo update -p socket2@0.6.2 --precise 0.5.10
+RUN occlum-cargo update -p getrandom@0.4.1 --precise 0.3.4
 RUN occlum-cargo build --release
 
 COPY ./attestation/attester /attester
