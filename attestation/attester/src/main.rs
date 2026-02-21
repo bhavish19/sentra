@@ -5,7 +5,7 @@ use std::{error::Error, time::Duration};
 
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::transport::{Channel, ClientTlsConfig, Certificate};
+use tonic::transport::{Channel, Endpoint, Certificate};
 use hostname;
 use rustls::crypto::{aws_lc_rs, CryptoProvider};
 
@@ -71,8 +71,19 @@ fn main()
             if args.use_acme
             {
                 let ca_cert = Certificate::from_pem(cert_chain.as_bytes());
-                let tls = ClientTlsConfig::new().ca_certificate(ca_cert).domain_name("example.com");
-                let channel: tonic::transport::Channel = Channel::from_shared(grp_server_url)?.tls_config(tls)?.connect().await?;
+//                let tls = ClientTlsConfig::new().ca_certificate(ca_cert).domain_name("example.com");
+  //              let channel: tonic::transport::Channel = Channel::from_shared(grp_server_url)?.tls_config(tls)?.connect().await?;
+    //            client = node_message_service_client::NodeMessageServiceClient::new(channel);
+
+
+                let endpoint = Channel::from_shared(grp_server_url)?
+                    .tls_config(            
+                                tonic::transport::ClientTlsConfig::new()
+                                .ca_certificate(ca_cert)
+                                .domain_name("example.com")
+                                )?;
+
+                let channel = endpoint.connect().await?;
                 client = node_message_service_client::NodeMessageServiceClient::new(channel);
             }
             else
