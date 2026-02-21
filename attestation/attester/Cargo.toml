@@ -28,7 +28,7 @@ itoa="=1.0.15"
 
 anyhow="=1.0.100"
 socket2="=0.5.10"
-tonic = { version = "0.11.00", default-features = false, features = ["channel","tls-aws-lc"] }
+tonic = { version = "=0.11.0", default-features = false, features = ["channel","tls","codegen","prost"] }
 hostname="=0.3.1"
 
 rustls = { version = "=0.23.17", features = ["aws_lc_rs"] }
