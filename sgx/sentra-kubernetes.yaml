@@ -97,6 +97,7 @@ spec:
       containers:
       - name: sentra-node
         image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-sgx:latest
+        args: ["--grpc-url", "http://sentra-backend:8000"]
         securityContext:
           privileged: true
         volumeMounts:
