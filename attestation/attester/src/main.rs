@@ -66,14 +66,17 @@ fn main()
         {
             // Connect to the server
             println!("Try to connect to: {}",grp_server_url);
-            let client: Result<node_message_service_client::NodeMessageServiceClient<tonic::transport::Channel>, tonic::transport::Error>;
+            let client: node_message_service_client::NodeMessageServiceClient<tonic::transport::Channel>;
             if args.use_acme
             {
-                client = node_message_service_client::NodeMessageServiceClient::connect(grp_server_url).await;
+                let ca_cert = Certificate::from_pem(cert_chain.as_bytes());
+                let tls = ClientTlsConfig::new().ca_certificate(ca_cert).domain_name("example.com");
+                let channel: tonic::transport::Channel = Channel::from_shared(grp_server_url)?.tls_config(tls)?.connect().await?;
+                client = node_message_service_client::NodeMessageServiceClient::new(channel);
             }
             else
             {
-                client = node_message_service_client::NodeMessageServiceClient::connect(grp_server_url).await;
+                client = node_message_service_client::NodeMessageServiceClient::connect(grp_server_url).await.expect("REASON");
             }
 
             // Create a channel for sending messages to the server
