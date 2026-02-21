@@ -23,6 +23,8 @@ class SentraACME:
     def generateTLSCertsAndKeys(self)->tuple[bytes|None,bytes|None]:
         try:
             log("Try to get TLS certificate...")
+            hostname:str=socket.gethostname()
+            log(f"Want certificate for hostname: {hostname}")
             acc_key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
             # Connect and register (single account creation)
             acmeCert:str|bool
@@ -42,7 +44,6 @@ class SentraACME:
                                             serialization.PrivateFormat.TraditionalOpenSSL,
                                                 serialization.NoEncryption()
                                             )
-            hostname:str=socket.gethostname()
             csr_pem:bytes = crypto_util.make_csr(key_pem, [hostname])
             # Order certificate
             order:acme.messages.OrderResource = _acme.new_order(csr_pem)
