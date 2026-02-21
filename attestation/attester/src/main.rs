@@ -5,6 +5,7 @@ use std::{error::Error, time::Duration};
 
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use tonic::transport::{Channel, ClientTlsConfig, Certificate};
 use hostname;
 use rustls::crypto::{aws_lc_rs, CryptoProvider};
 
