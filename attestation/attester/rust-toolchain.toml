@@ -1,3 +1,4 @@
 [toolchain]
 #channel = "stable"
-channel = "1.66"
+channel = "1.71"
+#channel = "1.66"

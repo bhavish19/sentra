@@ -8,14 +8,17 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::transport::{Channel, Certificate};
 use hostname;
 use rustls::crypto::{aws_lc_rs, CryptoProvider};
-
+use rustc_version_runtime;
 // Include the generated code from the proto file
 tonic::include_proto!("sentra_backend_grpc_services");
 
 mod command_line_options;
 
+const SENTRA_NODE_VERSION: &str = "00.03.076";
+
 fn main()
 {
+    print!("Starting Sentra Node version: {} [compile using {:?}]",SENTRA_NODE_VERSION,rustc_version_runtime::version());
     let args:command_line_options::CommandLineOptions= argh::from_env();
 
     CryptoProvider::install_default(aws_lc_rs::default_provider()).expect("Failed to install crypto provider");

@@ -32,6 +32,7 @@ COPY ./sgx/node_config.yaml /sentra/
 #Just update crates.io (and cache it...)
 RUN mkdir -p /attester/src
 COPY ./attestation/attester/Cargo.toml /attester
+COPY ./attestation/attester/rust-toolchain.toml /attester
 COPY ./attestation/attester/build.rs /attester
 COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /attester/
 WORKDIR /attester
@@ -42,7 +43,7 @@ RUN occlum-cargo update -p getrandom@0.4.1 --precise 0.3.4
 RUN occlum-cargo build --release
 
 COPY ./attestation/attester /attester
-RUN rm rust-toolchain.toml
+#RUN rm rust-toolchain.toml
 RUN rm SentraBackend-GRPC-Services.proto
 COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /attester/
 

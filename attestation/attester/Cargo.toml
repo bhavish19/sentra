@@ -67,6 +67,7 @@ instant-acme = { git = "https://github.com/sk13/instant-acme.git", rev = "ac84bb
 
 argh="=0.1.12"
 argh_shared="=0.1.12"
+rustc_version_runtime = "=0.3.0"
 
 [build-dependencies]
 tonic-build = "=0.11.0"
