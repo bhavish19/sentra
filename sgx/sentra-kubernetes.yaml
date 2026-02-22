@@ -60,6 +60,8 @@ spec:
   containers:
   - name: sentra-backend
     image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest
+    imagePullPolicy: Always
+    args: ["--use-acme","--acme-host","127.0.0.1","--acme-server-certificate","/pebble/pebble.cer"]
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -97,7 +99,8 @@ spec:
       containers:
       - name: sentra-node
         image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-sgx:latest
-        args: ["--grpc-url", "http://sentra-backend:8000"]
+        imagePullPolicy: Always
+        args: ["--grpc-url", "https://sentra-backend:8000","--use-acme","--acme-url","https://sentra-backend:14000","--acme-cert","/etc/pebble.cer"]
         securityContext:
           privileged: true
         volumeMounts:
