@@ -85,6 +85,7 @@ fn main()
             }
             else
             {
+                println!("Doing a default connection...");
                 client = node_message_service_client::NodeMessageServiceClient::connect(grp_server_url).await.expect("REASON");
             }
 
