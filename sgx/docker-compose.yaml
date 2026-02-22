@@ -10,6 +10,8 @@ x-sentra-core: &x-sentra-core
       replicas: 1
     ports:
       - 3000:3000
+    depends_on:
+      - sentra-backend
     devices:
       - "/dev/sgx_enclave:/dev/sgx_enclave"
       - "/dev/sgx_provision:/dev/sgx_provision"
@@ -22,7 +24,7 @@ x-sentra-multi-node: &x-sentra-multi-node
 services:
   sentra-simple-training:
     <<: *x-sentra-core
-    command: /bin/sentra/run_training.py
+    command: ["--grpc-url", "https://sentra-backend:8001","--use-acme","--acme-url","https://sentra-backend:14000","--acme-cert","/etc/pebble.cer","---","/bin/sentra/run_training.py"]
     container_name: sentra-test
     profiles:
       - test
@@ -58,7 +60,9 @@ services:
     build:
       context: ../
       dockerfile: ./demonstrator/ci/docker/SentraBackend.dockerfile
+    command: ["--use-acme","--acme-host","127.0.0.1","--acme-server-certificate","/pebble/pebble.cer"]
     image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest
+
     deploy:
       mode: replicated-job
       replicas: 1

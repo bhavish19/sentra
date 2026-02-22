@@ -66,7 +66,7 @@ fn main()
     rt.block_on(async 
         {
             // Connect to the server
-            println!("Try to connect to: {}",grp_server_url);
+            println!("Try to connect to GRPC interface of Sentra backend: {}",grp_server_url);
             let mut client: node_message_service_client::NodeMessageServiceClient<tonic::transport::Channel>;
             if args.use_acme
             {
