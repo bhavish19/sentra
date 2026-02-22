@@ -71,19 +71,16 @@ fn main()
             if args.use_acme
             {
                 let ca_cert = Certificate::from_pem(grpc_cert.unwrap().as_bytes());
-//                let tls = ClientTlsConfig::new().ca_certificate(ca_cert).domain_name("example.com");
-  //              let channel: tonic::transport::Channel = Channel::from_shared(grp_server_url)?.tls_config(tls)?.connect().await?;
-    //            client = node_message_service_client::NodeMessageServiceClient::new(channel);
+                println!("Loaded CA certificate");
 
-
-                let endpoint = Channel::from_shared(grp_server_url).expect("REASON")
+                let endpoint = Channel::from_shared(grp_server_url).expect("REASON-1")
                     .tls_config(            
                                 tonic::transport::ClientTlsConfig::new()
                                 .ca_certificate(ca_cert)
                                 .domain_name("sentra-backend")
-                                ).expect("REASON");
+                                ).expect("REASON-2");
 
-                let channel = endpoint.connect().await.expect("REASON");
+                let channel: Channel = endpoint.connect().await.expect("REASON-3");
                 client = node_message_service_client::NodeMessageServiceClient::new(channel);
             }
             else
