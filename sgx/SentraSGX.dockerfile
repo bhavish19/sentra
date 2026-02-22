@@ -78,7 +78,7 @@ ENV TZ=Europe/Berlin
 RUN echo 'deb [arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu jammy main' | tee /etc/apt/sources.list.d/intel-sgx.list
 
 RUN apt-get update && apt-get install -y \
-sgx-aesm-service=2.21.100.1-jammy1
+sgx-aesm-service=2.21.100.1-jammy1 wait-for-it
 
 
 #COPY --from=sentra-builder /opt/occlum/start_aesm.sh /opt/occlum/
