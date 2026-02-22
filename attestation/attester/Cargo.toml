@@ -7,6 +7,7 @@ edition = "2021"
 getrandom="=0.3.4"
 prost = "=0.12.3"
 prost-derive="=0.12.3"
+prost-types="=0.12.3"
 
 occlum-sgx = "=0.1.13"
 log="=0.4.28"
@@ -68,7 +69,7 @@ argh="=0.1.12"
 argh_shared="=0.1.12"
 
 [build-dependencies]
-tonic-build = "=0.12.3"
+tonic-build = "=0.11.0"
 getrandom="=0.3.4"
 home="=0.5.5"
 

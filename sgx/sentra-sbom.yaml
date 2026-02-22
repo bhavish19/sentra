@@ -30,6 +30,12 @@ targets:
         - /opt/occlum/toolchains/bash/glibc/bash
         - /opt/occlum/toolchains/busybox/glibc/busybox
 
+#Pebble TLS root CA cert
+  - target: /etc
+    copy:
+     - files:
+        - /attester/pebble.cer
+
  # copy lib
 #  - target: /opt/occlum/glibc/lib
 #    copy:
