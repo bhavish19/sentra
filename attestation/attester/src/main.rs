@@ -14,7 +14,7 @@ tonic::include_proto!("sentra_backend_grpc_services");
 
 mod command_line_options;
 
-const SENTRA_NODE_VERSION: &str = "00.03.076";
+const SENTRA_NODE_VERSION: &str = "00.03.078";
 
 fn main()
 {
