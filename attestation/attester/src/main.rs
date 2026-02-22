@@ -80,7 +80,7 @@ fn main()
                     .tls_config(            
                                 tonic::transport::ClientTlsConfig::new()
                                 .ca_certificate(ca_cert)
-                                .domain_name("example.com")
+                                .domain_name("sentra-backend")
                                 ).expect("REASON");
 
                 let channel = endpoint.connect().await.expect("REASON");
