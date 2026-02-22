@@ -37,17 +37,17 @@ COPY ./attestation/attester/build.rs /attester
 COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /attester/
 WORKDIR /attester
 RUN echo 'fn main() {}' > ./src/main.rs
-RUN occlum-cargo update -p socket2@0.6.2 --precise 0.5.10
-RUN occlum-cargo update -p getrandom@0.4.1 --precise 0.3.4
+RUN cargo update -p socket2@0.6.2 --precise 0.5.10
+RUN cargo update -p getrandom@0.4.1 --precise 0.3.4
 #RUN occlum-cargo update -p prost-types@0.13.5 --precise 0.12.3
-RUN occlum-cargo build --release
+RUN cargo build --release
 
 COPY ./attestation/attester /attester
 #RUN rm rust-toolchain.toml
 RUN rm SentraBackend-GRPC-Services.proto
 COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /attester/
 
-RUN occlum-cargo build --release
+RUN cargo build --release
 COPY ./demonstrator/ci/docker/config/pebble/pebble.cer /attester/
 
 COPY ./sgx/enclave_run_script.sh /
