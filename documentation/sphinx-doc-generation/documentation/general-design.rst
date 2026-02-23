@@ -29,7 +29,7 @@ Overview
     activate SentraBackend
     SentraBackend --> SentraBackend: Start GRPC endpoint using provided Certificate
     end
-    
+
     group Node registration
     SentraNode1 -> SentraBackend: TLS Channel Establishment
     SentraNodeX -> SentraBackend: TLS Channel Establishment
@@ -55,10 +55,13 @@ Committee selection
 
     skinparam BackgroundColor #FFFFFF00
 
-    :Filter nodes based on trust score and attestation. Result is the candidate list;
-    :Check if there are enough candidates;
-    :Can we reuse a prvious Commitee?;
-    :Sort nodes according to trust score;
-    :Execute the greedy algorithm to filter according to CPU, Host, Operator;
-
+    SentraBackend -> SentraBackend: Eligibility Filtering (based on: trust score, attestation result)
+    SentraBackend -> SentraBackend:  Check if there are enough candidates
+    SentraBackend -> SentraBackend: Committee Reuse
+    alt success
+        SentraBackend: return old committee
+    SentraBackend -> SentraBackend: Sort candidates
+    SentraBackend -> SentraBackend: Greedy Diversity-Aware Selection
+    alt success
+        SentraBackend: return new committee
 
