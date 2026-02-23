@@ -42,26 +42,15 @@ Overview
     SentraNodeN -> SentraBackend: Attestion Report
     end
 
-    group Commitee selection
+    group Committee selection
     activate SentraBackend
-    SentraBackend --> SentraBackend: Commitee selection
-    end
-
-
-Committee selection
-===================
-
-.. plantuml::
-
-    skinparam BackgroundColor #FFFFFF00
-
-    SentraBackend -> SentraBackend: Eligibility Filtering (based on: trust score, attestation result)
+        SentraBackend -> SentraBackend: Eligibility Filtering (based on: trust score, attestation result)
     SentraBackend -> SentraBackend:  Check if there are enough candidates
     SentraBackend -> SentraBackend: Committee Reuse
     alt success
-        SentraBackend: return old committee
+        SentraBackend -> SentraBackend: return old committee
     SentraBackend -> SentraBackend: Sort candidates
     SentraBackend -> SentraBackend: Greedy Diversity-Aware Selection
     alt success
-        SentraBackend: return new committee
-
+        SentraBackend -> SentraBackend: return new committee
+    end
