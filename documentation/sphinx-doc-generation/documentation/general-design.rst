@@ -43,14 +43,16 @@ Overview
     end
 
     group Committee selection
-    activate SentraBackend
-        SentraBackend -> SentraBackend: Eligibility Filtering (based on: trust score, attestation result)
-    SentraBackend -> SentraBackend:  Check if there are enough candidates
-    SentraBackend -> SentraBackend: Committee Reuse
+    SentraBackend --> SentraBackend: eligibility filtering (based on: trust score, attestation result)
+    alt N_candidates < N_target
+        SentraBackend -> SentraBackend: return empty candidate set
+    end
+    SentraBackend --> SentraBackend: committee reuse check
     alt success
         SentraBackend -> SentraBackend: return old committee
-    SentraBackend -> SentraBackend: Sort candidates
-    SentraBackend -> SentraBackend: Greedy Diversity-Aware Selection
+    end
+    SentraBackend --> SentraBackend: greedy diversity-aware selection on sorted candidate list
     alt success
         SentraBackend -> SentraBackend: return new committee
+    end
     end
