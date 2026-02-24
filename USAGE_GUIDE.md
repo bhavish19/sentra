@@ -1,344 +1,111 @@
-# SENTRA ML Training Pipeline - Usage Guide
+# SENTRA Usage Guide
 
-## Quick Start Commands
+This guide is the practical runbook for the current SENTRA codebase.
+For project overview and design notes, see `README.md`.
 
-### 1. Simple MNIST Training (Recommended)
+## 1. Environment
 
-```bash
-# Run the simplified MNIST use case
-python run_training.py
-```
-
-This script trains a small dense neural network on MNIST using TensorFlow/Keras.
-
-### 2. Multi-Node Training (Advanced)
+Minimum dependencies:
 
 ```bash
-# Start a multi-node MPC setup
-python start_all_nodes.py
+pip install tensorflow pytest numpy
 ```
 
-### 3. SENTRA Workflow with MNIST
+## 2. Recommended Run Modes
+
+### A) SENTRA-compliant mode (`secure_approx`)
+
+Use this when you need protocol-faithful results.
 
 ```bash
-# Single-node SENTRA workflow using MNIST (no network)
-python run_sentra_mnist_workflow.py --num-epochs 1 --mnist-samples 128 --mnist-input-dim 64 --mnist-hidden-dim 16
-
-# Multi-node launcher with MNIST data on each node
-python start_all_nodes.py --n-nodes 3 --dataset mnist --num-epochs 1 --batch-size 8 --mnist-samples 128 --mnist-input-dim 64 --mnist-hidden-dim 16
-
-# WSL/Linux helper (background processes + per-node logs)
-bash start_mnist_nodes.sh
+python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched \
+  --num-epochs 8 --batch-size 64 --mnist-samples 10000 \
+  --learning-rate 0.002 --loss-mode softmax \
+  --field-size 2305843009213693951 \
+  --scale-factor 65536 --softmax-temperature 2 \
+  --exp-approx pade22 --softmax-grad-mode secure_approx \
+  --grad-clip 0.50 --logit-clip 4.0 \
+  --explode-logit-threshold 100 --loss-growth-threshold 5 \
+  --grad-norm-threshold 1500 --no-abort-on-instability \
+  --debug-numerics --seed 2026
 ```
 
-### 4. Production Checklist Validation
+### B) Accelerated comparison mode (`opened_exact`)
+
+Use this for benchmarking/ablation against the compliant mode.
 
 ```bash
-# Validate production-critical SENTRA node behaviors against real endpoints/services
-python testing/run_sentra_production_check.py \
-  --kvs-endpoint "https://your-kvs-endpoint" \
-  --enclave-id "enclave-id" \
-  --epoch-token "epoch-token" \
-  --epoch-jwt "epoch-jwt" \
-  --read-quorum 2 \
-  --write-quorum 2
-
-# Optional: include a single-step train smoke check (writes to --prefix namespace)
-python testing/run_sentra_production_check.py \
-  --kvs-endpoint "https://your-kvs-endpoint" \
-  --enclave-id "enclave-id" \
-  --epoch-token "epoch-token" \
-  --epoch-jwt "epoch-jwt" \
-  --run-train-smoke
+python3 start_all_nodes.py --n-nodes 3 --base-port 9700 --batched \
+  --num-epochs 8 --batch-size 64 --mnist-samples 10000 \
+  --learning-rate 0.002 --loss-mode softmax \
+  --field-size 2305843009213693951 \
+  --scale-factor 65536 --softmax-temperature 2 \
+  --exp-approx pade22 --softmax-grad-mode opened_exact \
+  --grad-clip 0.50 --logit-clip 4.0 \
+  --explode-logit-threshold 100 --loss-growth-threshold 5 \
+  --grad-norm-threshold 1500 --no-abort-on-instability \
+  --debug-numerics --seed 2026
 ```
 
-## Detailed Usage
+## 3. How to Read Logs
 
-### Option 1: Python Script
+Enable `--debug-numerics` for useful diagnostics.
 
-Create a file `train.py`:
+Key lines:
+- `Epoch X Test Accuracy`
+- `Epoch X Test Loss`
+- `Epoch X Diagnostics: mean|logit|, max|logit|, mean_entropy`
+- `Epoch X Probe probs_est stats`
 
-```python
-from ml_training import SentraTrainingPipeline
-import numpy as np
+Healthy run indicators:
+- `probs_est stats sum` near `1.0`
+- `probs_est min >= 0`
+- no rapid explosion in `max|logit|`
+- loss trending down across epochs
 
-# Create pipeline
-pipeline = SentraTrainingPipeline(
-    n_nodes=5,
-    t=1,  # Privacy threshold
-    s=1,  # Adversarial share limit
-    batch_size=16,
-    learning_rate=0.01,
-    num_epochs=10
-)
+## 4. Common Problems
 
-# Prepare dataset
-dataset = [np.random.randn(10) for _ in range(100)]
-labels = [np.random.randn(1) for _ in range(100)]
-
-# Train
-pipeline.train(dataset, labels, weight_shapes=[(10, 4), (4, 1)])
-```
-
-Run it:
-```bash
-python train.py
-```
-
-### Option 2: With DP-SGD
-
-Create a file `train_dp.py`:
-
-```python
-from ml_training import SentraTrainingPipeline, DPSGDConfig
-import numpy as np
-
-# Configure DP-SGD
-dp_config = DPSGDConfig(
-    clip_norm=1.0,
-    noise_multiplier=1.0,
-    delta=1e-5
-)
-
-# Create pipeline with DP-SGD
-pipeline = SentraTrainingPipeline(
-    n_nodes=5, t=1, s=1,
-    batch_size=16,
-    learning_rate=0.01,
-    num_epochs=10,
-    use_dp_sgd=True,
-    dp_config=dp_config
-)
-
-# Prepare dataset
-dataset = [np.random.randn(10) for _ in range(100)]
-labels = [np.random.randn(1) for _ in range(100)]
-
-# Train
-pipeline.train(dataset, labels, weight_shapes=[(10, 4), (4, 1)])
-```
-
-Run it:
-```bash
-python train_dp.py
-```
-
-### Option 3: Multi-Node Training
-
-**On Node 1** (create `train_node1.py`):
-
-```python
-from ml_training import SentraTrainingPipeline
-import numpy as np
-
-# Node configuration
-node_configs = {
-    1: {'host': 'localhost', 'port': 8001},
-    2: {'host': 'localhost', 'port': 8002},
-    3: {'host': 'localhost', 'port': 8003},
-    4: {'host': 'localhost', 'port': 8004},
-    5: {'host': 'localhost', 'port': 8005},
-}
-
-# Create pipeline with network
-pipeline = SentraTrainingPipeline(
-    n_nodes=5, t=1, s=1,
-    node_id=1,
-    node_configs=node_configs,
-    enable_network=True,
-    batch_size=16,
-    learning_rate=0.01,
-    num_epochs=10
-)
-
-# Prepare dataset
-dataset = [np.random.randn(10) for _ in range(100)]
-labels = [np.random.randn(1) for _ in range(100)]
-
-# Train
-pipeline.train(dataset, labels, weight_shapes=[(10, 4), (4, 1)])
-```
-
-**On Node 2** (create `train_node2.py`):
-
-```python
-# Same as node 1, but change node_id=2
-pipeline = SentraTrainingPipeline(
-    n_nodes=5, t=1, s=1,
-    node_id=2,  # Different node ID
-    node_configs=node_configs,
-    enable_network=True,
-    # ... rest same
-)
-```
-
-**Run on each node** (in separate terminals):
+### Port already in use
 
 ```bash
-# Terminal 1
-python train_node1.py
-
-# Terminal 2
-python train_node2.py
-
-# Terminal 3
-python train_node3.py
-# ... etc
+pkill -f "start_all_nodes.py|run_mnist_batched_secure.py" || true
 ```
 
-## Command-Line Examples
+Then re-run with a fresh `--base-port`.
 
-### Basic Training
+### Broken pipe / reset by peer
+
+One or more nodes exited early. Ensure all nodes run with identical arguments and check per-node logs.
+
+### Non-integer softmax temperature
+
+Fixed-point path currently expects integer temperature. Use values like `1` or `2`.
+
+## 5. Tests
+
+Quick sanity tests:
 
 ```bash
-# Simple training
-python -c "
-from ml_training import SentraTrainingPipeline
-import numpy as np
-pipeline = SentraTrainingPipeline(n_nodes=5, t=1, s=1, num_epochs=2)
-dataset = [np.random.randn(10) for _ in range(50)]
-labels = [np.random.randn(1) for _ in range(50)]
-pipeline.train(dataset, labels, weight_shapes=[(10, 4), (4, 1)])
-"
+python -m pytest -q testing/test_forward_scaling.py testing/test_gradient_scaling.py
 ```
 
-### With DP-SGD
+Stage invariant integration test:
 
 ```bash
-python -c "
-from ml_training import SentraTrainingPipeline, DPSGDConfig
-import numpy as np
-dp_config = DPSGDConfig(clip_norm=1.0, noise_multiplier=1.0)
-pipeline = SentraTrainingPipeline(n_nodes=5, t=1, s=1, use_dp_sgd=True, dp_config=dp_config, num_epochs=2)
-dataset = [np.random.randn(10) for _ in range(50)]
-labels = [np.random.randn(1) for _ in range(50)]
-pipeline.train(dataset, labels, weight_shapes=[(10, 4), (4, 1)])
-"
+python -m pytest -q testing/test_batched_stage_invariants.py -s
 ```
 
-## Prerequisites
+## 6. Reproducibility Checklist
 
-### Required
+Always record:
+- full command line
+- seed
+- field size and scale factor
+- softmax gradient mode
+- epoch-wise metrics (accuracy, loss, diagnostics)
 
-```bash
-# Install Python dependencies
-pip install tensorflow==2.20.0
-```
+## 7. Notes
 
-### Optional (for GPU acceleration)
-
-```bash
-# Install CuPy for GPU acceleration
-pip install cupy-cuda11x  # For CUDA 11.x
-# or
-pip install cupy-cuda12x  # For CUDA 12.x
-```
-
-### Optional (for C++ bindings)
-
-```bash
-# Install Pybind11
-pip install pybind11
-
-# Set TORCH_PATH (download LibTorch first)
-# Windows PowerShell:
-$env:TORCH_PATH = "C:\path\to\libtorch"
-
-# Then build:
-cd cpp_bindings
-python setup.py build_ext --inplace
-```
-
-## Common Use Cases
-
-### 1. Quick Test
-
-```bash
-python ml_training/example.py
-```
-
-### 2. Test DP-SGD
-
-```bash
-python ml_training/example_dp.py
-```
-
-### 3. Test Multi-Node Setup
-
-```bash
-python ml_training/example_multi_node.py
-```
-
-## Configuration Options
-
-### Training Parameters
-
-```python
-pipeline = SentraTrainingPipeline(
-    n_nodes=5,           # Number of nodes
-    t=1,                 # Privacy threshold (need t+1 shares)
-    s=1,                 # Adversarial share limit
-    batch_size=16,       # Mini-batch size
-    learning_rate=0.01,  # Learning rate
-    num_epochs=10,       # Number of epochs
-    use_dp_sgd=False,    # Enable DP-SGD
-    dp_config=None,      # DP-SGD config (if use_dp_sgd=True)
-    node_id=1,           # This node's ID (for multi-node)
-    node_configs=None,   # Node network config (for multi-node)
-    enable_network=False # Enable network communication
-)
-```
-
-### DP-SGD Configuration
-
-```python
-dp_config = DPSGDConfig(
-    clip_norm=1.0,         # Gradient clipping norm
-    noise_multiplier=1.0,  # Noise multiplier for DP
-    delta=1e-5,            # Delta for (ε, δ)-DP
-    learning_rate=0.01      # Learning rate
-)
-```
-
-## Troubleshooting
-
-### Import Errors
-
-```bash
-# Make sure you're in the project directory
-cd "C:\Users\BhavishMohee\Desktop\Master's Dissertation\Sentra\sentra"
-
-# Check Python path
-python -c "import sys; print(sys.path)"
-```
-
-### Network Errors (Multi-Node)
-
-```bash
-# Check if ports are available
-netstat -an | findstr "8001"
-netstat -an | findstr "8002"
-# etc.
-
-# Make sure all nodes are running
-# Make sure firewall allows connections
-```
-
-### GPU Not Available
-
-```bash
-# Check if CuPy is installed
-python -c "import cupy; print(cupy.__version__)"
-
-# If not, install:
-pip install cupy-cuda11x  # Adjust for your CUDA version
-```
-
-## Next Steps
-
-1. **Run basic example**: `python ml_training/example.py`
-2. **Try DP-SGD**: `python ml_training/example_dp.py`
-3. **Customize**: Create your own training script
-4. **Multi-node**: Set up multiple nodes for distributed training
-
-
+- `secure_approx` is the SENTRA-compliant run mode.
+- `opened_exact` should be labeled as a comparison/accelerated variant.
+- Older scripts in this repository may still exist for legacy experiments.
