@@ -88,6 +88,7 @@ class TrainingConfig:
     node_id: int
     n_nodes: int
     t: int
+    s: int
     packing_factor: int
     model_key: str
     model_version_key: str
@@ -484,7 +485,7 @@ class SentraTrainingNode:
                 self.membership.wait_until_allowed()
 
                 n_active = self.membership.active_count()
-                if not self._safety_bound_holds(self.config.t, self.config.packing_factor, n_active):
+                if not self._safety_bound_holds(self.config.t, self.config.s, n_active):
                     self._request_resharing("safety_bound_breached")
                     self.membership.wait_until_allowed()
                     continue

@@ -61,6 +61,20 @@ def _mnist_to_feature_matrix(images: np.ndarray, input_dim: int) -> np.ndarray:
     return flat[:, :input_dim]
 
 
+def _forward_two_layer_with_optional_bias(x: np.ndarray, w1: np.ndarray, w2: np.ndarray) -> np.ndarray:
+    """Two-layer forward with optional bias encoded as extra input columns in weights."""
+    x_in = x
+    if w1.shape[1] == x.shape[1] + 1:
+        ones = np.ones((x.shape[0], 1), dtype=x.dtype)
+        x_in = np.concatenate([x, ones], axis=1)
+    hidden = np.maximum(x_in @ w1.T, 0.0)
+    h_in = hidden
+    if w2.shape[1] == hidden.shape[1] + 1:
+        ones_h = np.ones((hidden.shape[0], 1), dtype=hidden.dtype)
+        h_in = np.concatenate([hidden, ones_h], axis=1)
+    return h_in @ w2.T
+
+
 def load_mnist_dataset(sample_count: int, input_dim: int, hidden_dim: int):
     """
     Load MNIST and adapt it to the SENTRA two-layer classifier prototype.
@@ -87,7 +101,8 @@ def load_mnist_dataset(sample_count: int, input_dim: int, hidden_dim: int):
     x_features = _mnist_to_feature_matrix(x_train, input_dim)
     dataset = [x_features[i] for i in range(x_features.shape[0])]
     labels = [np.eye(10, dtype=np.float32)[int(y)] for y in y_train]
-    weight_shapes = [(input_dim, hidden_dim), (hidden_dim, 10)]
+    # Bias is encoded as an extra constant-input column per layer.
+    weight_shapes = [(input_dim + 1, hidden_dim), (hidden_dim + 1, 10)]
     return dataset, labels, weight_shapes
 
 
@@ -325,8 +340,7 @@ def compute_mnist_test_accuracy_reconstructed(
     n = max(1, min(int(test_samples), len(x_test)))
     x = x_test[:n]
     y = y_test[:n]
-    hidden = x @ w1.T
-    logits = hidden @ w2.T
+    logits = _forward_two_layer_with_optional_bias(x, w1, w2)
     pred = np.argmax(logits, axis=1)
     return float(np.mean(pred == y))
 
@@ -362,8 +376,7 @@ def compute_mnist_test_accuracy_proxy(
     y = y_test[:n]
 
     # Two-layer dense forward pass matching the current SENTRA shape.
-    hidden = x @ w1.T
-    logits = hidden @ w2.T
+    logits = _forward_two_layer_with_optional_bias(x, w1, w2)
     pred = np.argmax(logits, axis=1)
     return float(np.mean(pred == y))
 
@@ -475,6 +488,8 @@ Examples:
                        help='Seconds to wait at post-metrics barrier before shutdown (default: 180)')
     parser.add_argument('--seed', type=int, default=2026,
                        help='Global random seed for deterministic multi-node runs (default: 2026)')
+    parser.add_argument('--train-mode', choices=['secure', 'hybrid'], default='secure',
+                       help='Training mode: secure share-domain or hybrid plaintext-update+reshare (default: secure)')
     parser.add_argument('--log-mini-batches', action='store_true',
                        help='Print per-mini-batch commit logs (default: disabled)')
     parser.add_argument('--compute-local-proxy-accuracy', action='store_true',
@@ -523,6 +538,7 @@ Examples:
             learning_rate=args.learning_rate,
             num_epochs=args.num_epochs,
             seed=args.seed,
+            train_mode=args.train_mode,
             log_mini_batches=args.log_mini_batches,
         )
         
@@ -536,6 +552,7 @@ Examples:
         print(f"\nNode {args.node_id}: Starting training...")
         print(f"Dataset: {len(dataset)} samples, {len(dataset[0])} features")
         print(f"Model: {weight_shapes}")
+        print(f"Train mode: {args.train_mode}")
         print("Multi-Node Mode: ENABLED")
         print("-" * 70)
         

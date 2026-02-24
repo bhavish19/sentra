@@ -3,9 +3,10 @@ Secure Communication Protocol for Multi-Node MPC
 Enables secure channels between nodes and share reconstruction
 """
 
-from typing import List, Dict, Optional, Callable, Any
+from typing import List, Dict, Optional, Callable, Any, Union
 from ml_training.secret_sharing import Share, ShamirSecretSharing
 import socket
+import sys
 import ssl
 import json
 import threading
@@ -51,17 +52,19 @@ class SecureChannel:
     Provides authenticated and encrypted communication
     """
     
-    def __init__(self, node_id: int, port: int = 8000, use_tls: bool = False):
+    def __init__(self, node_id: int, port: int = 8000, use_tls: bool = False, host: str = '0.0.0.0'):
         """
         Initialize secure channel
         Args:
             node_id: ID of this node
             port: Port to listen on
             use_tls: Whether to use TLS encryption (default: False for testing)
+            host: Host interface to bind to
         """
         self.node_id = node_id
         self.port = port
         self.use_tls = use_tls
+        self.host = host
         self.connections: Dict[int, socket.socket] = {}
         self.server_socket: Optional[socket.socket] = None
         self.running = False
@@ -76,18 +79,22 @@ class SecureChannel:
     def start_server(self):
         """Start listening server for incoming connections"""
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind(('0.0.0.0', self.port))
+        if sys.platform != 'win32':
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(10)
         self.running = True
         
         def accept_connections():
+            # print(f"DEBUG: Node {self.node_id} accept loop started on port {self.port}")
             while self.running:
                 try:
                     client_socket, addr = self.server_socket.accept()
+                    # print(f"DEBUG: Node {self.node_id} server.accept() returned address: {addr}")
                     try:
                         client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                    except (OSError, socket.error):
+                    except (OSError, socket.error) as e:
+                        print(f"DEBUG: Node {self.node_id} error setting TCP_NODELAY: {e}")
                         pass
                     if self.use_tls:
                         # Wrap with TLS (simplified - would use proper certificates)
@@ -97,18 +104,24 @@ class SecureChannel:
                             context.check_hostname = False
                             context.verify_mode = ssl.CERT_NONE
                             client_socket = context.wrap_socket(client_socket, server_side=True)
-                        except Exception:
+                        except Exception as e:
+                            print(f"DEBUG: Node {self.node_id} TLS wrap failed: {e}")
                             # Continue with plain socket if TLS fails (silently)
                             pass
-                    threading.Thread(target=self._handle_client, args=(client_socket,), daemon=True).start()
+                    
+                    t = threading.Thread(target=self._handle_client, args=(client_socket,), daemon=True)
+                    t.start()
+                    print(f"DEBUG: Node {self.node_id} spawned handle_client thread: {t.name}")
+
                 except socket.error as e:
                     if self.running:
                         # Ignore errors when shutting down
                         if e.errno != 10038:  # WSAENOTSOCK
-                            print(f"Error accepting connection: {e}")
+                            pass
+                            # print(f"DEBUG: Node {self.node_id} Error accepting connection sc: {e}")
                 except Exception as e:
                     if self.running:
-                        print(f"Error accepting connection: {e}")
+                        print(f"DEBUG: Node {self.node_id} Error accepting connection ex: {e}")
         
         threading.Thread(target=accept_connections, daemon=True).start()
         print(f"Node {self.node_id} server started on port {self.port}")
@@ -159,13 +172,13 @@ class SecureChannel:
             
             with self.lock:
                 self.connections[target_node_id] = sock
-            print(f"✓ Node {self.node_id} connected to node {target_node_id} at {host}:{port}")
+            print(f"[SUCCESS] Node {self.node_id} connected to node {target_node_id} at {host}:{port}")
             return True
         except Exception as e:
-            print(f"✗ Error connecting to node {target_node_id}: {e}")
+            # print(f"[ERROR] Error connecting to node {target_node_id}: {e}")
             return False
     
-    def send_message(self, target_node_id: int, msg_type: MessageType, data: Dict[str, Any]):
+    def send_message(self, target_node_id: int, msg_type: Union[MessageType, str], data: Dict[str, Any]):
         """
         Send a message to another node
         Args:
@@ -173,6 +186,9 @@ class SecureChannel:
             msg_type: Message type
             data: Message data
         """
+        if isinstance(msg_type, MessageType):
+            msg_type = msg_type.value
+            
         with self.lock:
             if target_node_id not in self.connections:
                 raise ValueError(f"No connection to node {target_node_id}")
@@ -180,7 +196,7 @@ class SecureChannel:
         
         self.message_counter += 1
         message = Message(
-            msg_type=msg_type.value,
+            msg_type=msg_type,
             sender_id=self.node_id,
             receiver_id=target_node_id,
             data=data,
@@ -192,8 +208,14 @@ class SecureChannel:
             message_json = json.dumps(asdict(message))
             # Send length first, then message
             message_bytes = message_json.encode('utf-8')
-            length = struct.pack('>I', len(message_bytes))
-            sock.sendall(length + message_bytes)
+            length = len(message_bytes)
+            packet = struct.pack('>I', length) + message_bytes
+            sock.sendall(packet)
+            
+            if msg_type == "sync":
+                pass
+                # print(f"DEBUG: Node {self.node_id} sent SYNC using send_message to {target_node_id}. Length: {length}")
+                
         except Exception as e:
             with self.lock:
                 stale = self.connections.get(target_node_id)
@@ -277,26 +299,47 @@ class SecureChannel:
         Send a vector of share values for a single context.
         This is the SIMD-style primitive: open many secrets in one round.
         """
-        # field_size in our training is 2^32-5, so share values fit in uint32.
-        # Accept lists, array('I'), or numpy arrays without materializing Python int lists.
+        # Accept lists/arrays/numpy without materializing Python int lists.
+        # Use u64 transport whenever any value exceeds uint32.
         buf: bytes
+        enc = "u32le"
         try:
             import numpy as _np  # local import
             if isinstance(values, _np.ndarray):
-                arr_u32 = _np.asarray(values, dtype=_np.uint32)
-                buf = arr_u32.tobytes(order="C")
-            elif isinstance(values, array) and values.typecode == "I":
+                arr_i64 = _np.asarray(values, dtype=_np.int64)
+                if arr_i64.size > 0 and ((_np.max(arr_i64) > 0xFFFFFFFF) or (_np.min(arr_i64) < 0)):
+                    arr_u64 = _np.asarray(values, dtype=_np.uint64)
+                    buf = arr_u64.tobytes(order="C")
+                    enc = "u64le"
+                else:
+                    arr_u32 = _np.asarray(values, dtype=_np.uint32)
+                    buf = arr_u32.tobytes(order="C")
+            elif isinstance(values, array) and values.typecode in ("I", "Q"):
+                if values.typecode == "Q":
+                    enc = "u64le"
                 buf = values.tobytes()
             else:
-                buf = array("I", (int(v) & 0xFFFFFFFF for v in values)).tobytes()
+                vals = [int(v) for v in values]
+                need_u64 = any((v < 0 or v > 0xFFFFFFFF) for v in vals)
+                if need_u64:
+                    buf = array("Q", (v & 0xFFFFFFFFFFFFFFFF for v in vals)).tobytes()
+                    enc = "u64le"
+                else:
+                    buf = array("I", (v & 0xFFFFFFFF for v in vals)).tobytes()
         except Exception:
-            buf = array("I", (int(v) & 0xFFFFFFFF for v in values)).tobytes()
+            vals = [int(v) for v in values]
+            need_u64 = any((v < 0 or v > 0xFFFFFFFF) for v in vals)
+            if need_u64:
+                buf = array("Q", (v & 0xFFFFFFFFFFFFFFFF for v in vals)).tobytes()
+                enc = "u64le"
+            else:
+                buf = array("I", (v & 0xFFFFFFFF for v in vals)).tobytes()
 
         # Send as binary payload (preferred)
         self.send_message_with_binary(
             target_node_id,
             MessageType.VECTOR_SHARE_EXCHANGE_BIN,
-            {"context": context, "x": x, "n": len(values), "enc": "u32le"},
+            {"context": context, "x": x, "n": len(values), "enc": enc},
             payload=buf,
         )
 
@@ -312,20 +355,41 @@ class SecureChannel:
         """
         Send both d and e vectors in one message (one round-trip per chunk instead of two).
         """
-        def _to_bytes(values: Sequence[int]) -> bytes:
+        def _to_bytes(values: Sequence[int]) -> tuple[bytes, str]:
             try:
                 import numpy as _np
                 if isinstance(values, _np.ndarray):
+                    arr_i64 = _np.asarray(values, dtype=_np.int64)
+                    if arr_i64.size > 0 and ((_np.max(arr_i64) > 0xFFFFFFFF) or (_np.min(arr_i64) < 0)):
+                        arr_u64 = _np.asarray(values, dtype=_np.uint64)
+                        return arr_u64.tobytes(order="C"), "u64le"
                     arr_u32 = _np.asarray(values, dtype=_np.uint32)
-                    return arr_u32.tobytes(order="C")
-                if isinstance(values, array) and values.typecode == "I":
-                    return values.tobytes()
-                return array("I", (int(v) & 0xFFFFFFFF for v in values)).tobytes()
+                    return arr_u32.tobytes(order="C"), "u32le"
+                if isinstance(values, array) and values.typecode in ("I", "Q"):
+                    return values.tobytes(), ("u64le" if values.typecode == "Q" else "u32le")
+                vals = [int(v) for v in values]
+                need_u64 = any((v < 0 or v > 0xFFFFFFFF) for v in vals)
+                if need_u64:
+                    return array("Q", (v & 0xFFFFFFFFFFFFFFFF for v in vals)).tobytes(), "u64le"
+                return array("I", (v & 0xFFFFFFFF for v in vals)).tobytes(), "u32le"
             except Exception:
-                return array("I", (int(v) & 0xFFFFFFFF for v in values)).tobytes()
+                vals = [int(v) for v in values]
+                need_u64 = any((v < 0 or v > 0xFFFFFFFF) for v in vals)
+                if need_u64:
+                    return array("Q", (v & 0xFFFFFFFFFFFFFFFF for v in vals)).tobytes(), "u64le"
+                return array("I", (v & 0xFFFFFFFF for v in vals)).tobytes(), "u32le"
 
-        d_buf = _to_bytes(values_d)
-        e_buf = _to_bytes(values_e)
+        d_buf, d_enc = _to_bytes(values_d)
+        e_buf, e_enc = _to_bytes(values_e)
+        if d_enc != e_enc:
+            # Keep protocol simple: promote both to u64 when mixed.
+            d_vals = [int(v) for v in values_d]
+            e_vals = [int(v) for v in values_e]
+            d_buf = array("Q", (v & 0xFFFFFFFFFFFFFFFF for v in d_vals)).tobytes()
+            e_buf = array("Q", (v & 0xFFFFFFFFFFFFFFFF for v in e_vals)).tobytes()
+            enc = "u64le"
+        else:
+            enc = d_enc
         payload = d_buf + e_buf
         n_d, n_e = len(values_d), len(values_e)
         self.send_message_with_binary(
@@ -337,7 +401,7 @@ class SecureChannel:
                 "x": x,
                 "n_d": n_d,
                 "n_e": n_e,
-                "enc": "u32le",
+                "enc": enc,
             },
             payload=payload,
         )
@@ -350,49 +414,101 @@ class SecureChannel:
                 print(f"Error: Invalid socket object received")
                 return
             
+            client_socket.settimeout(1.0)
+            print(f"DEBUG: Node {self.node_id} accepted connection from {client_socket.getpeername()}")
+            
             while self.running:
-                # Read message length
-                length_data = client_socket.recv(4)
-                if not length_data:
+                try:
+                    # Read message length (4 bytes) - Handle partial reads
+                    length_data = b''
+                    while len(length_data) < 4 and self.running:
+                        try:
+                            chunk = client_socket.recv(4 - len(length_data))
+                            if not chunk:
+                                break
+                            length_data += chunk
+                        except socket.timeout:
+                            continue
+                        except (socket.error, OSError) as e:
+                            if e.errno in (10035, 10037, 11): # EWOULDBLOCK (Windows & Linux)
+                                continue
+                            raise e
+
+                    if len(length_data) < 4:
+                        print(f"DEBUG: Node {self.node_id} client disconnected (no length data).")
+                        break # Connection closed or invalid
+                        
+                    length = struct.unpack('>I', length_data)[0]
+                except socket.timeout:
+                    continue
+                except (socket.error, OSError) as e:
+                    if e.errno in (10035, 10037, 11): # EWOULDBLOCK
+                        continue
+                    if self.running:
+                         print(f"Error reading length: {e}")
                     break
                 
-                length = struct.unpack('>I', length_data)[0]
-                
-                # Read message
-                message_data = b''
-                while len(message_data) < length:
-                    chunk = client_socket.recv(length - len(message_data))
-                    if not chunk:
-                        break
-                    message_data += chunk
-                
-                if len(message_data) == length:
-                    msg_dict = json.loads(message_data.decode('utf-8'))
-                    # If this is a binary vector message, read the raw payload now
-                    try:
-                        if msg_dict.get("msg_type") == MessageType.VECTOR_SHARE_EXCHANGE_BIN.value:
-                            payload_len = int(msg_dict.get("data", {}).get("payload_len", 0))
-                            if payload_len > 0:
-                                payload = b""
-                                while len(payload) < payload_len:
-                                    chunk = client_socket.recv(payload_len - len(payload))
-                                    if not chunk:
-                                        break
-                                    payload += chunk
-                                msg_dict.setdefault("data", {})["payload_bytes"] = payload
-                        elif msg_dict.get("msg_type") == MessageType.VECTOR_PAIR_EXCHANGE_BIN.value:
-                            payload_len = int(msg_dict.get("data", {}).get("payload_len", 0))
-                            if payload_len > 0:
-                                payload = b""
-                                while len(payload) < payload_len:
-                                    chunk = client_socket.recv(payload_len - len(payload))
-                                    if not chunk:
-                                        break
-                                    payload += chunk
-                                msg_dict.setdefault("data", {})["payload_bytes"] = payload
-                    except Exception:
-                        pass
-                    self._process_message(msg_dict, client_socket)
+                try:
+                    # Read message
+                    message_data = b''
+                    while len(message_data) < length and self.running:
+                        try:
+                            chunk = client_socket.recv(length - len(message_data))
+                            if not chunk:
+                                break
+                            message_data += chunk
+                        except socket.timeout:
+                            continue
+                        except (socket.error, OSError) as e:
+                             if e.errno in (10035, 10037, 11): continue
+                             raise e
+                    
+                    if len(message_data) == length:
+                        msg_dict = json.loads(message_data.decode('utf-8'))
+                        msg_type = msg_dict.get("msg_type")
+                        if msg_type == "sync":
+                             print(f"DEBUG: Node {self.node_id} received SYNC packet from {msg_dict.get('sender_id')}")
+                        
+                        # Handle binary payloads...
+                        # If this is a binary vector message, read the raw payload now
+                        try:
+                            if msg_dict.get("msg_type") == MessageType.VECTOR_SHARE_EXCHANGE_BIN.value:
+                                payload_len = int(msg_dict.get("data", {}).get("payload_len", 0))
+                                if payload_len > 0:
+                                    payload = b""
+                                    while len(payload) < payload_len and self.running:
+                                        try:
+                                            chunk = client_socket.recv(payload_len - len(payload))
+                                            if not chunk:
+                                                break
+                                            payload += chunk
+                                        except socket.timeout:
+                                            continue
+                                    msg_dict.setdefault("data", {})["payload_bytes"] = payload
+                            elif msg_dict.get("msg_type") == MessageType.VECTOR_PAIR_EXCHANGE_BIN.value:
+                                payload_len = int(msg_dict.get("data", {}).get("payload_len", 0))
+                                if payload_len > 0:
+                                    payload = b""
+                                    while len(payload) < payload_len and self.running:
+                                        try:
+                                            chunk = client_socket.recv(payload_len - len(payload))
+                                            if not chunk:
+                                                break
+                                            payload += chunk
+                                        except socket.timeout:
+                                            continue
+                                    msg_dict.setdefault("data", {})["payload_bytes"] = payload
+                        except Exception as e:
+                            print(f"Error reading binary payload: {e}")
+                        
+                        self._process_message(msg_dict, client_socket)
+                    else:
+                        print(f"DEBUG: Node {self.node_id} incomplete message. Wanted {length}, got {len(message_data)}")
+                        
+                except Exception as e:
+                    print(f"DEBUG: Node {self.node_id} error processing content: {e}")
+                    break
+
         except (socket.error, OSError) as e:
             # Ignore socket errors when shutting down or client disconnects
             if self.running and e.errno not in (10038, 10054, 10053):  # WSAENOTSOCK, WSAECONNRESET, WSAEINTR
@@ -407,18 +523,24 @@ class SecureChannel:
             except:
                 pass
     
+    def register_handler(self, msg_type: str, handler: Callable):
+        """Register a callback for specific message type"""
+        print(f"DEBUG: Registering handler for {msg_type}")
+        self.message_handlers[msg_type] = handler
+
     def _process_message(self, msg_dict: Dict, client_socket: Optional[socket.socket] = None):
         """Process incoming message"""
         msg_type = msg_dict.get('msg_type')
+        # print(f"DEBUG: Node {self.node_id} received message type: {msg_type} from {msg_dict.get('sender_id')}")
         sender_id = msg_dict.get('sender_id')
         data = msg_dict.get('data', {})
 
         # Learn/refresh reverse connection on first inbound message from peer.
-        if isinstance(sender_id, int) and sender_id != self.node_id and client_socket is not None:
-            with self.lock:
-                existing = self.connections.get(sender_id)
-                if existing is None:
-                    self.connections[sender_id] = client_socket
+    # if isinstance(sender_id, int) and sender_id != self.node_id and client_socket is not None:
+    #     with self.lock:
+    #         existing = self.connections.get(sender_id)
+    #         if existing is None:
+    #             self.connections[sender_id] = client_socket
         
         if msg_type == MessageType.SHARE_EXCHANGE.value:
             self._handle_share_exchange(sender_id, data)
@@ -448,10 +570,13 @@ class SecureChannel:
             if tag not in self.received_sync:
                 self.received_sync[tag] = set()
             self.received_sync[tag].add(sender_id)
+            print(f"DEBUG: Node {self.node_id} added sync from {sender_id} for tag '{tag}'. Current set: {self.received_sync[tag]}")
 
     def get_received_sync(self, tag: str) -> set:
         with self.lock:
-            return set(self.received_sync.get(tag, set()))
+            s = set(self.received_sync.get(tag, set()))
+            # print(f"DEBUG: Node {self.node_id} checking sync for tag '{tag}'. Found: {s}")
+            return s
 
     def clear_sync(self, tag: str):
         with self.lock:
@@ -481,11 +606,12 @@ class SecureChannel:
 
         values_obj = None
         # Preferred: raw bytes attached by _handle_client for VECTOR_SHARE_EXCHANGE_BIN
-        if "payload_bytes" in data and data.get("enc") == "u32le":
+        enc = data.get("enc")
+        if "payload_bytes" in data and enc in ("u32le", "u64le"):
             raw = data.get("payload_bytes")
             if not isinstance(raw, (bytes, bytearray)):
                 return
-            arr = array("I")
+            arr = array("Q" if enc == "u64le" else "I")
             try:
                 arr.frombytes(raw)
             except Exception:
@@ -499,10 +625,10 @@ class SecureChannel:
             if "payload" in data:
                 try:
                     enc = data.get("enc")
-                    if enc != "u32le_b64":
+                    if enc not in ("u32le_b64", "u64le_b64"):
                         return
                     raw = base64.b64decode(data["payload"].encode("ascii"))
-                    arr = array("I")
+                    arr = array("Q" if enc == "u64le_b64" else "I")
                     arr.frombytes(raw)
                     n = data.get("n")
                     if isinstance(n, int) and n >= 0 and len(arr) != n:
@@ -533,13 +659,15 @@ class SecureChannel:
         n_e = data.get("n_e")
         if not all(isinstance(v, int) and v >= 0 for v in (n_d, n_e)) or context_d is None or context_e is None or x is None:
             return
-        need = n_d * 4 + n_e * 4
+        enc = data.get("enc", "u32le")
+        elem_bytes = 8 if enc == "u64le" else 4
+        need = n_d * elem_bytes + n_e * elem_bytes
         if len(raw) < need:
             return
-        d_bytes = raw[: n_d * 4]
-        e_bytes = raw[n_d * 4 : need]
-        arr_d = array("I")
-        arr_e = array("I")
+        d_bytes = raw[: n_d * elem_bytes]
+        e_bytes = raw[n_d * elem_bytes : need]
+        arr_d = array("Q" if enc == "u64le" else "I")
+        arr_e = array("Q" if enc == "u64le" else "I")
         try:
             arr_d.frombytes(d_bytes)
             arr_e.frombytes(e_bytes)
@@ -644,7 +772,9 @@ class SecureMPCNetwork:
         """
         self.node_id = node_id
         self.node_configs = node_configs
-        self.channel = SecureChannel(node_id, port, use_tls)
+        # Get host for this node from config, default to 0.0.0.0 if not found
+        host = node_configs.get(node_id, {}).get('host', '0.0.0.0')
+        self.channel = SecureChannel(node_id, port, use_tls, host=host)
         self.sss = ShamirSecretSharing()
         
         # Start server
@@ -683,9 +813,9 @@ class SecureMPCNetwork:
         print(f"Connection Summary for Node {node_id}:")
         print(f"{'='*70}")
         if connected_nodes:
-            print(f"✓ Connected to {len(connected_nodes)} node(s): {sorted(list(connected_nodes))}")
+            print(f"[SUCCESS] Connected to {len(connected_nodes)} node(s): {sorted(list(connected_nodes))}")
         if failed_nodes:
-            print(f"✗ Failed to connect to {len(failed_nodes)} node(s): {sorted(list(failed_nodes))}")
+            print(f"[ERROR] Failed to connect to {len(failed_nodes)} node(s): {sorted(list(failed_nodes))}")
         if not connected_nodes and not failed_nodes:
             print("No other nodes to connect to (single-node mode)")
         print(f"{'='*70}\n")
@@ -694,6 +824,27 @@ class SecureMPCNetwork:
         """Send a share to another node"""
         self.channel.send_share(target_node_id, share, context)
     
+    def connect_to_others(self):
+        """Connect to other nodes"""
+        import time
+        for node_id, config in self.node_configs.items():
+            if node_id == self.node_id:
+                continue
+            
+            # Retry loop for connection
+            connected = False
+            for attempt in range(5):
+                try:
+                    self.channel.connect_node(node_id, config['host'], config['port'])
+                    connected = True
+                    break
+                except Exception as e:
+                    print(f"Node {self.node_id} failed to connect to node {node_id} (attempt {attempt+1}/5): {e}")
+                    time.sleep(1.0)
+            
+            if not connected:
+                print(f"[ERROR] Could not connect to node {node_id} after retries.")
+
     def broadcast_share(self, share: Share, context: str):
         """Broadcast a share to all nodes"""
         for node_id in self.node_configs.keys():
@@ -701,7 +852,8 @@ class SecureMPCNetwork:
                 try:
                     self.send_share(node_id, share, context)
                 except Exception as e:
-                    print(f"Warning: Could not broadcast to node {node_id}: {e}")
+                    pass
+                    # print(f"Warning: Could not broadcast to node {node_id}: {e}")
 
     def broadcast_shares_batch(self, shares: List[Share], contexts: List[str]):
         """Broadcast a batch of shares to all nodes."""
@@ -719,7 +871,8 @@ class SecureMPCNetwork:
                 try:
                     self.channel.send_vector(node_id, context, x, values)
                 except Exception as e:
-                    print(f"Warning: Could not broadcast vector to node {node_id}: {e}")
+                    pass
+                    # print(f"Warning: Could not broadcast vector to node {node_id}: {e}")
 
     def broadcast_vector_pair(
         self, context_d: str, context_e: str, x: int, values_d: List[int], values_e: List[int]
@@ -732,7 +885,8 @@ class SecureMPCNetwork:
                         node_id, context_d, context_e, x, values_d, values_e
                     )
                 except Exception as e:
-                    print(f"Warning: Could not broadcast vector pair to node {node_id}: {e}")
+                    pass
+                    # print(f"Warning: Could not broadcast vector pair to node {node_id}: {e}")
 
     def get_received_shares(self, context: str) -> List[Share]:
         """Get received shares for a context"""
@@ -761,9 +915,13 @@ class SecureMPCNetwork:
             got = self.channel.get_received_sync(tag)
             if expected_peers.issubset(got):
                 self.channel.clear_sync(tag)
+                print(f"DEBUG: Node {self.node_id} barrier '{tag}' passed. Got: {got}")
                 return
+            if int(time.time()) % 5 == 0:
+                 print(f"DEBUG: Node {self.node_id} barrier '{tag}' waiting. Got: {got}, Expected: {expected_peers}")
             time.sleep(0.05)
 
+        print(f"DEBUG: Node {self.node_id} barrier '{tag}' TIMED OUT. Got: {got}, Expected: {expected_peers}")
         raise RuntimeError(f"Barrier timed out for tag={tag}; got={sorted(list(got))}, expected={sorted(list(expected_peers))}")
 
 
@@ -781,4 +939,3 @@ def create_mpc_network(node_id: int, node_configs: Dict[int, Dict[str, Any]],
         Configured SecureMPCNetwork instance
     """
     return SecureMPCNetwork(node_id, node_configs, port, use_tls)
-

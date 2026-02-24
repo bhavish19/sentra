@@ -74,18 +74,24 @@ class BeaverTripleDealerService:
                 return False
 
         def _build_triple_vectors(context_prefix: str, n: int, x: int):
-            # Build a,b,c share vectors (uint32) for the requesting node.
-            a_y = np.empty((n,), dtype=np.uint32)
-            b_y = np.empty((n,), dtype=np.uint32)
-            c_y = np.empty((n,), dtype=np.uint32)
+            # Build a,b,c share vectors for the requesting node.
+            vec_dtype = np.uint64 if self.field_size > 0xFFFFFFFF else np.uint32
+            a_y = np.empty((n,), dtype=vec_dtype)
+            b_y = np.empty((n,), dtype=vec_dtype)
+            c_y = np.empty((n,), dtype=vec_dtype)
             p = self.field_size
             for i in range(n):
                 a = self._secret("a", context_prefix, i) % p
                 b = self._secret("b", context_prefix, i) % p
                 c = (a * b) % p
-                a_y[i] = np.uint32(self._share_y(a, "a", context_prefix, i, x) & 0xFFFFFFFF)
-                b_y[i] = np.uint32(self._share_y(b, "b", context_prefix, i, x) & 0xFFFFFFFF)
-                c_y[i] = np.uint32(self._share_y(c, "c", context_prefix, i, x) & 0xFFFFFFFF)
+                if vec_dtype == np.uint64:
+                    a_y[i] = np.uint64(self._share_y(a, "a", context_prefix, i, x) & 0xFFFFFFFFFFFFFFFF)
+                    b_y[i] = np.uint64(self._share_y(b, "b", context_prefix, i, x) & 0xFFFFFFFFFFFFFFFF)
+                    c_y[i] = np.uint64(self._share_y(c, "c", context_prefix, i, x) & 0xFFFFFFFFFFFFFFFF)
+                else:
+                    a_y[i] = np.uint32(self._share_y(a, "a", context_prefix, i, x) & 0xFFFFFFFF)
+                    b_y[i] = np.uint32(self._share_y(b, "b", context_prefix, i, x) & 0xFFFFFFFF)
+                    c_y[i] = np.uint32(self._share_y(c, "c", context_prefix, i, x) & 0xFFFFFFFF)
             return a_y, b_y, c_y
 
         # Attach for local fast-path
@@ -93,23 +99,30 @@ class BeaverTripleDealerService:
 
         def _handler(sender_id: int, data: dict):
             try:
+                # print(f"Dealer: Received request from {sender_id}")
                 context_prefix = str(data.get("context_prefix", ""))
                 n = int(data.get("n", 0))
                 x = int(data.get("x", sender_id))
                 req_id = str(data.get("req_id", ""))
                 if not context_prefix or n <= 0 or not req_id:
-                    return
+                     print(f"Dealer: Invalid request parameters from {sender_id}")
+                     return
+                
                 a_y, b_y, c_y = _build_triple_vectors(context_prefix, n, x)
 
                 # Send three vectors back to requester under unique contexts.
                 # Reuse existing binary vector transport (fast path).
                 if not _ensure_connection_to(sender_id):
+                    print(f"Dealer: Failed to ensure connection to {sender_id}")
                     return
+                # print(f"Dealer: Sending response to {sender_id} for {req_id}")
                 self.network.channel.send_vector(sender_id, f"{req_id}_a", x=x, values=a_y)
                 self.network.channel.send_vector(sender_id, f"{req_id}_b", x=x, values=b_y)
                 self.network.channel.send_vector(sender_id, f"{req_id}_c", x=x, values=c_y)
-            except Exception:
-                return
+            except Exception as e:
+                print(f"Dealer Error handling request from {sender_id}: {e}")
+                import traceback
+                traceback.print_exc()
 
         # Use generic handler mechanism (SecureChannel routes unknown types here)
         self.network.channel.register_handler(MessageType.TRIPLE_REQUEST.value, _handler)
@@ -377,6 +390,7 @@ class SecureMultiplier:
 
         # Random polynomial coefficients for degrees 1..t (vectorized)
         rng = np.random.default_rng()
+        use_object_mod = int(p) > 0xFFFFFFFF
         if t > 0:
             coeffs = rng.integers(0, p, size=(t, L), dtype=np.uint64)
         else:
@@ -403,12 +417,18 @@ class SecureMultiplier:
             y = (secrets_mod_p_u64.astype(np.uint64, copy=False) % np.uint64(p)).copy()
             if t > 0:
                 for k in range(t):
-                    y = (y + (coeffs[k] * np.uint64(x_pows[x][k])) % np.uint64(p)) % np.uint64(p)
+                    if use_object_mod:
+                        y_obj = np.asarray(y, dtype=object)
+                        ck = np.asarray(coeffs[k], dtype=object)
+                        y_obj = (y_obj + (ck * int(x_pows[x][k])) % int(p)) % int(p)
+                        y = np.asarray(y_obj, dtype=np.uint64)
+                    else:
+                        y = (y + (coeffs[k] * np.uint64(x_pows[x][k])) % np.uint64(p)) % np.uint64(p)
             if nid == opener:
                 opener_share_vec = y
             else:
                 ctx_out = f"{context_prefix}_to_{nid}"
-                net.channel.send_vector(int(nid), ctx_out, x=int(nid), values=y.astype(np.uint32, copy=False))
+                net.channel.send_vector(int(nid), ctx_out, x=int(nid), values=y.astype(np.uint64, copy=False))
 
         if opener_share_vec is None:
             raise RuntimeError("Opener share vector missing (unexpected)")
@@ -423,11 +443,16 @@ class SecureMultiplier:
         x: int,
         context_prefix: str,
         timeout: float,
+        multiplier_factor: int = 1,
+        clip_min: Optional[int] = None,
+        clip_max: Optional[int] = None,
     ) -> np.ndarray:
         """
-        Open (reconstruct) a vector on the opener, compute integer-rounded division by a PUBLIC divisor,
-        then re-share the result as Shamir shares back to all nodes.
-        Returns this node's output share vector (uint64 mod p).
+        Enclave Oracle Mode:
+        1. All nodes send shares to the 'Enclave Oracle' (dealer_id).
+        2. Enclave reconstructs, divides by `divisor`, and truncates.
+        3. Enclave re-shares the result to all nodes.
+        Note: The 'Opener' variable name is kept locally but semantically refers to the Enclave Oracle.
         """
         try:
             if hasattr(self, "_profile_stats"):
@@ -436,7 +461,7 @@ class SecureMultiplier:
         except Exception:
             pass
         if self.reconstruction_manager is None:
-            raise RuntimeError("opened truncation requires reconstruction_manager")
+            raise RuntimeError("Enclave interaction requires reconstruction_manager")
         if int(divisor) == 0:
             raise ValueError("divisor must be non-zero")
 
@@ -449,22 +474,29 @@ class SecureMultiplier:
 
         # Everyone broadcasts their local vector
         ctx_in = f"{context_prefix}_in"
-        net.broadcast_vector(ctx_in, x=int(x), values=np.asarray(values_local_u64, dtype=np.uint32))
+        net.broadcast_vector(ctx_in, x=int(x), values=np.asarray(values_local_u64, dtype=np.uint64))
 
         if int(node_id) == int(opener):
             opened_u64 = self.reconstruction_manager.reconstruct_opened_vector_values(
                 context=ctx_in,
-                values_local=np.asarray(values_local_u64, dtype=np.uint32),
+                values_local=np.asarray(values_local_u64, dtype=np.uint64),
                 x=int(x),
                 timeout=timeout,
             )
             opened = opened_u64.astype(np.int64, copy=False)
             opened = np.where(opened > (p // 2), opened - p, opened)
+            
+            # Apply multiplier_factor in native 64-bit integer space before division
+            opened = opened * multiplier_factor
 
             d = int(divisor)
             # Round-to-nearest integer division (ties toward +inf for positives / -inf for negatives)
             adj = np.where(opened >= 0, d // 2, -(d // 2))
             q = (opened + adj) // d
+            if clip_min is not None or clip_max is not None:
+                lo = int(clip_min) if clip_min is not None else -2**63
+                hi = int(clip_max) if clip_max is not None else 2**63 - 1
+                q = np.clip(q, lo, hi)
             q_mod = np.mod(q, p).astype(np.uint64, copy=False)
 
             # Re-share q_mod to all nodes
@@ -494,7 +526,7 @@ class SecureMultiplier:
             recv = net.channel.get_received_vector(out_ctx)
             if opener in recv:
                 values = recv[opener].get("values")
-                arr = np.asarray(values, dtype=np.uint32).astype(np.uint64, copy=False) % np.uint64(p)
+                arr = np.asarray(values, dtype=np.uint64).astype(np.uint64, copy=False) % np.uint64(p)
                 try:
                     net.channel.clear_vector(out_ctx)
                 except Exception:
@@ -522,14 +554,15 @@ class SecureMultiplier:
             out = (share1 * share2) / SCALE   (out is SCALE-scaled)
         """
         prod = self.multiply(share1, share2, node_id=node_id, context=context)
-        # "A" mode: opener truncation to keep values in integer fixed-point (avoid field fractions)
+        # "A" mode: Enclave Oracle truncation to keep values in integer fixed-point (avoid field fractions)
         if self._opened_fp_enabled() and context:
+            # The "Opener" here refers to the Attested Enclave that reconstructs, truncates, and re-shares.
             out_vec = self._opened_divide_and_reshare_vector(
                 values_local_u64=np.asarray([int(prod.y) % int(self.field_size)], dtype=np.uint64),
                 divisor=int(scale_factor),
                 node_id=int(node_id),
                 x=int(prod.x),
-                context_prefix=f"{context}_fp_trunc_div_{int(scale_factor)}",
+                context_prefix=f"{context}_enclave_trunc_{int(scale_factor)}",
                 timeout=120.0,
             )
             return Share(x=prod.x, y=int(out_vec[0]) % int(self.field_size), node_id=node_id)
@@ -587,7 +620,7 @@ class SecureMultiplier:
     def _dealer_request_triple_vectors(self, *, context_prefix: str, n: int, x: int, node_id: int, timeout: float = 120.0):
         """
         Request a,b,c share vectors from the dealer for this node under (context_prefix, idx).
-        Returns three numpy arrays (uint32) of length n.
+        Returns three numpy arrays of length n.
         """
         if self.triple_dealer_id is None:
             raise RuntimeError("triple_dealer_id is not set")
@@ -610,9 +643,9 @@ class SecureMultiplier:
                 if svc is not None and hasattr(svc, "get_triple_vectors"):
                     a_y, b_y, c_y = svc.get_triple_vectors(context_prefix, int(n), int(x))  # type: ignore[attr-defined]
                     return (
-                        np.asarray(a_y, dtype=np.uint32),
-                        np.asarray(b_y, dtype=np.uint32),
-                        np.asarray(c_y, dtype=np.uint32),
+                        np.asarray(a_y, dtype=np.uint64),
+                        np.asarray(b_y, dtype=np.uint64),
+                        np.asarray(c_y, dtype=np.uint64),
                     )
         except Exception:
             pass
@@ -645,14 +678,14 @@ class SecureMultiplier:
         timeout = self._effective_timeout(timeout)
         start = _time.time()
 
-        def _get_u32(ctx: str):
+        def _get_u64(ctx: str):
             recv = self.reconstruction_manager.network.channel.get_received_vector(ctx)
             if dealer not in recv:
                 return None
             values = recv[dealer].get("values")
             # values can be array('I') or list or numpy array
             try:
-                arr = np.asarray(values, dtype=np.uint32)
+                arr = np.asarray(values, dtype=np.uint64)
             except Exception:
                 return None
             if arr.size != n:
@@ -662,11 +695,11 @@ class SecureMultiplier:
         a = b = c = None
         while _time.time() - start < timeout:
             if a is None:
-                a = _get_u32(ctx_a)
+                a = _get_u64(ctx_a)
             if b is None:
-                b = _get_u32(ctx_b)
+                b = _get_u64(ctx_b)
             if c is None:
-                c = _get_u32(ctx_c)
+                c = _get_u64(ctx_c)
             if a is not None and b is not None and c is not None:
                 break
             _time.sleep(0.01)
@@ -685,7 +718,7 @@ class SecureMultiplier:
 
     def _dealer_triple_for(self, *, context: str, idx: int, node_id: int, node_x: int) -> Tuple[Share, Share, Share]:
         a_y, b_y, c_y = self._dealer_request_triple_vectors(
-            context_prefix=context, n=1, x=node_x, node_id=node_id, timeout=120.0
+            context_prefix=context, n=1, x=node_x, node_id=node_id, timeout=300.0
         )
         return (
             Share(x=node_x, y=int(a_y[0]) % self.field_size, node_id=node_id),
@@ -772,6 +805,55 @@ class SecureMultiplier:
             Share(x=node_x, y=b_y, node_id=node_id),
             Share(x=node_x, y=c_y, node_id=node_id),
         )
+
+    def get_prss_matrix_triple(self, context_prefix: str, m: int, n: int, b_dim: int, node_id: int, node_x: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Generate deterministic matrix triples A (mxn), B (nxb), C=A@B (mxb).
+        Returns shares for this node.
+        """
+        if self.prss_seed is None:
+            raise RuntimeError("prss_seed is required for PRSS matrix triples")
+            
+        h = hashlib.blake2b(digest_size=8)
+        h.update(str(self.prss_seed).encode("utf-8"))
+        h.update(context_prefix.encode("utf-8"))
+        seed_val = int.from_bytes(h.digest(), "big") % (2**32)
+        
+        rng = np.random.default_rng(seed_val)
+        p = np.uint64(self.field_size)
+        
+        A_sec = rng.integers(0, p, size=(m, n), dtype=np.uint64)
+        B_sec = rng.integers(0, p, size=(n, b_dim), dtype=np.uint64)
+        
+        # Compute exact matrix multiplication modulo p
+        A_obj = A_sec.astype(object)
+        B_obj = B_sec.astype(object)
+        C_sec = (np.dot(A_obj, B_obj) % p).astype(np.uint64)
+        
+        def _get_shares(secret_mat: np.ndarray, label: str):
+            y = secret_mat.copy()
+            x_pow = np.uint64(node_x % p)
+            
+            for k in range(1, self.t + 1):
+                h2 = hashlib.blake2b(digest_size=8)
+                h2.update(str(self.prss_seed).encode("utf-8"))
+                h2.update(label.encode("utf-8"))
+                h2.update(context_prefix.encode("utf-8"))
+                h2.update(str(k).encode("utf-8"))
+                coeff_seed = int.from_bytes(h2.digest(), "big") % (2**32)
+                
+                rng_k = np.random.default_rng(coeff_seed)
+                coeff_mat = rng_k.integers(0, p, size=secret_mat.shape, dtype=np.uint64)
+                
+                y = (y + (coeff_mat * x_pow) % p) % p
+                x_pow = (x_pow * np.uint64(node_x)) % p
+            return y
+
+        A_share = _get_shares(A_sec, "A_mat")
+        B_share = _get_shares(B_sec, "B_mat")
+        C_share = _get_shares(C_sec, "C_mat")
+        
+        return A_share, B_share, C_share
     
     def multiply(self, share1: Share, share2: Share, node_id: int, 
                 context: Optional[str] = None) -> Share:
@@ -1071,8 +1153,8 @@ class SecureMultiplier:
 
         # Avoid materializing Python int lists: pass numpy arrays directly.
         d_vals, e_vals = self.reconstruction_manager.reconstruct_for_multiplication_batch_values(
-            d_vals_local=(d_local % p).astype(np.uint32, copy=False),
-            e_vals_local=(e_local % p).astype(np.uint32, copy=False),
+            d_vals_local=(d_local % p).astype(np.uint64, copy=False),
+            e_vals_local=(e_local % p).astype(np.uint64, copy=False),
             x=x,
             context_prefix=context_prefix,
             timeout=self._effective_timeout(chunk_timeout),
@@ -1081,10 +1163,27 @@ class SecureMultiplier:
         e = np.asarray(e_vals, dtype=np.uint64) % p
 
         # result = c + d*b + e*a + d*e  (all mod p)
-        res = (c_y % p)
-        res = (res + (d * (b_y % p)) % p) % p
-        res = (res + (e * (a_y % p)) % p) % p
-        res = (res + (d * e) % p) % p
+        if p > 0xFFFFFFFF:
+            # Avoid uint64 overflow when field elements are wider than 32-bit.
+            d_obj = d.astype(object)
+            e_obj = e.astype(object)
+            a_obj = (a_y % p).astype(object)
+            b_obj = (b_y % p).astype(object)
+            c_obj = (c_y % p).astype(object)
+            res_obj = c_obj
+            res_obj = (res_obj + (d_obj * b_obj) % p) % p
+            res_obj = (res_obj + (e_obj * a_obj) % p) % p
+            res_obj = (res_obj + (d_obj * e_obj) % p) % p
+            res = np.asarray(res_obj, dtype=np.uint64)
+        else:
+            res = (c_y % p)
+            res = (res + (d * (b_y % p)) % p) % p
+            res = (res + (e * (a_y % p)) % p) % p
+            res = (res + (d * e) % p) % p
+        
+        if context_prefix and "e0_b0" in context_prefix[:5] and "relu" in context_prefix:
+            print(f"DEBUG {context_prefix}: n_size={n}, Y1={y1[:3]}, Y2={y2[:3]}, A={a_y[:3]}, B={b_y[:3]}, C={c_y[:3]}, d={d[:3]}, e={e[:3]}, Res={res[:3]}", flush=True)
+            
         return res
     
     def _multiply_with_triple(self, share1: Share, share2: Share,
@@ -1218,4 +1317,3 @@ class SecureMultiplier:
         )
         
         return result_share
-

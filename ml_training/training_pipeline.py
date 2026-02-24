@@ -20,7 +20,9 @@ class SentraTrainingPipeline:
                  node_id: int = 1, node_configs: Optional[Dict[int, Dict[str, Any]]] = None,
                  enable_network: bool = False,
                  seed: int = 2026,
-                 log_mini_batches: bool = False):
+                 train_mode: str = "secure",
+                 log_mini_batches: bool = False,
+                 progress_every_batches: int = 10):
         """
         Initialize training pipeline
         Args:
@@ -43,7 +45,9 @@ class SentraTrainingPipeline:
         self.node_id = node_id
         self.enable_network = enable_network
         self.seed = seed
+        self.train_mode = train_mode
         self.log_mini_batches = log_mini_batches
+        self.progress_every_batches = max(1, int(progress_every_batches))
         
         # Initialize KVS cluster
         node_ids = list(range(1, n_nodes + 1))
@@ -53,7 +57,7 @@ class SentraTrainingPipeline:
         self.coordinator = TrainingCoordinator(
             self.kvs_cluster, n_nodes, t, s, batch_size, learning_rate,
             node_id=node_id, node_configs=node_configs,
-            enable_network=enable_network, seed=seed
+            enable_network=enable_network, seed=seed, train_mode=train_mode
         )
     
     def train(self, dataset: List[np.ndarray], labels: List[np.ndarray],
@@ -71,6 +75,7 @@ class SentraTrainingPipeline:
         print(f"Nodes: {self.n_nodes}, Threshold: {self.t}, Adversarial limit: {self.s}")
         print(f"Batch size: {self.batch_size}, Learning rate: {self.learning_rate}")
         print(f"Epochs: {self.num_epochs}")
+        print(f"Train mode: {self.train_mode}")
         print(f"Node ID: {self.node_id}")
         if self.enable_network:
             print(f"Multi-Node: Enabled (Network communication active)")
@@ -204,6 +209,10 @@ class SentraTrainingPipeline:
                         break
                     else:
                         print(f"  Batch {batch_idx + 1}/{num_batches}: [FAIL] Training failed")
+
+                # Lightweight progress signal when mini-batch logs are disabled.
+                if (not self.log_mini_batches) and ((batch_idx + 1) % self.progress_every_batches == 0):
+                    print(f"  Progress: epoch {epoch + 1}/{self.num_epochs}, batch {batch_idx + 1}/{num_batches}")
             
             print(f"Epoch {epoch + 1} completed, model version: v_theta={self.coordinator.v_theta}")
         

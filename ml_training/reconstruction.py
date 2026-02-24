@@ -342,7 +342,7 @@ class MPCReconstructionManager:
                         ok = False
                 if ok:
                     # Vectorized reconstruction using precomputed Lagrange coeffs
-                    p = self.field_size
+                    p = int(self.field_size)
 
                     xs_d = [int(d_recv[nid]["x"]) for nid in chosen_nodes]
                     xs_e = [int(e_recv[nid]["x"]) for nid in chosen_nodes_e]
@@ -351,16 +351,31 @@ class MPCReconstructionManager:
 
                     # Vectorized reconstruction: sum_i lambda_i * y_i  (mod p)
                     L = len(d_vals_local)
-                    d_out = np.zeros((L,), dtype=np.uint64)
-                    e_out = np.zeros((L,), dtype=np.uint64)
+                    # uint64 multiply overflows for large fields (e.g. 2^61-1).
+                    # Use object-int modular arithmetic in that regime.
+                    use_object_mod = p > 0xFFFFFFFF
+                    if use_object_mod:
+                        d_out = np.zeros((L,), dtype=object)
+                        e_out = np.zeros((L,), dtype=object)
+                    else:
+                        d_out = np.zeros((L,), dtype=np.uint64)
+                        e_out = np.zeros((L,), dtype=np.uint64)
 
                     for lam, nid in zip(lambdas_d, chosen_nodes):
                         vec = d_recv[nid]["values"]
-                        d_out = (d_out + (np.asarray(vec, dtype=np.uint64) * np.uint64(lam)) % np.uint64(p)) % np.uint64(p)
+                        if use_object_mod:
+                            v = np.asarray(vec, dtype=object)
+                            d_out = (d_out + (v * int(lam)) % p) % p
+                        else:
+                            d_out = (d_out + (np.asarray(vec, dtype=np.uint64) * np.uint64(lam)) % np.uint64(p)) % np.uint64(p)
 
                     for lam, nid in zip(lambdas_e, chosen_nodes_e):
                         vec = e_recv[nid]["values"]
-                        e_out = (e_out + (np.asarray(vec, dtype=np.uint64) * np.uint64(lam)) % np.uint64(p)) % np.uint64(p)
+                        if use_object_mod:
+                            v = np.asarray(vec, dtype=object)
+                            e_out = (e_out + (v * int(lam)) % p) % p
+                        else:
+                            e_out = (e_out + (np.asarray(vec, dtype=np.uint64) * np.uint64(lam)) % np.uint64(p)) % np.uint64(p)
 
                     # Cleanup buffers
                     try:
@@ -370,6 +385,8 @@ class MPCReconstructionManager:
                         pass
 
                     # Return numpy arrays (indexable like lists) to avoid Python list materialization
+                    if use_object_mod:
+                        return np.asarray(d_out, dtype=np.uint64), np.asarray(e_out, dtype=np.uint64)
                     return d_out, e_out
 
             time.sleep(0.02)
@@ -443,30 +460,43 @@ class MPCReconstructionManager:
                     time.sleep(0.02)
                     continue
 
-                p = self.field_size
+                p = int(self.field_size)
                 xs = [int(recv[nid]["x"]) for nid in chosen_nodes]
                 lambdas = _lagrange_coeffs_at_zero(xs, p)
 
                 L = len(values_local)
-                out = np.zeros((L,), dtype=np.uint64)
-                p_u64 = np.uint64(p)
+                use_object_mod = p > 0xFFFFFFFF
+                if use_object_mod:
+                    out = np.zeros((L,), dtype=object)
+                else:
+                    out = np.zeros((L,), dtype=np.uint64)
+                    p_u64 = np.uint64(p)
                 for lam, nid in zip(lambdas, chosen_nodes):
                     vec = recv[nid]["values"]
                     # vec can be numpy array, array('I'), or python list
                     if isinstance(vec, np.ndarray):
                         vec_u64 = np.asarray(vec, dtype=np.uint64)
                     elif isinstance(vec, array):
-                        # array('I') supports buffer interface
-                        vec_u64 = np.asarray(np.frombuffer(vec, dtype=np.uint32), dtype=np.uint64)
+                        # array('I') / array('Q') support buffer interface
+                        if vec.typecode == "Q":
+                            vec_u64 = np.asarray(np.frombuffer(vec, dtype=np.uint64), dtype=np.uint64)
+                        else:
+                            vec_u64 = np.asarray(np.frombuffer(vec, dtype=np.uint32), dtype=np.uint64)
                     else:
                         vec_u64 = np.asarray(vec, dtype=np.uint64)
-                    out = (out + (vec_u64 * np.uint64(lam)) % p_u64) % p_u64
+                    if use_object_mod:
+                        v = np.asarray(vec_u64, dtype=object)
+                        out = (out + (v * int(lam)) % p) % p
+                    else:
+                        out = (out + (vec_u64 * np.uint64(lam)) % p_u64) % p_u64
 
                 # Cleanup buffers
                 try:
                     self.network.channel.clear_vector(context)
                 except Exception:
                     pass
+                if use_object_mod:
+                    return np.asarray(out, dtype=np.uint64)
                 return out
 
             time.sleep(0.02)
@@ -528,4 +558,3 @@ def create_reconstruction_manager(network: SecureMPCNetwork, t: int, field_size:
         Configured MPCReconstructionManager instance
     """
     return MPCReconstructionManager(network, t, field_size)
-

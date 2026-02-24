@@ -6,7 +6,9 @@ Optimized matrix operations on secret-shared values for efficient neural network
 from typing import List, Optional
 from ml_training.secret_sharing import Share
 from ml_training.beaver_triples import SecureMultiplier
+from ml_training.secure_division import SecureDivider
 import numpy as np
+import time
 
 
 class SecureMatrixMultiplier:
@@ -125,7 +127,9 @@ class SecureMatrixMultiplier:
         # Larger chunk = fewer network round-trips (2 per chunk). 32768 or 65536 can speed up.
         chunk = 32768
         prod = np.empty_like(y1, dtype=np.uint64)
+        import time
         for start in range(0, y1.size, chunk):
+            time.sleep(0.001) # Yield to network thread
             end = min(start + chunk, y1.size)
             prod[start:end] = self.multiplier.multiply_batch_values_fixed_point(
                 y1[start:end], y2[start:end], x=x0, node_id=node_id, context_prefix=f"{base}_mv_{start}"
@@ -181,34 +185,86 @@ class SecureMatrixMultiplier:
         A_y = np.asarray([[int(A_shares[i][j].y) for j in range(n)] for i in range(m)], dtype=np.uint64)
         B_y = np.asarray([[int(B_cols[c][j].y) for c in range(b)] for j in range(n)], dtype=np.uint64)  # (n x b)
 
-        # Flatten (m*n*b) elementwise products in aligned order:
-        # for each A element (i,j) we multiply it by all b columns B[j, :]
-        y1 = np.repeat(A_y.reshape(-1), b)  # length m*n*b
-        B_tiled = np.tile(B_y, (m, 1))      # shape (m*n, b)
-        y2 = B_tiled.reshape(-1)            # length m*n*b
-
-        base = context if context else "matmat"
-        prod = np.empty((y1.size,), dtype=np.uint64)
-        for start in range(0, y1.size, int(chunk)):
-            end = min(start + int(chunk), y1.size)
-            prod[start:end] = self.multiplier.multiply_batch_values_fixed_point(
-                y1[start:end],
-                y2[start:end],
+        base_ctx = context if context else "matmat"
+        p = np.uint64(self.field_size)
+        
+        # 1. Get deterministic matrix triples
+        A_mac, B_mac, C_mac = self.multiplier.get_prss_matrix_triple(
+            context_prefix=f"{base_ctx}_mm",
+            m=m, n=n, b_dim=b,
+            node_id=int(node_id),
+            node_x=x0
+        )
+        
+        # 2. Local D = W - A_mac, E = X - B_mac
+        D_local = (A_y + (p - A_mac)) % p
+        E_local = (B_y + (p - B_mac)) % p
+        
+        # 3. Batch Reconstruct D and E
+        if self.multiplier.reconstruction_manager:
+            D_flat = D_local.reshape(-1)
+            E_flat = E_local.reshape(-1)
+            
+            # Pad so they have the same length for reconstruct_for_multiplication_batch_values
+            max_len = max(len(D_flat), len(E_flat))
+            D_padded = np.pad(D_flat, (0, max_len - len(D_flat)), mode='constant')
+            E_padded = np.pad(E_flat, (0, max_len - len(E_flat)), mode='constant')
+            
+            D_recon_pad, E_recon_pad = self.multiplier.reconstruction_manager.reconstruct_for_multiplication_batch_values(
+                d_vals_local=D_padded.astype(np.uint64),
+                e_vals_local=E_padded.astype(np.uint64),
                 x=x0,
-                node_id=int(node_id),
-                context_prefix=f"{base}_mm_{start}",
-                scale_factor=int(self.scale_factor),
-                chunk_timeout=120.0,
+                context_prefix=f"{base_ctx}_mm",
+                timeout=120.0
             )
-
-        # Reshape back and sum over input dimension n: (m,n,b) -> (m,b)
-        prod = prod.reshape(m, n, b)
-        out_mat = (prod.sum(axis=1) % np.uint64(int(self.field_size)))  # (m, b)
-
+            
+            D = np.asarray(D_recon_pad[:len(D_flat)], dtype=np.uint64).reshape(m, n) % p
+            E = np.asarray(E_recon_pad[:len(E_flat)], dtype=np.uint64).reshape(n, b) % p
+        else:
+            D = D_local
+            E = E_local
+            
+        # 4. Y = C_mac + D @ B_mac + A_mac @ E + D @ E  (modulo p)
+        # Cast to object arrays to avoid overflow before modulo, as p^2 * n > uint64
+        D_obj = D.astype(object)
+        E_obj = E.astype(object)
+        A_mac_obj = A_mac.astype(object)
+        B_mac_obj = B_mac.astype(object)
+        
+        DB = (np.dot(D_obj, B_mac_obj) % p).astype(np.uint64)
+        AE = (np.dot(A_mac_obj, E_obj) % p).astype(np.uint64)
+        DE = (np.dot(D_obj, E_obj) % p).astype(np.uint64)
+        
+        Y_share = C_mac.copy()
+        Y_share = (Y_share + DB) % p
+        Y_share = (Y_share + AE) % p
+        Y_share = (Y_share + DE) % p
+        
+        # 5. Fixed-point scaling (divide by scale_factor)
+        # We CANNOT blindly multiply by inv_scale here! The sum is evaluated first,
+        # so it has random fractional noise that makes it indivisible by scale_factor.
+        # Multiplying an indivisible ring element by inv_scale spreads fractional noise
+        # across the entire modulo p field, throwing the network off into random noise!
+        if self.multiplier._opened_fp_enabled():
+            Y_flat = Y_share.reshape(-1)
+            Y_scaled_flat = self.multiplier._opened_divide_and_reshare_vector(
+                values_local_u64=Y_flat,
+                divisor=int(self.scale_factor),
+                node_id=int(node_id),
+                x=int(x0),
+                context_prefix=f"{base_ctx}_mm_trunc",
+                timeout=120.0
+            ).astype(np.uint64, copy=False) % p
+            out_mat = Y_scaled_flat.reshape(m, b)
+        else:
+            inv_scale = np.uint64(pow(self.scale_factor, int(p) - 2, int(p)))
+            Y_share = (Y_share * inv_scale) % p
+            out_mat = Y_share
+        
         # Return as list-of-columns: outputs[col][i]
         out_cols: List[List[Share]] = []
         for c in range(b):
-            vec = [Share(x=x0, y=int(out_mat[i, c] % int(self.field_size)), node_id=int(node_id)) for i in range(m)]
+            vec = [Share(x=x0, y=int(out_mat[i, c] % p), node_id=int(node_id)) for i in range(m)]
             out_cols.append(vec)
         return out_cols
     
@@ -293,6 +349,73 @@ class SecureMatrixMultiplier:
         
         return A_T
 
+    
+    def secure_outer_product(self, 
+                             v1_shares: List[Share], 
+                             v2_shares: List[Share], 
+                             node_id: int, 
+                             context: Optional[str] = None) -> List[List[Share]]:
+        """
+        Compute outer product of two share vectors: M = v1 @ v2.T
+        Args:
+            v1_shares: Vector 1 (m,)
+            v2_shares: Vector 2 (n,)
+            node_id: Node ID
+            context: Optional context
+        Returns:
+            Matrix M (m x n) as shares
+        """
+        if not v1_shares or not v2_shares:
+            return []
+            
+        m = len(v1_shares)
+        n = len(v2_shares)
+        
+        # Use simple coordinate for all shares
+        x0 = v1_shares[0].x
+        
+        # Extract values
+        y1 = np.array([s.y for s in v1_shares], dtype=np.uint64)
+        y2 = np.array([s.y for s in v2_shares], dtype=np.uint64)
+        
+        # Tiling for outer product: 
+        # We want res[i][j] = v1[i] * v2[j]
+        # Flattened: repeat v1 each element n times, tile v2 m times
+        # v1: [a, b] -> [a, a, b, b] (repeat_elements)
+        # v2: [c, d] -> [c, d, c, d] (tile)
+        
+        v1_flat = np.repeat(y1, n)
+        v2_flat = np.tile(y2, m)
+        
+        base = context if context else "outer"
+        chunk = 32768
+        prod = np.empty_like(v1_flat, dtype=np.uint64)
+        
+        for start in range(0, v1_flat.size, chunk):
+            time.sleep(0.001) 
+            end = min(start + chunk, v1_flat.size)
+            prod[start:end] = self.multiplier.multiply_batch_values_fixed_point(
+                v1_flat[start:end], 
+                v2_flat[start:end], 
+                x=x0, 
+                node_id=node_id, 
+                context_prefix=f"{base}_{start}",
+                scale_factor=self.scale_factor
+            )
+            
+        # Reshape to (m, n)
+        prod_mat = prod.reshape(m, n)
+        
+        # Convert back to Shares
+        result = []
+        for i in range(m):
+            row = []
+            for j in range(n):
+                row.append(Share(x=x0, y=int(prod_mat[i, j]), node_id=node_id))
+            result.append(row)
+            
+        return result
+
 
 class SecureMatrixOperations:
     """
@@ -311,6 +434,14 @@ class SecureMatrixOperations:
         self.multiplier = multiplier
         self.field_size = field_size
         self.scale_factor = int(scale_factor)
+        
+    def outer_product(self, v1: List[Share], v2: List[Share], node_id: int, context: Optional[str] = None) -> List[List[Share]]:
+        """Wrapper for secure outer product"""
+        return self.matrix_multiplier.secure_outer_product(v1, v2, node_id, context)
+
+    def transpose(self, A_shares: List[List[Share]]) -> List[List[Share]]:
+        """Wrapper for secure matrix transpose"""
+        return self.matrix_multiplier.secure_matrix_transpose(A_shares)
     
     def forward_pass(self, input_shares: List[Share], 
                     weights: List[List[List[Share]]], 

@@ -3,7 +3,7 @@ Secure Division Operations
 Implements secure division and averaging on secret-shared values
 """
 
-from typing import List
+from typing import List, Optional
 from ml_training.secret_sharing import Share
 from ml_training.beaver_triples import SecureMultiplier
 import numpy as np
@@ -14,7 +14,15 @@ class SecureDivider:
     Performs secure division operations on secret-shared values
     """
     
-    def __init__(self, multiplier: SecureMultiplier, field_size: int = 2**31 - 1, scale_factor: int = 1000):
+    def __init__(
+        self,
+        multiplier: SecureMultiplier,
+        field_size: int = 2**31 - 1,
+        scale_factor: int = 1000,
+        *,
+        debug: bool = False,
+        debug_limit: int = 3,
+    ):
         """
         Initialize secure divider
         Args:
@@ -25,6 +33,9 @@ class SecureDivider:
         self.multiplier = multiplier
         self.field_size = field_size
         self.scale_factor = scale_factor
+        self.debug = bool(debug)
+        self._debug_limit = int(debug_limit)
+        self._debug_count = 0
         # Precompute modular inverse of scale_factor (for fixed-point rescaling)
         # field_size is assumed prime in this codebase
         self._inv_scale_factor = pow(int(self.scale_factor) % self.field_size, self.field_size - 2, self.field_size)
@@ -96,7 +107,7 @@ class SecureDivider:
             raise ValueError("divisor must be non-zero")
 
         # In privacy_mode we want integer fixed-point semantics (no field fractions),
-        # so we use opener-based truncation instead of multiplying by modular inverse.
+        # so we use Enclave Oracle-based truncation instead of multiplying by modular inverse.
         if self._opened_enabled():
             # IMPORTANT: `context` must be deterministic and identical across nodes.
             # Callers should pass a unique context per division to avoid collisions.
@@ -115,6 +126,47 @@ class SecureDivider:
         # Legacy (field division) path
         inv = self._mod_inverse(divisor)
         return Share(x=share.x, y=(int(share.y) * int(inv)) % int(self.field_size), node_id=node_id)
+        
+    def secure_scalar_divide_batch(
+        self,
+        shares: List[Share],
+        divisor: int,
+        node_id: int,
+        context: str = "scalar_div_batch",
+        multiplier_factor: int = 1,
+        clip_min: Optional[int] = None,
+        clip_max: Optional[int] = None,
+    ) -> List[Share]:
+        """
+        Divide a list of shares by a public scalar.
+        Optionally pre-multiply the scalar securely within the enclave bounds.
+        """
+        if not shares:
+            return []
+        if int(divisor) == 0:
+            raise ValueError("divisor must be non-zero")
+            
+        if self._opened_enabled():
+            ctx = f"{context}_div{int(divisor)}"
+            p = int(self.field_size)
+            import numpy as np
+            y_vals = np.array([s.y for s in shares], dtype=np.uint64)
+            out_vec = self.multiplier._opened_divide_and_reshare_vector(  # type: ignore[attr-defined]
+                values_local_u64=y_vals % np.uint64(p),
+                divisor=int(divisor),
+                node_id=int(node_id),
+                x=int(shares[0].x),
+                context_prefix=ctx,
+                timeout=120.0,
+                multiplier_factor=multiplier_factor,
+                clip_min=clip_min,
+                clip_max=clip_max,
+            )
+            return [Share(x=shares[0].x, y=int(v) % p, node_id=node_id) for v in out_vec]
+
+        # Legacy (field division) path
+        inv = self._mod_inverse(divisor)
+        return [Share(x=shares[0].x, y=(int(s.y) * int(inv)) % int(self.field_size), node_id=node_id) for s in shares]
     
     def secure_average(self, shares: List[Share], node_id: int) -> Share:
         """
@@ -177,15 +229,15 @@ class SecureDivider:
             num_ctx = f"{context}_num"
             den_ctx = f"{context}_den"
             # Everyone broadcasts local shares for numerator/denominator
-            net.broadcast_vector(num_ctx, x=int(numerator.x), values=np.asarray([int(numerator.y) % p], dtype=np.uint32))
-            net.broadcast_vector(den_ctx, x=int(denominator.x), values=np.asarray([int(denominator.y) % p], dtype=np.uint32))
+            net.broadcast_vector(num_ctx, x=int(numerator.x), values=np.asarray([int(numerator.y) % p], dtype=np.uint64))
+            net.broadcast_vector(den_ctx, x=int(denominator.x), values=np.asarray([int(denominator.y) % p], dtype=np.uint64))
 
             if int(node_id) == int(opener):
                 num_open_u64 = recon.reconstruct_opened_vector_values(
-                    context=num_ctx, values_local=np.asarray([int(numerator.y) % p], dtype=np.uint32), x=int(numerator.x), timeout=timeout
+                    context=num_ctx, values_local=np.asarray([int(numerator.y) % p], dtype=np.uint64), x=int(numerator.x), timeout=timeout
                 )
                 den_open_u64 = recon.reconstruct_opened_vector_values(
-                    context=den_ctx, values_local=np.asarray([int(denominator.y) % p], dtype=np.uint32), x=int(denominator.x), timeout=timeout
+                    context=den_ctx, values_local=np.asarray([int(denominator.y) % p], dtype=np.uint64), x=int(denominator.x), timeout=timeout
                 )
                 num_open = int(num_open_u64[0]) % p
                 den_open = int(den_open_u64[0]) % p
@@ -231,7 +283,7 @@ class SecureDivider:
                 recv = net.channel.get_received_vector(out_ctx)
                 if opener in recv:
                     values = recv[opener].get("values")
-                    arr = np.asarray(values, dtype=np.uint32)
+                    arr = np.asarray(values, dtype=np.uint64)
                     try:
                         net.channel.clear_vector(out_ctx)
                     except Exception:
@@ -258,6 +310,150 @@ class SecureDivider:
         ratio_unscaled = self.multiplier.multiply(numerator, inv_den, node_id=node_id, context=f"{context}_mul")
         ratio_scaled_y = (int(ratio_unscaled.y) * int(self.scale_factor)) % int(self.field_size)
         return Share(x=numerator.x, y=ratio_scaled_y, node_id=node_id)
+        
+    def secure_divide_shares_batch(
+        self,
+        numerators: List[Share],
+        denominators: List[Share],
+        node_id: int,
+        context: str = "div_batch",
+        *,
+        enforce_probability_range: bool = False,
+        probability_group_size: Optional[int] = None,
+    ) -> List[Share]:
+        if not numerators or not denominators:
+            return []
+        if len(numerators) != len(denominators):
+            raise ValueError("Mismatched lengths")
+            
+        p = int(self.field_size)
+        x0 = numerators[0].x
+        
+        if self._opened_enabled():
+            recon = getattr(self.multiplier, "reconstruction_manager", None)
+            n = int(getattr(self.multiplier, "n_nodes", 1))
+            opener = int(getattr(self.multiplier, "triple_dealer_id", 1)) if getattr(self.multiplier, "triple_dealer_id", None) is not None else 1
+            net = recon.network
+            timeout = float(getattr(self.multiplier, "_effective_timeout", lambda t: t)(120.0))
+            
+            num_ctx = f"{context}_num"
+            den_ctx = f"{context}_den"
+            num_vals = np.array([s.y for s in numerators], dtype=np.uint64) % p
+            den_vals = np.array([s.y for s in denominators], dtype=np.uint64) % p
+            
+            net.broadcast_vector(num_ctx, x=int(x0), values=num_vals)
+            net.broadcast_vector(den_ctx, x=int(x0), values=den_vals)
+            
+            if int(node_id) == int(opener):
+                num_open_u64 = recon.reconstruct_opened_vector_values(context=num_ctx, values_local=num_vals, x=int(x0), timeout=timeout)
+                den_open_u64 = recon.reconstruct_opened_vector_values(context=den_ctx, values_local=den_vals, x=int(x0), timeout=timeout)
+                
+                num_open = num_open_u64 % p
+                den_open = den_open_u64 % p
+
+                # Signed fixed-point division.
+                # For large fields, avoid int64 overflow by using Python-int object arrays.
+                use_object_math = p > 0xFFFFFFFF
+                if use_object_math:
+                    num_signed = np.asarray(num_open, dtype=object)
+                    den_signed = np.asarray(den_open, dtype=object)
+                    half = p // 2
+                    num_signed = np.where(num_open > half, num_signed - p, num_signed)
+                    den_signed = np.where(den_open > half, den_signed - p, den_signed)
+                else:
+                    mask_n = num_open > (p // 2)
+                    mask_d = den_open > (p // 2)
+                    num_signed = num_open.astype(np.int64)
+                    num_signed[mask_n] -= p
+                    den_signed = den_open.astype(np.int64)
+                    den_signed[mask_d] -= p
+                
+                # To avoid division by zero
+                zero_den = int(np.sum(den_signed == 0))
+                den_signed = np.where(den_signed == 0, 1, den_signed)
+
+                S = int(self.scale_factor)
+                if use_object_math:
+                    numS = np.asarray(num_signed, dtype=object) * int(S)
+                    signs = np.where(np.asarray(numS, dtype=object) >= 0, 1, -1)
+                    adj = (np.abs(np.asarray(den_signed, dtype=object)) // 2) * signs
+                    q = (np.asarray(numS, dtype=object) + np.asarray(adj, dtype=object)) // np.asarray(den_signed, dtype=object)
+                else:
+                    numS = num_signed * S
+                    adj = (np.abs(den_signed) // 2) * np.where(numS >= 0, 1, -1)
+                    q = (numS + adj) // den_signed
+
+                if self.debug and self._debug_count < self._debug_limit and ("e0_b0" in str(context) or "eval_pre" in str(context)):
+                    self._debug_count += 1
+                    try:
+                        print(
+                            f"[DEBUG DIV] ctx={context} "
+                            f"num_abs_max={float(np.max(np.abs(np.asarray(num_signed, dtype=np.float64)))):.4f} "
+                            f"den_abs_min={float(np.min(np.abs(np.asarray(den_signed, dtype=np.float64)))):.4f} "
+                            f"den_abs_max={float(np.max(np.abs(np.asarray(den_signed, dtype=np.float64)))):.4f} "
+                            f"q_abs_max={float(np.max(np.abs(np.asarray(q, dtype=np.float64)))):.4f} "
+                            f"zero_den={zero_den}",
+                            flush=True,
+                        )
+                    except Exception:
+                        pass
+                
+                # Optional projection for softmax probability divisions.
+                # In fixed-point, valid probs are in [0, SCALE] and should sum to SCALE per sample.
+                if enforce_probability_range:
+                    S = int(self.scale_factor)
+                    q = np.clip(q, 0, S)
+                    g = int(probability_group_size) if probability_group_size else 0
+                    if g > 0 and (len(q) % g == 0):
+                        q2 = q.reshape(-1, g)
+                        sums = np.sum(q2, axis=1, keepdims=True)
+                        sums[sums <= 0] = 1
+                        q2 = np.round((q2.astype(np.float64) * float(S)) / sums.astype(np.float64)).astype(np.int64)
+                        q2 = np.clip(q2, 0, S)
+                        # Correct residual so each row sums to exactly S
+                        row_sum = np.sum(q2, axis=1)
+                        residual = (S - row_sum).astype(np.int64)
+                        # Add/subtract residual on argmax entry for each row
+                        argm = np.argmax(q2, axis=1)
+                        for ridx in range(q2.shape[0]):
+                            q2[ridx, argm[ridx]] = np.clip(q2[ridx, argm[ridx]] + residual[ridx], 0, S)
+                        q = q2.reshape(-1)
+
+                q_mod = q % p
+                out_prefix = f"{context}_out"
+                opener_vec = self.multiplier._reshare_vector_from_opener(
+                    secrets_mod_p_u64=np.asarray(q_mod, dtype=np.uint64),
+                    node_id=int(node_id),
+                    context_prefix=out_prefix,
+                    x_points=[i for i in range(1, n+1)],
+                    timeout=timeout
+                )
+                try:
+                    net.channel.clear_vector(num_ctx)
+                    net.channel.clear_vector(den_ctx)
+                except:
+                    pass
+                return [Share(x=x0, y=int(v) % p, node_id=node_id) for v in opener_vec]
+                
+            out_ctx = f"{context}_out_to_{node_id}"
+            import time as _time
+            start = _time.time()
+            while _time.time() - start < timeout:
+                recv = net.channel.get_received_vector(out_ctx)
+                if opener in recv:
+                    arr = np.asarray(recv[opener].get("values"), dtype=np.uint64)
+                    try:
+                        net.channel.clear_vector(out_ctx)
+                        net.channel.clear_vector(num_ctx)
+                        net.channel.clear_vector(den_ctx)
+                    except:
+                        pass
+                    return [Share(x=x0, y=int(v) % p, node_id=node_id) for v in arr]
+                _time.sleep(0.01)
+            raise RuntimeError(f"Timed out waiting for batched opened division output (ctx={out_ctx})")
+
+        # Fallback to slow loop
+        return [self.secure_divide_shares(n_sh, d_sh, node_id, f"{context}_{i}") for i, (n_sh, d_sh) in enumerate(zip(numerators, denominators))]
     
     def _mod_inverse(self, a: int) -> int:
         """Compute modular inverse using extended Euclidean algorithm"""
@@ -326,5 +522,3 @@ class SecureAverager:
             averaged_grads.append(avg_share)
         
         return averaged_grads
-
-

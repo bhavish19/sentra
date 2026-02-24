@@ -11,7 +11,7 @@ import argparse
 def run_tests(test_type="all", verbose=False, coverage=False):
     """Run tests based on type"""
     
-    cmd = ["pytest"]
+    cmd = [sys.executable, "-m", "pytest"]
     
     if verbose:
         cmd.append("-v")
@@ -34,6 +34,13 @@ def run_tests(test_type="all", verbose=False, coverage=False):
     elif test_type == "all":
         # Run all tests
         pass
+    elif test_type == "batched_regression":
+        # Run the two batched secure MNIST regression integration tests
+        cmd.extend([
+            "-m", "integration",
+            "testing/test_batched_stability_integration.py",
+            "testing/test_batched_accuracy_floor_integration.py",
+        ])
     else:
         # Run specific test file
         cmd.append(f"testing/test_{test_type}.py")
@@ -50,7 +57,7 @@ def main():
         choices=["all", "unit", "integration", "benchmarks", "fast", 
                  "secret_sharing", "kvs", "beaver_triples", "secure_comparison",
                  "secure_division", "mpc_engine", "secure_matrix_ops", 
-                 "dp_sgd", "communication"],
+                 "dp_sgd", "communication", "batched_regression"],
         default="all",
         help="Type of tests to run"
     )
