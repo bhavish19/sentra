@@ -166,7 +166,7 @@ fn handle_server_message(server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>)
             let tx_clone: mpsc::Sender<NodeMessage>=tx;
 	        tokio::spawn(async move {
                 // Send attestatin message
-                let quote: Vec<u8>=sentra_attester::generate_attestation_report();
+                let quote: Vec<u8>=sentra_attester::generate_attestation_report(args.fake_attestation);
                 println!("Sending attestation...");
                 let register_msg: NodeMessage = NodeMessage {
                     message_type: Some(node_message::MessageType::Quote(AttestationResponse {

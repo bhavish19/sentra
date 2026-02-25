@@ -17,6 +17,11 @@ pub struct CommandLineOptions {
 
     /// the certificate file to be sued to establish a secure connetion to the ACME Server
     #[argh(option,default = "String::from(\"pebble.cer\")")]
-    pub acme_cert: String
+    pub acme_cert: String,
+
+    /// whether or not to fake the attestion i.e. sending a random attestation report (for easy testing outside an enclave)
+    #[argh(switch)]
+    pub fake_attestation: bool
+
 
 }
