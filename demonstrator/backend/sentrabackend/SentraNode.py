@@ -1,6 +1,11 @@
+from __future__ import annotations
+
 import asyncio
 
-from .SentraNodeAttributeGenerator import SentraNodeAttributeGenerator
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .SentraNodeAttributeGenerator import SentraNodeAttributeGenerator
 
 class SentraNode:
     m_strNodeID:str

@@ -1,4 +1,3 @@
-import time
 import random
 
 from .Host import Host
@@ -26,7 +25,6 @@ class SentraNodeAttributeGenerator:
         self.m_minTrustScore=minTrustScore
         self.m_maxTrustScore=maxTrustScore
         self.m_numHosts=numHosts
-        self.internal_generateAttestTime()
         self.internal_generateHosts()
         self.m_numOperators=numOperators
         self.internal_generateOperators()
@@ -60,9 +58,6 @@ class SentraNodeAttributeGenerator:
     def internal_generateHost(self)->int:
         return random.randrange(self.m_numHosts)
 
-    def internal_generateAttestTime(self):
-        self.m_attestTime = time.time()
-
     def getHost(self,i:int)->Host:
         return self.m_arHosts[i]
 
@@ -80,7 +75,6 @@ class SentraNodeAttributeGenerator:
         operator:int=self.internal_generateOperator()
         trust=self.internal_generateTrustScore()
         cpu=self.getHost(host).m_iCPU
-        attestTime = self.m_attestTime
-        node:SentraNode=SentraNode(nodeID,trust,cpu,host,operator)
+        node:SentraNode=SentraNode(self,nodeID,trust,cpu,host,operator)
         return node
     
