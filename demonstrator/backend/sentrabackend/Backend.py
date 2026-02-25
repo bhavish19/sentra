@@ -57,7 +57,6 @@ class Backend:
             loop.close()
 
     def createGRPCServer(self):
-#        self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         grpc_thread = threading.Thread(target=self.startGRPCServer, args=(), daemon=True)
         grpc_thread.start()
 

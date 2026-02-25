@@ -59,8 +59,13 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
         return SentraBackend_GRPC_Services_pb2.AttestationRequest(nonce="Nonce")
 
     async def requestCommitteeJoin(self,committee:SentraNodeList):
+        log("Send request to all Nodes of committee to join the committee...")
+        node:SentraNode
         for node in committee.getNodes():
-            req:SentraBackend_GRPC_Services_pb2.JoinCommitteeRequest=SentraBackend_GRPC_Services_pb2.JoinCommitteeRequest(node_id=node.node_id,host=node.host,port=node.port)
+            req:SentraBackend_GRPC_Services_pb2.JoinCommitteeRequest=
+                SentraBackend_GRPC_Services_pb2.JoinCommitteeRequest(node_id=node.m_strNodeID,
+                    grpc_url=node.m_strInterNodeCommunicationGRPC_URL)
+            log(f"Send committee join to node: {node.m_strNodeID}")
             await node.getSendQueue().put(req)
 
 
@@ -75,12 +80,11 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
 
             committeeSelection: CommitteeSelection = CommitteeSelection(committee_target_size, committee_min_trust, committee_max_attest_age, committee_max_hw_frac, committee_max_op_frac, committee_max_pm_frac)
 
+            log(f"running committee selction with: committee target size: {committee_target_size}, committee min trust: {committee_min_trust}, committee_max_attest_age: {committee_max_attest_age}, committee_max_hw_frac: {committee_max_hw_frac}, committee_max_op_frac: {committee_max_op_frac}, committee_max_pm_frac: {committee_max_pm_frac}")
             committee = committeeSelection.selectionAlgorithm(self.m_nodeList)
 
-            log(f"running committee selction with: committee target size: {committee_target_size}, committee min trust: {committee_min_trust}, committee_max_attest_age: {committee_max_attest_age}, committee_max_hw_frac: {committee_max_hw_frac}, committee_max_op_frac: {committee_max_op_frac}, committee_max_pm_frac: {committee_max_pm_frac}")
-
             if committee:
-                log("committee:")
+                log("found committee:")
                 log(str(committee))
                 await self.requestCommitteeJoin(committee)
             else:

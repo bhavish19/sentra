@@ -25,8 +25,7 @@ message AttestationResponse {
 
 message SentraNode {
     string node_id = 1;        // Unique identifier for the node
-    string host = 2;     // Hostname or IP address of the node
-    int32 port = 3;      // Port number of the node
+    string grpc_url = 2;     // URL of GRPC interface for inter node communication
 }
 
 message JoinCommitteeRequest {

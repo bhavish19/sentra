@@ -17,6 +17,7 @@ class SentraNode:
     m_bVerified:bool
     m_sendQueue: asyncio.Queue[object]
     m_nodeGenerator:SentraNodeAttributeGenerator
+    m_strInterNodeCommunicationGRPC_URL:str
 
     def __init__(self,nodeGenerator:SentraNodeAttributeGenerator,nodeID:str,trustscore:float,cpu:int,host:int,operator:int):
         self.m_iOperator=operator
@@ -28,6 +29,7 @@ class SentraNode:
         self.m_attestTime=0
         self.m_sendQueue= asyncio.Queue()
         self.m_nodeGenerator=nodeGenerator
+        self.m_strInterNodeCommunicationGRPC_URL="Unknown"
 
     def __str__(self)->str:
         ret=f"SentraNode {self.m_strNodeID}:\n"
