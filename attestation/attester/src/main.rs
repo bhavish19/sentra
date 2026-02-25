@@ -18,7 +18,7 @@ const SENTRA_NODE_VERSION: &str = "00.03.078";
 
 fn main()
 {
-    print!("Starting Sentra Node version: {} [compile using {:?}]",SENTRA_NODE_VERSION,rustc_version_runtime::version());
+    println!("Starting Sentra Node version: {} [compiled using {:?}]",SENTRA_NODE_VERSION,rustc_version_runtime::version());
     let args:command_line_options::CommandLineOptions= argh::from_env();
 
     CryptoProvider::install_default(aws_lc_rs::default_provider()).expect("Failed to install crypto provider");
@@ -136,7 +136,7 @@ fn main()
                         {
                             Ok(Some(server_msg)) => 
                                 {
-                                    handle_server_message(server_msg,tx.clone(),&args);
+                                    handle_server_message(server_msg,tx.clone(),args.fake_attestation);
                                 }
                             Ok(None) =>
                                 {
@@ -155,7 +155,7 @@ fn main()
         });
     }
 
-fn handle_server_message(server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>,&args:command_line_options::CommandLineOptions) {
+fn handle_server_message(server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>,fake_attestation:bool) {
     match server_msg.message_type {
         Some(server_message::MessageType::Response(ack)) => {
             println!("✓ ACK: {} - {}", ack.success, ack.message);
@@ -166,7 +166,7 @@ fn handle_server_message(server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>,
             let tx_clone: mpsc::Sender<NodeMessage>=tx;
 	        tokio::spawn(async move {
                 // Send attestatin message
-                let quote: Vec<u8>=sentra_attester::generate_attestation_report(args.fake_attestation);
+                let quote: Vec<u8>=sentra_attester::generate_attestation_report(fake_attestation);
                 println!("Sending attestation...");
                 let register_msg: NodeMessage = NodeMessage {
                     message_type: Some(node_message::MessageType::Quote(AttestationResponse {

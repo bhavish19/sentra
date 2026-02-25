@@ -1,7 +1,7 @@
 dcap-qvl
 requests
 Flask
-grpcio 
+grpcio==1.78.1
 grpcio-tools
 acme 
 cryptography
