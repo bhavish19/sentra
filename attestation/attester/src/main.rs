@@ -16,11 +16,12 @@ mod command_line_options;
 
 const SENTRA_NODE_VERSION: &str = "00.03.078";
 
+let args:command_line_options::CommandLineOptions= argh::from_env();
+
 fn main()
 {
     print!("Starting Sentra Node version: {} [compile using {:?}]",SENTRA_NODE_VERSION,rustc_version_runtime::version());
-    let args:command_line_options::CommandLineOptions= argh::from_env();
-
+    
     CryptoProvider::install_default(aws_lc_rs::default_provider()).expect("Failed to install crypto provider");
     let mut grpc_cert:Option<String>=None;
     let mut grpc_key:Option<String>=None;
