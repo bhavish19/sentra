@@ -60,7 +60,6 @@ Overview
 Architecture Overview
 ========
 
-.. figure:: figures/sentra_demonstrator.png
+.. image:: figures/sentra_demonstrator.svg
    :class: with-border
-
-   Architecture
+   :alt: Architecture diagram
