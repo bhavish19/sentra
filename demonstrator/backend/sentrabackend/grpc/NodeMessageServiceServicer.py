@@ -105,7 +105,6 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                 req = self.generateAttestationRequest()
                 yield SentraBackend_GRPC_Services_pb2.ServerMessage(attestation=req)
                 bRegistered = True
-                await self.generateComittee()
         except Exception as e:
             log(f"Error during registration: {e}")
             return
@@ -130,6 +129,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                             attest_time = time.time()
                             self.m_nodeList.setVerified(node_id, attest_time)
                             log(f"Node {node_id} verified.")
+                            await self.generateComittee()
                         else:
                             log(f"Node {node_id} failed verification")
                             break

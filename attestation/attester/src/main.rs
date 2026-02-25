@@ -23,7 +23,7 @@ fn main()
 
     CryptoProvider::install_default(aws_lc_rs::default_provider()).expect("Failed to install crypto provider");
     let mut grpc_cert:Option<String>=None;
-    let mut grpc_key:Option<String>=None;
+    let mut _grpc_key:Option<String>=None;
     if args.use_acme
     {
         match acme::get_tls_certificate(&args.acme_url,&args.acme_cert)
@@ -32,7 +32,7 @@ fn main()
                     {
                         println!("Got certificate!");
                         grpc_cert=Some(cert);
-                        grpc_key=Some(key);
+                        _grpc_key=Some(key);
                     }
                 Err(e) => 
                     {
