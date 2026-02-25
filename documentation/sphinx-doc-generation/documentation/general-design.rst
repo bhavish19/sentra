@@ -56,3 +56,11 @@ Overview
         SentraBackend -> SentraBackend: return new committee
     end
     end
+
+Architecture Overview
+========
+
+.. figure:: figures/sentra_demonstrator.png
+   :class: with-border
+
+   Architecture
