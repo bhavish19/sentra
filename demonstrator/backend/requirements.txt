@@ -5,3 +5,4 @@ grpcio==1.78.1
 grpcio-tools
 acme 
 cryptography
+josepy

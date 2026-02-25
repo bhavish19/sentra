@@ -44,5 +44,5 @@ class CommandLineOptions:
     def getACMEServerCertificate(self)->str|None:
         return self.m_Args.acme_server_certificate
 
-    def getComitteeSelectionTrigger(self)->int:
-        return self.m_Args.comittee_selection_trigger
+    def getCommitteeSelectionTrigger(self)->int:
+        return self.m_Args.committee_selection_trigger

@@ -65,7 +65,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
 
 
     async def generateComittee(self):
-        if(self.m_nodeList.len()>=self.m_commandLineOptions.getComitteeSelectionTrigger()):
+        if(self.m_nodeList.len()>=self.m_commandLineOptions.getCommitteeSelectionTrigger()):
             committee_target_size = 5
             committee_min_trust = 2
             committee_max_attest_age = 100
