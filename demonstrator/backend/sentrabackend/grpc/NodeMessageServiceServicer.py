@@ -62,8 +62,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
         log("Send request to all Nodes of committee to join the committee...")
         node:SentraNode
         for node in committee.getNodes():
-            req:SentraBackend_GRPC_Services_pb2.JoinCommitteeRequest=
-                SentraBackend_GRPC_Services_pb2.JoinCommitteeRequest(node_id=node.m_strNodeID,
+            req:SentraBackend_GRPC_Services_pb2.JoinCommitteeRequest=SentraBackend_GRPC_Services_pb2.JoinCommitteeRequest(node_id=node.m_strNodeID,
                     grpc_url=node.m_strInterNodeCommunicationGRPC_URL)
             log(f"Send committee join to node: {node.m_strNodeID}")
             await node.getSendQueue().put(req)
