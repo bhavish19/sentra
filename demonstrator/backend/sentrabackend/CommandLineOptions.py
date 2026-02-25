@@ -16,6 +16,8 @@ class CommandLineOptions:
         self.m_Parser.add_argument("--use-acme",help="Use ACME to get a certificate for the GRPC interface (otherwise plain HTTP is used).",default=False,action="store_true")
         self.m_Parser.add_argument("--acme-host",help="Host of the ACME server.",default="localhost")
         self.m_Parser.add_argument("--acme-server-certificate",help="Path to the CA certificate for verifying TLS connections with the ACME server. If not given, the TLS connection will not be verified.",default=None)
+        self.m_Parser.add_argument("--fake-attestation",help="Accept faked attestation reports (for easy testing without SGX).",default=False,action="store_true")
+
         self.m_Args=self.m_Parser.parse_args()
 
     def getPort(self)->int:
@@ -26,6 +28,9 @@ class CommandLineOptions:
 
     def getRunInSimulationMode(self)->bool:
         return self.m_Args.simulator
+
+    def getAcceptFakeAttestation(self)->bool:
+        return self.m_Args.fake_attestation
 
     def getRunCommitteeSelection(self)->bool:
         return self.m_Args.committee

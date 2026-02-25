@@ -9,6 +9,7 @@ from ..SentraNodeAttributeGenerator import SentraNodeAttributeGenerator
 from ..SentraNodeList import SentraNodeList
 from ..ComitteeSelection import CommitteeSelection
 from ..Attestation import Attestation
+from ..CommandLineOptions import CommandLineOptions
 from ..Log import log as log
 
 class NodeMessageServiceServicer(_NodeMessageServiceServicer):
@@ -16,11 +17,13 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
     m_nodeGenerator:SentraNodeAttributeGenerator
     m_nodeList:SentraNodeList
     m_GRPC_Loop:asyncio.AbstractEventLoop
+    m_commandLineOptions:CommandLineOptions
 
-    def __init__(self,nodeGenerator:SentraNodeAttributeGenerator,nodeList:SentraNodeList):
+    def __init__(self,nodeGenerator:SentraNodeAttributeGenerator,nodeList:SentraNodeList,commandlineOptions:CommandLineOptions):
         self.m_nodeGenerator=nodeGenerator
         self.m_nodeList=nodeList
         self.m_GRPC_Loop=asyncio.get_event_loop()
+        self.m_commandLineOptions=commandlineOptions
 
     def sendMessageToNode(self,node_id:str,message:object)->None:
         sendQueue: asyncio.Queue[object]|None=self.m_nodeList.getSendQueue(node_id)
@@ -62,7 +65,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
 
 
     async def generateComittee(self):
-        if(self.m_nodeList.len()>=10):
+        if(self.m_nodeList.len()>=self.m_commandLineOptions.getComitteeSelectionTrigger()):
             committee_target_size = 5
             committee_min_trust = 2
             committee_max_attest_age = 100
@@ -117,8 +120,12 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                 async for node_message in request_iterator:
                     if node_message.HasField('quote'):
                         log("Received quote")
-                        attestation = Attestation()
-                        bVerified: bool = await attestation.verify(node_message.quote.report)
+                        attestation = Attestation()                       
+                        bVerified: bool = False
+                        if(self.m_commandLineOptions.getAcceptFakeAttestation()):
+                            bVerified=True
+                        else:    
+                            bVerified=await attestation.verify(node_message.quote.report)
                         if bVerified:
                             attest_time = time.time()
                             self.m_nodeList.setVerified(node_id, attest_time)
