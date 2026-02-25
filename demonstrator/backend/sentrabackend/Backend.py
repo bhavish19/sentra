@@ -26,6 +26,7 @@ class Backend:
     m_NodeMessageServiceServicer:NodeMessageServiceServicer
     m_grpcCertsPEM:bytes|None
     m_grpcKeyPEM:bytes|None
+    m_commandLineOptions:CommandLineOptions
 
     def __init__(self):
         self.m_bAppSimulation=False
@@ -35,7 +36,7 @@ class Backend:
 
     async def runGRPCServer(self):
         self.server = grpc_aio.server()
-        self.m_NodeMessageServiceServicer = NodeMessageServiceServicer(self.m_nodeGenerator,self.m_nodeList)
+        self.m_NodeMessageServiceServicer = NodeMessageServiceServicer(self.m_nodeGenerator,self.m_nodeList,self.m_commandLineOptions)
         add_NodeMessageServiceServicer_to_server(self.m_NodeMessageServiceServicer,self.server)
         self.server.add_insecure_port('0.0.0.0:8000')
         log(f"Starting HTTP gRPC server on port 8000...")
@@ -61,6 +62,7 @@ class Backend:
         grpc_thread.start()
 
     def create(self,cmdlineargs:CommandLineOptions)->Flask:
+        self.m_commandLineOptions=cmdlineargs
         if(cmdlineargs.useACME()):
             acme_connection:SentraACME=SentraACME(cmdlineargs.getACMEHost(),cmdlineargs.getACMEServerCertificate())
             (self.m_grpcKeyPEM,self.m_grpcCertsPEM)=acme_connection.generateTLSCertsAndKeys()
