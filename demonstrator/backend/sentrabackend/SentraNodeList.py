@@ -45,3 +45,7 @@ class SentraNodeList:
     def toJSONObject(self)->object:
         with self.m_Lock:
             return [*self.m_arNodes.values()]
+    
+    def getNodes(self)->list[SentraNode]:
+        with self.m_Lock:
+            return self.m_arNodes.values()

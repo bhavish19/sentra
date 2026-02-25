@@ -23,11 +23,39 @@ message AttestationResponse {
     bytes report = 1;
 }
 
+message SentraNode {
+    string node_id = 1;        // Unique identifier for the node
+    string host = 2;     // Hostname or IP address of the node
+    int32 port = 3;      // Port number of the node
+}
+
+message JoinCommitteeRequest {
+    repeated SentraNode committee =1;
+}
+
+message CommitteeJoinACK {
+    enum Status {
+        SUCCESS = 0;
+        UNKNOWN = -1;
+        NO_CONNECTION = -2;
+        ATTESTATION_FAILED =-3; 
+    }
+
+    string node_id = 1;        // Unique identifier for the node
+    Status status = 2;     // Status regarding the join operation
+}
+
+message JoinCommitteeResponse {
+    bytes report = 1;
+}
+
+
 // Message from node to server (client -> server)
 message NodeMessage {
     oneof message_type {
         RegisterRequest register = 1;
         AttestationResponse quote=2;
+        JoinCommitteeResponse join_committee_response=3;
     }
 }
 
@@ -36,5 +64,6 @@ message ServerMessage {
     oneof message_type {
         RegisterResponse response = 1;
         AttestationRequest attestation=2;
+        JoinCommitteeRequest join_committee_request=3;
     }
 }

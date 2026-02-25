@@ -55,7 +55,13 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
     def generateAttestationRequest(self)->SentraBackend_GRPC_Services_pb2.AttestationRequest:
         return SentraBackend_GRPC_Services_pb2.AttestationRequest(nonce="Nonce")
 
-    def generateComittee(self):
+    async def requestCommitteeJoin(self,committee:SentraNodeList):
+        for node in committee.getNodes():
+            req:SentraBackend_GRPC_Services_pb2.JoinCommitteeRequest=SentraBackend_GRPC_Services_pb2.JoinCommitteeRequest(node_id=node.node_id,host=node.host,port=node.port)
+            await node.getSendQueue().put(req)
+
+
+    async def generateComittee(self):
         if(self.m_nodeList.len()>=10):
             committee_target_size = 5
             committee_min_trust = 2
@@ -74,6 +80,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                 log("committee:")
                 json_list = [node.to_dict() for node in committee.m_arNodes.values()]
                 log(json.dumps(json_list, indent=4))
+                await self.requestCommitteeJoin(committee)
             else:
                 log("no committee found!")
 
@@ -95,7 +102,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                 req = self.generateAttestationRequest()
                 yield SentraBackend_GRPC_Services_pb2.ServerMessage(attestation=req)
                 bRegistered = True
-                self.generateComittee()
+                await self.generateComittee()
         except Exception as e:
             log(f"Error during registration: {e}")
             return
