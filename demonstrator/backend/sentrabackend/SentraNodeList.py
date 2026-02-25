@@ -11,6 +11,12 @@ class SentraNodeList:
         self.m_arNodes={}
         self.m_Lock=threading.Lock()
 
+    def __str__(self)->str:
+        ret=f"SentraNode list with {self.len()} nodes:\n"
+        for node in self.m_arNodes.values():
+            ret+=str(node)
+        return ret
+
     def add(self,node:SentraNode)->bool:
         with self.m_Lock:
             if(node.m_strNodeID in self.m_arNodes):

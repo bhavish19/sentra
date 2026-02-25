@@ -81,26 +81,25 @@ class CommitteeSelection:
         """
 
         curr_time = time.time()
+        candidates:SentraNodeList=SentraNodeList()
 
         # have to create a copy for deleting while iterating
         for node in list(nodes.m_arNodes.values()):
             if not node.m_bVerified:
                 log(f"removing node {node.m_strNodeID} from candidate set, \
                      reason: not verified")
-                nodes.remove(node.m_strNodeID)
                 continue
 
             if node.m_fTrustScore < self.m_min_trust:
                 log(f"removing node {node.m_strNodeID} from candidate set, \
                      reason: trustScore too low")
-                nodes.remove(node.m_strNodeID)
                 continue
 
             if curr_time - node.m_attestTime > self.m_max_attest_age:
                 log(f"removing node {node.m_strNodeID} from candidate set, \
                     reason: attestation too old")
-                nodes.remove(node.m_strNodeID)
                 continue
+            candidates.add(node)
 
         return nodes
 
@@ -154,9 +153,9 @@ class CommitteeSelection:
             SentraNodeList: Node list of new committee. If length == 0, no committee was found.
         """
 
-        count_hw = defaultdict(int)
-        count_op = defaultdict(int)
-        count_pm = defaultdict(int)
+        count_hw:defaultdict[int,int] = defaultdict(int)
+        count_op:defaultdict[int,int] = defaultdict(int)
+        count_pm:defaultdict[int,int] = defaultdict(int)
 
         new_committee = SentraNodeList()
 

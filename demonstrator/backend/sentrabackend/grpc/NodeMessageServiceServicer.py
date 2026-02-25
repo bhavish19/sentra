@@ -81,8 +81,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
 
             if committee:
                 log("committee:")
-                json_list = [node.to_dict() for node in committee.m_arNodes.values()]
-                log(json.dumps(json_list, indent=4))
+                log(str(committee))
                 await self.requestCommitteeJoin(committee)
             else:
                 log("no committee found!")

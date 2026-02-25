@@ -1,7 +1,6 @@
 import threading
 import random
 import time
-import json
 
 from .SentraNodeAttributeGenerator import SentraNodeAttributeGenerator
 from .SentraNodeList import SentraNodeList
@@ -31,9 +30,7 @@ class AppSimulator:
 
         if self.m_committeeSelection:
             log("node list:")
-            json_list = [node.to_dict()
-                         for node in self.m_nodeList.m_arNodes.values()]
-            log(json.dumps(json_list, indent=4))
+            log(str(self.m_nodeList))
 
             committee_target_size = 5
             committee_min_trust = 2
@@ -50,8 +47,7 @@ class AppSimulator:
 
             if committee:
                 log("committee:")
-                json_list = [node.to_dict() for node in committee.m_arNodes.values()]
-                log(json.dumps(json_list, indent=4))
+                log(str(committee))
             else:
                 log("no committee found!")
 

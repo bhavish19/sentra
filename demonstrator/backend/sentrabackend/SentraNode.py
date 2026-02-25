@@ -1,5 +1,7 @@
 import asyncio
 
+from .SentraNodeAttributeGenerator import SentraNodeAttributeGenerator
+
 class SentraNode:
     m_strNodeID:str
     m_iCPUArchitecture:int
@@ -9,8 +11,9 @@ class SentraNode:
     m_attestTime: float
     m_bVerified:bool
     m_sendQueue: asyncio.Queue[object]
+    m_nodeGenerator:SentraNodeAttributeGenerator
 
-    def __init__(self,nodeID:str,trustscore:float,cpu:int,host:int,operator:int):
+    def __init__(self,nodeGenerator:SentraNodeAttributeGenerator,nodeID:str,trustscore:float,cpu:int,host:int,operator:int):
         self.m_iOperator=operator
         self.m_fTrustScore=trustscore
         self.m_iCPUArchitecture=cpu
@@ -19,6 +22,16 @@ class SentraNode:
         self.m_bVerified=False
         self.m_attestTime=0
         self.m_sendQueue= asyncio.Queue()
+        self.m_nodeGenerator=nodeGenerator
+
+    def __str__(self)->str:
+        ret=f"SentraNode {self.m_strNodeID}:\n"
+        ret+=f"\tOperator:    {self.getOperatorName()}\n"
+        ret+=f"\tHost:        {self.getHostName()}\n"
+        ret+=f"\tCPU:         {self.getCPUName()}\n"
+        ret+=f"\tattested:    {self.m_bVerified} (at: {self.m_attestTime}\n"
+        ret+=f"\tTrust score: {self.m_fTrustScore}\n"
+        return ret
 
     def __hash__(self):
         return hash(self.m_strNodeID)
@@ -28,15 +41,6 @@ class SentraNode:
             return NotImplemented
         return self.m_strNodeID == other.m_strNodeID
 
-    def to_dict(self):
-        return {"nodeID":self.m_strNodeID,
-                "cpu arch":self.m_iCPUArchitecture,
-                "operator":self.m_iOperator,
-                "host":self.m_iHost,
-                "trust score":self.m_fTrustScore,
-                "attest time":self.m_attestTime,
-                "verified":self.m_bVerified}
-
     def setVerified(self,b:bool,time:float)->None:
         self.m_bVerified=b
         self.m_attestTime=time
@@ -44,11 +48,20 @@ class SentraNode:
     def getSendQueue(self)-> asyncio.Queue[object]:
         return self.m_sendQueue
 
+    def getOperatorName(self)->str:
+        return self.m_nodeGenerator.getOpertor(self.m_iOperator)
+
+    def getHostName(self)->str:
+        return self.m_nodeGenerator.getHost(self.m_iHost).m_Name
+
+    def getCPUName(self)->str:
+        return self.m_nodeGenerator.getCPUForHost(self.m_iHost)
+
     def toJSONObject(self)->object:
             return {
                 'node_id':self.m_strNodeID,
-                'host':backend.m_nodeGenerator.getHost(self.m_iHost).m_Name,
-                'operator':backend.m_nodeGenerator.getOpertor(self.m_iOperator),
-                'cpu':backend.m_nodeGenerator.getCPUForHost(self.m_iHost),
+                'host':self.getHostName(),
+                'operator':self.getOperatorName(),
+                'cpu':self.getCPUName(),
                 'attested':self.m_bVerified
             }

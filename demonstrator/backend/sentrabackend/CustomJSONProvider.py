@@ -5,7 +5,8 @@ from .SentraNodeList import SentraNodeList
 
 class CustomJSONProvider(DefaultJSONProvider):
 
-    def default(self, obj:object)->object:
+    @staticmethod
+    def default(obj:object)->object:  # type: ignore
         if isinstance(obj, SentraNode) or isinstance(obj,SentraNodeList):
             return obj.toJSONObject()
-        return super().default(obj)
+        return DefaultJSONProvider.default(obj)
