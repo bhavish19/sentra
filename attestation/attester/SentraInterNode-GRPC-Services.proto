@@ -6,7 +6,20 @@ service InterNodeMessageService {
 rpc InterNodeStream (stream InterNodeMessage) returns (stream InterNodeMessage);
 }
 
+message HelloMessage
+{
+    string node_id;
+}
+
+message HeartbeatMessage
+{
+    string message;
+}
+
 message InterNodeMessage 
 {
-    string msg=1;
+    oneof message_type {
+        HelloMessage hello=1;
+        HeartbeatMessage heartbeat=2;
+    }
 }

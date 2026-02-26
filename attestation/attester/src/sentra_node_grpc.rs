@@ -12,18 +12,15 @@ impl inter_node_message_service_server::InterNodeMessageService for SentraInterN
 {
     type InterNodeStreamStream = ReceiverStream<Result<InterNodeMessage, Status>>;
 
-    async fn inter_node_stream(
-        &self,
-        request: Request<tonic::Streaming<InterNodeMessage>>, // Incoming stream of messages
-    ) -> Result<Response<Self::InterNodeStreamStream>, Status> {
-        println!("New bidirectional inter node meassge stream started!");
-	let mut incoming_stream = request.into_inner();
+    async fn inter_node_stream(&self,request: Request<tonic::Streaming<InterNodeMessage>>) -> Result<Response<Self::InterNodeStreamStream>, Status> 
+    {
+        println!("New bidirectional inter node meassage stream started! - We are the server");
+        let mut incoming_stream = request.into_inner();
 
-        // Create a channel to send messages back to the client
+            // Create a channel to send messages back to the client
         let (tx, rx) = mpsc::channel(32);
-	// Return the receiver stream as the response
+        // Return the receiver stream as the response
         Ok(Response::new(ReceiverStream::new(rx)))
-
 	}
 } 
 
