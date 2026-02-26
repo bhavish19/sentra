@@ -34,7 +34,9 @@ RUN mkdir -p /attester/src
 COPY ./attestation/attester/Cargo.toml /attester
 COPY ./attestation/attester/rust-toolchain.toml /attester
 COPY ./attestation/attester/build.rs /attester
+COPY ./attestation/attester/SentraInterNode-GRPC-Services.proto /attester/
 COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /attester/
+
 WORKDIR /attester
 RUN echo 'fn main() {}' > ./src/main.rs
 #RUN cargo update -p socket2@0.6.2 --precise 0.5.10
