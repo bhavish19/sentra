@@ -40,7 +40,7 @@ thiserror="=2.0.18"
 argh="=0.1.12"
 argh_shared="=0.1.12"
 getrandom="=0.3.4"
-tonic = { version = "=0.13.1", default-features = false, features = ["channel,server","tls-aws-lc","codegen","prost"] }
+tonic = { version = "=0.13.1", default-features = false, features = ["channel","server","router","tls-aws-lc","codegen","prost"] }
 prost = "=0.13.5"
 prost-derive="=0.13.5"
 prost-types="=0.13.5"
@@ -48,10 +48,13 @@ instant-acme = { version="=0.7.2",  default-features = false,features = ["aws-lc
 time-core="=0.1.4"
 time="=0.3.41"
 indexmap="=2.11.4"
+axum-core = "=0.5.2"
+axum="=0.8.4"
 
 
 
-#axum = "=0.7.7"
+
+
 #parking_lot="=0.12.4"
 ryu="=1.0.20"
 #parking_lot_core="=0.9.11"

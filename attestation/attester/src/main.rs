@@ -80,7 +80,7 @@ fn main()
                 let ca_cert = Certificate::from_pem(grpc_cert.unwrap().as_bytes());
                 println!("Loaded CA certificate");
 
-                let endpoint = Channel::from_shared(grp_server_url).expect("REASON-1")
+                let endpoint = Channel::from_shared(grpc_server_url).expect("REASON-1")
                     .tls_config(            
                                 tonic::transport::ClientTlsConfig::new()
                                 .ca_certificate(ca_cert)
