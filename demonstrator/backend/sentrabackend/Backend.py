@@ -86,7 +86,6 @@ class Backend:
     def sendMessageToNode(self,node_id:str,message:object)->None:
         self.m_NodeMessageServiceServicer.sendMessageToNode(node_id, message)
 
-
     def getIndex(self):
         return send_file(self.m_sIndexHtml)
 

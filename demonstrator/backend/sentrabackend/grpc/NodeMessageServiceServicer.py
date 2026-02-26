@@ -25,10 +25,13 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
         self.m_GRPC_Loop=asyncio.get_event_loop()
         self.m_commandLineOptions=commandlineOptions
 
-    def sendMessageToNode(self,node_id:str,message:object)->None:
+    def sendMessageToNode(self,node_id:str,message:SentraBackend_GRPC_Services_pb2.ServerMessage)->None:
         sendQueue: asyncio.Queue[object]|None=self.m_nodeList.getSendQueue(node_id)
         if(not sendQueue is None):
             asyncio.run_coroutine_threadsafe(sendQueue.put(message),self.m_GRPC_Loop)
+
+    def putMessageInNodeSendQueue(self,sendQueue: asyncio.Queue[object],message:SentraBackend_GRPC_Services_pb2.ServerMessage)->None:
+        asyncio.run_coroutine_threadsafe(sendQueue.put(message),self.m_GRPC_Loop)
 
     def registerNode(self, message:object)->tuple[object,str|None,asyncio.Queue[object]|None]:
         if not message.HasField('register'):
@@ -69,7 +72,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
             req.committee.add().CopyFrom(grpcNode)
         for node in committee.getNodes():
             log(f"Send committee join to node: {node.m_strNodeID}")
-            await node.getSendQueue().put(req)
+            self.putMessageInNodeSendQueue(node.m_sendQueue,SentraBackend_GRPC_Services_pb2.ServerMessage(join_committee_request=req))
 
 
     async def generateComittee(self):
@@ -120,6 +123,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
             return
 
         async def recv_messages():
+            '''Internal function to receive GRPC messages from Sentra Nodes'''
             try:
                 # Process remaining messages
                 async for node_message in request_iterator:
@@ -147,6 +151,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
             finally:
                 self.m_nodeList.remove(node_id)
                 log(f"Leaving receive loop closing connection to node {node_id}...")
+
         recv_task:asyncio.Task[object]=asyncio.create_task(recv_messages())
         try:
             while True:
