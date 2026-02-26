@@ -8,12 +8,12 @@ rpc InterNodeStream (stream InterNodeMessage) returns (stream InterNodeMessage);
 
 message HelloMessage
 {
-    string node_id;
+    string node_id=1;
 }
 
 message HeartbeatMessage
 {
-    string message;
+    string message=1;
 }
 
 message InterNodeMessage 

@@ -186,7 +186,7 @@ fn handle_server_message(server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>,
         },
         Some(server_message::MessageType::JoinCommitteeRequest(request)) => {
             println!("Received JoinCommittee request -- Committee: {:?}", request.committee);
-            handle_join:committee_message(request.committee);
+            handle_join_committee_message(&request.committee);
         },
         None => {
             println!("Received empty message");
@@ -195,7 +195,7 @@ fn handle_server_message(server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>,
 
 }
 
-fn handle_join_committee_message(committee:&Vec<t_grpc_SentraNode>)
+fn handle_join_committee_message(committee:&Vec<TGrpcSentraNode>)
 {
     
 }
