@@ -17,12 +17,31 @@ mod sentra_node_grpc;
 
 const SENTRA_NODE_VERSION: &str = "00.03.078";
 
+struct SentraNode
+{
+    node_id:String;
+    grpc_url:String;
+    args:command_line_options::CommandLineOptions;
+}
+
+impl Default for SentraNode {
+    fn default()->Self
+      {
+        SentraNode
+        {
+            node_id:String::new();
+            grpc_url:String::new();
+        }
+      }
+}
+
 fn main()
 {
     println!("Starting Sentra Node version: {} [compiled using {:?}]",SENTRA_NODE_VERSION,rustc_version_runtime::version());
-    let args:command_line_options::CommandLineOptions= argh::from_env();
+    let sentraNode:SentraNode=SentraNode::default();
+    sentraNode.args= argh::from_env();
 
-    let node_id: String=match hostname::get() 
+    sentraNode.node_id=match hostname::get() 
         {
             Ok(name) => 
                 {
@@ -197,5 +216,5 @@ fn handle_server_message(server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>,
 
 fn handle_join_committee_message(committee:&Vec<TGrpcSentraNode>)
 {
-    
+
 }
