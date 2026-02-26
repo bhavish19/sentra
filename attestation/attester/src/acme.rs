@@ -7,17 +7,17 @@ use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
 use rustls::{ClientConfig, RootCertStore};
  
-pub fn get_tls_certificate(acme_url:&String,acme_cert:&String) -> Result<(String, String), Box<dyn std::error::Error>> 
+pub fn get_tls_certificate(acme_url:&String,acme_cert:&String,node_id:&String) -> Result<(String, String), Box<dyn std::error::Error>> 
     {
         let result: Result<(String, String), Box<dyn Error>>= tokio::runtime::Runtime::new()?.block_on(
             async 
                 {
-                    get_tlscertificate_async(acme_url,acme_cert).await
+                    get_tlscertificate_async(acme_url,acme_cert,node_id).await
                 });
         result
     }
     
-pub async fn get_tlscertificate_async(acme_url:&String,acme_cert:&String)-> Result<(String, String), Box<dyn std::error::Error>>
+pub async fn get_tlscertificate_async(acme_url:&String,acme_cert:&String,node_id:&String)-> Result<(String, String), Box<dyn std::error::Error>>
 {
 // Load root certificate
     let pem:Vec<u8>= fs::read(acme_cert)?;
@@ -59,7 +59,7 @@ pub async fn get_tlscertificate_async(acme_url:&String,acme_cert:&String)-> Resu
     )
     .await?;
 
-    let params: rcgen::CertificateParams = rcgen::CertificateParams::new(vec!["example.com".to_string()])?;
+    let params: rcgen::CertificateParams = rcgen::CertificateParams::new(vec![node_id.to_string()])?;
     let key_pair: rcgen::KeyPair = rcgen::KeyPair::generate()?;
     
     let private_key: String = key_pair.serialize_pem();
@@ -68,7 +68,7 @@ pub async fn get_tlscertificate_async(acme_url:&String,acme_cert:&String)-> Resu
     // Create order
     let mut order: instant_acme::Order = account
         .new_order(&NewOrder {
-            identifiers: &[Identifier::Dns("example.com".to_string())],
+            identifiers: &[Identifier::Dns(node_id.to_string())],
         })
         .await?;
 

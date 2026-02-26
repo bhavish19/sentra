@@ -13,6 +13,7 @@ use rustc_version_runtime;
 tonic::include_proto!("sentra_backend_grpc_services");
 
 mod command_line_options;
+mod sentra_node_grpc;
 
 const SENTRA_NODE_VERSION: &str = "00.03.078";
 
@@ -21,12 +22,27 @@ fn main()
     println!("Starting Sentra Node version: {} [compiled using {:?}]",SENTRA_NODE_VERSION,rustc_version_runtime::version());
     let args:command_line_options::CommandLineOptions= argh::from_env();
 
+    let node_id: String=match hostname::get() 
+        {
+            Ok(name) => 
+                {
+                    let hname: String=name.to_string_lossy().to_string();
+                    println!("Hostname: {}", hname);
+                    hname
+                }
+            Err(e) => 
+                {
+                    eprintln!("Failed to get hostname: {}", e);
+                    String::from("Unknown")
+                }
+        };
+
     CryptoProvider::install_default(aws_lc_rs::default_provider()).expect("Failed to install crypto provider");
     let mut grpc_cert:Option<String>=None;
     let mut _grpc_key:Option<String>=None;
     if args.use_acme
     {
-        match acme::get_tls_certificate(&args.acme_url,&args.acme_cert)
+        match acme::get_tls_certificate(&args.acme_url,&args.acme_cert,&node_id)
             {
                 Ok((cert, key)) => 
                     {
@@ -48,28 +64,16 @@ fn main()
                     }
         };
     }
-    let grp_server_url: String=args.grpc_url;
-     
-    let node_id: String=match hostname::get() 
-        {
-            Ok(name) => 
-                {
-                    let hname: String=name.to_string_lossy().to_string();
-                    println!("Hostname: {}", hname);
-                    hname
-                }
-            Err(e) => 
-                {
-                    eprintln!("Failed to get hostname: {}", e);
-                    String::from("Unknown")
-                }
-        };
 
+    sentra_node_grpc::startGRPCServer();
+
+    let grpc_server_url: String=args.grpc_url;
+     
     let rt: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async 
         {
             // Connect to the server
-            println!("Try to connect to GRPC interface of Sentra backend: {}",grp_server_url);
+            println!("Try to connect to GRPC interface of Sentra backend: {}",grpc_server_url);
             let mut client: node_message_service_client::NodeMessageServiceClient<tonic::transport::Channel>;
             if args.use_acme
             {
@@ -89,7 +93,7 @@ fn main()
             else
             {
                 println!("Doing a default connection...");
-                client = node_message_service_client::NodeMessageServiceClient::connect(grp_server_url).await.expect("REASON");
+                client = node_message_service_client::NodeMessageServiceClient::connect(grpc_server_url).await.expect("REASON");
             }
 
             // Create a channel for sending messages to the server
