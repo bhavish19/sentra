@@ -14,14 +14,16 @@ tonic::include_proto!("sentra_backend_grpc_services");
 
 mod command_line_options;
 mod sentra_node_grpc;
+mod committee;
 
 const SENTRA_NODE_VERSION: &str = "00.03.078";
 
 struct SentraNode
 {
-    node_id:String;
-    grpc_url:String;
-    args:command_line_options::CommandLineOptions;
+    node_id:String,
+    grpc_url:String,
+    args:command_line_options::CommandLineOptions,
+    committee:committee::Committee
 }
 
 impl Default for SentraNode {
@@ -29,19 +31,67 @@ impl Default for SentraNode {
       {
         SentraNode
         {
-            node_id:String::new();
-            grpc_url:String::new();
+            node_id:String::new(),
+            grpc_url:String::new(),
+            args:argh::from_env(),
+            committee:committee::Committee::default()
         }
       }
+}
+
+impl SentraNode
+{
+    fn handle_join_committee_message(&self,committee:&Vec<TGrpcSentraNode>)
+    {
+        for node in committee
+        {
+            self.committee.add(&node.node_id,&node.grpc_url);
+        }
+        println!("{}",self.committee);
+    }
+
+    fn handle_server_message(&self,server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>,fake_attestation:bool) {
+    match server_msg.message_type {
+        Some(server_message::MessageType::Response(ack)) => {
+            println!("✓ ACK: {} - {}", ack.success, ack.message);
+        },
+        Some(server_message::MessageType::Attestation(req)) => {
+            println!("Attestation request with nonce: {}...",req.nonce);        
+            println!("Spwan send quote thread...");
+            let tx_clone: mpsc::Sender<NodeMessage>=tx;
+	        tokio::spawn(async move {
+                // Send attestatin message
+                let quote: Vec<u8>=sentra_attester::generate_attestation_report(fake_attestation);
+                println!("Sending attestation...");
+                let register_msg: NodeMessage = NodeMessage {
+                    message_type: Some(node_message::MessageType::Quote(AttestationResponse {
+                        report: quote
+                    }))
+                };
+                
+                if tx_clone.send(register_msg).await.is_err() {
+                    eprintln!("Failed to send attestation");
+                    return;
+                }
+            });
+        },
+        Some(server_message::MessageType::JoinCommitteeRequest(request)) => {
+            println!("Received JoinCommittee request -- Committee: {:?}", request.committee);
+            self.handle_join_committee_message(&request.committee);
+        },
+        None => {
+            println!("Received empty message");
+        }
+    }
+    }
 }
 
 fn main()
 {
     println!("Starting Sentra Node version: {} [compiled using {:?}]",SENTRA_NODE_VERSION,rustc_version_runtime::version());
-    let sentraNode:SentraNode=SentraNode::default();
-    sentraNode.args= argh::from_env();
+    let mut sentra_node:SentraNode=SentraNode::default();
 
-    sentraNode.node_id=match hostname::get() 
+    sentra_node.node_id=match hostname::get() 
         {
             Ok(name) => 
                 {
@@ -59,9 +109,9 @@ fn main()
     CryptoProvider::install_default(aws_lc_rs::default_provider()).expect("Failed to install crypto provider");
     let mut grpc_cert:Option<String>=None;
     let mut _grpc_key:Option<String>=None;
-    if args.use_acme
+    if sentra_node.args.use_acme
     {
-        match acme::get_tls_certificate(&args.acme_url,&args.acme_cert,&node_id)
+        match acme::get_tls_certificate(&sentra_node.args.acme_url,&sentra_node.args.acme_cert,&sentra_node.node_id)
             {
                 Ok((cert, key)) => 
                     {
@@ -86,7 +136,7 @@ fn main()
 
     sentra_node_grpc::startGRPCServer();
 
-    let grpc_server_url: String=args.grpc_url;
+    let grpc_server_url: String=sentra_node.args.grpc_url.clone();
      
     let rt: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async 
@@ -94,7 +144,7 @@ fn main()
             // Connect to the server
             println!("Try to connect to GRPC interface of Sentra backend: {}",grpc_server_url);
             let mut client: node_message_service_client::NodeMessageServiceClient<tonic::transport::Channel>;
-            if args.use_acme
+            if sentra_node.args.use_acme
             {
                 let ca_cert = Certificate::from_pem(grpc_cert.unwrap().as_bytes());
                 println!("Loaded CA certificate");
@@ -125,13 +175,14 @@ fn main()
     
             let tx_register: mpsc::Sender<NodeMessage>=tx.clone();
             println!("Spawn registration thread...");
+            let node_id:String=sentra_node.node_id.clone();
             tokio::spawn(async move 
                 {
                     // Send registration message
                     println!("Sending registration...");
                     let register_msg: NodeMessage = NodeMessage {
                         message_type: Some(node_message::MessageType::Register(RegisterRequest {
-                            node_id: node_id.clone()
+                            node_id: node_id
                         }))
                     };
         
@@ -159,7 +210,7 @@ fn main()
                         {
                             Ok(Some(server_msg)) => 
                                 {
-                                    handle_server_message(server_msg,tx.clone(),args.fake_attestation);
+                                    sentra_node.handle_server_message(server_msg,tx.clone(),sentra_node.args.fake_attestation);
                                 }
                             Ok(None) =>
                                 {
@@ -178,43 +229,5 @@ fn main()
         });
     }
 
-fn handle_server_message(server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>,fake_attestation:bool) {
-    match server_msg.message_type {
-        Some(server_message::MessageType::Response(ack)) => {
-            println!("✓ ACK: {} - {}", ack.success, ack.message);
-        },
-        Some(server_message::MessageType::Attestation(req)) => {
-            println!("Attestation request with nonce: {}...",req.nonce);        
-            println!("Spwan send quote thread...");
-            let tx_clone: mpsc::Sender<NodeMessage>=tx;
-	        tokio::spawn(async move {
-                // Send attestatin message
-                let quote: Vec<u8>=sentra_attester::generate_attestation_report(fake_attestation);
-                println!("Sending attestation...");
-                let register_msg: NodeMessage = NodeMessage {
-                    message_type: Some(node_message::MessageType::Quote(AttestationResponse {
-                        report: quote
-                    }))
-                };
-                
-                if tx_clone.send(register_msg).await.is_err() {
-                    eprintln!("Failed to send attestation");
-                    return;
-                }
-            });
-        },
-        Some(server_message::MessageType::JoinCommitteeRequest(request)) => {
-            println!("Received JoinCommittee request -- Committee: {:?}", request.committee);
-            handle_join_committee_message(&request.committee);
-        },
-        None => {
-            println!("Received empty message");
-        }
-    }
 
-}
 
-fn handle_join_committee_message(committee:&Vec<TGrpcSentraNode>)
-{
-
-}
