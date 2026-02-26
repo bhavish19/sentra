@@ -23,13 +23,13 @@ message AttestationResponse {
     bytes report = 1;
 }
 
-message SentraNode {
+message t_grpc_SentraNode {
     string node_id = 1;        // Unique identifier for the node
     string grpc_url = 2;     // URL of GRPC interface for inter node communication
 }
 
 message JoinCommitteeRequest {
-    repeated SentraNode committee =1;
+    repeated t_grpc_SentraNode committee =1;
 }
 
 message CommitteeJoinACK {

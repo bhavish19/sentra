@@ -59,11 +59,15 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
         return SentraBackend_GRPC_Services_pb2.AttestationRequest(nonce="Nonce")
 
     async def requestCommitteeJoin(self,committee:SentraNodeList):
-        log("Send request to all Nodes of committee to join the committee...")
+        log("Send requests to all Nodes of committee to join the committee...")
         node:SentraNode
+        grpcNode:SentraBackend_GRPC_Services_pb2.t_grpc_SentraNode
+        req:SentraBackend_GRPC_Services_pb2.JoinCommitteeRequest=SentraBackend_GRPC_Services_pb2.JoinCommitteeRequest()
         for node in committee.getNodes():
-            req:SentraBackend_GRPC_Services_pb2.JoinCommitteeRequest=SentraBackend_GRPC_Services_pb2.JoinCommitteeRequest(node_id=node.m_strNodeID,
-                    grpc_url=node.m_strInterNodeCommunicationGRPC_URL)
+            grpcNode.node_id=node.m_strNodeID
+            grpcNode.grpc_url=node.m_strInterNodeCommunicationGRPC_URL
+            req.committee.add().CopyFrom(grpcNode)
+        for node in committee.getNodes():
             log(f"Send committee join to node: {node.m_strNodeID}")
             await node.getSendQueue().put(req)
 
