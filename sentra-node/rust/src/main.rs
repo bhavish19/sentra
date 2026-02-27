@@ -48,6 +48,7 @@ impl SentraNode
             self.committee.add(&node.node_id,&node.grpc_url);
         }
         println!("{}",self.committee);
+        self.committee.establish_connections();
     }
 
     fn handle_server_message(&self,server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>,fake_attestation:bool) {

@@ -18,6 +18,6 @@ done
 
 echo "Run attester in background with options: ${rust_args[@]}"
 #/home/sk13/src/sentra/attestation/attester/target/release/sentra_attester "${rust_args[@]}" 
-/bin/sentra_attester "${rust_args[@]}" &
+/bin/sentra_node "${rust_args[@]}" &
 echo "Run training"
 /bin/python3 "${python_args[@]}"

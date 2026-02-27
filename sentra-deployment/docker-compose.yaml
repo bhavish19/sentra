@@ -3,7 +3,7 @@ name: sentra
 x-sentra-core: &x-sentra-core
     build:
       context: ../
-      dockerfile: ./sgx/SentraSGX.dockerfile
+      dockerfile: ./sentra-node/docker/SentraNode.dockerfile
     image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-sgx:latest
     deploy:
       mode: replicated-job

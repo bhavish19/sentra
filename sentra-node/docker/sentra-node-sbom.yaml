@@ -20,7 +20,7 @@ targets:
   - target: /bin
     copy:
      - files:
-        - /attester/target/release/sentra_attester
+        - /sentra-node/rust/target/release/sentra_node
         - /enclave_run_script.sh
 
 # Shell
@@ -34,7 +34,7 @@ targets:
   - target: /etc
     copy:
      - files:
-        - /attester/pebble.cer
+        - /sentra-node/rust/pebble.cer
 
  # copy lib
 #  - target: /opt/occlum/glibc/lib
