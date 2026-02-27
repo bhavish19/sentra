@@ -51,7 +51,7 @@ services:
   sentra-node-4:
     <<: *x-sentra-multi-node
     command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --auto-close --node-id 4
- 
+
   sentra-node-5:
     <<: *x-sentra-multi-node
     command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --auto-close --node-id 5
@@ -71,4 +71,5 @@ services:
       - 8888:8888
     profiles:
       - test
+      - dp-test
 

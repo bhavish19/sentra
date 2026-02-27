@@ -13,3 +13,7 @@ dcap_c_test
 /documentation/sphinx-doc-generation/_build/
 /demonstrator/backend/sentrabackend/__pycache__/
 **/__pycache__/
+/.vscode/
+logs/
+*.egg-info/
+venv/
