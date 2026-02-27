@@ -22,10 +22,10 @@ RUN /miniconda/bin/conda create --prefix /python-occlum -y  python=3.10.0 numpy=
 COPY ./sentra-node/docker/sentra-node-sbom.yaml /
 RUN mkdir /sentra
 RUN mkdir /sentra/ml_training
-COPY ./ml_training /sentra/ml_training/
-COPY ./run_training.py /sentra/
-COPY ./run_dp_training.py /sentra/
-COPY ./run_node.py /sentra/
+COPY ./sentra-node/python/ml_training /sentra/ml_training/
+COPY ./sentra-node/python/run_training.py /sentra/
+COPY ./sentra-node/python/run_dp_training.py /sentra/
+COPY ./sentra-node/python/run_node.py /sentra/
 COPY ./sentra-node/docker/node_config.yaml /sentra/
 
 #Build attester
@@ -95,5 +95,5 @@ WORKDIR /
 RUN tar -xf occlum-instance.tar.gz
 RUN rm occlum-instance.tar.gz
 
-WORKDIR /occlum-instance    
+WORKDIR /occlum-instance
 ENTRYPOINT ["/entrypoint.sh"]
