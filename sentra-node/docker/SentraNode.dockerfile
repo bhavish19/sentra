@@ -19,23 +19,23 @@ RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.a
 RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 RUN /miniconda/bin/conda create --prefix /python-occlum -y  python=3.10.0 numpy==1.26.4 pyyaml==6.0.3
 
-COPY ./sgx/sentra-sbom.yaml /
+COPY ./sentra-node/docker/sentra-node-sbom.yaml /
 RUN mkdir /sentra
 RUN mkdir /sentra/ml_training
-COPY ./ml_training /sentra/ml_training/
-COPY ./run_training.py /sentra/
-COPY ./run_dp_training.py /sentra/
-COPY ./run_node.py /sentra/
-COPY ./sgx/node_config.yaml /sentra/
+COPY ./sentra-node/python/ml_training /sentra/ml_training/
+COPY ./sentra-node/python/run_training.py /sentra/
+COPY ./sentra-node/python/run_dp_training.py /sentra/
+COPY ./sentra-node/python/run_node.py /sentra/
+COPY ./sentra-node/docker/node_config.yaml /sentra/
 
 #Build attester
 #Just update crates.io (and cache it...)
 RUN mkdir -p /attester/src
-COPY ./attestation/attester/Cargo.toml /attester
-COPY ./attestation/attester/rust-toolchain.toml /attester
-COPY ./attestation/attester/build.rs /attester
-COPY ./attestation/attester/SentraInterNode-GRPC-Services.proto /attester/
-COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /attester/
+COPY ./sentra-node/rust/Cargo.toml /attester
+COPY ./sentra-node/rust/rust-toolchain.toml /attester
+COPY ./sentra-node/rust/build.rs /attester
+COPY ./sentra-node/rust/SentraInterNode-GRPC-Services.proto /attester/
+COPY ./sentra-node/rust/SentraBackend-GRPC-Services.proto /attester/
 
 WORKDIR /attester
 RUN echo 'fn main() {}' > ./src/main.rs
@@ -44,7 +44,7 @@ RUN cargo update -p getrandom@0.4.1 --precise 0.3.4
 #RUN occlum-cargo update -p prost-types@0.13.5 --precise 0.12.3
 RUN cargo build --release
 
-COPY ./attestation/attester /attester
+COPY ./sentra-node/rust/src /attester
 #RUN rm rust-toolchain.toml
 RUN rm SentraBackend-GRPC-Services.proto
 COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /attester/
@@ -52,14 +52,14 @@ COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /attester/
 RUN cargo build --release
 COPY ./demonstrator/ci/docker/config/pebble/pebble.cer /attester/
 
-COPY ./sgx/enclave_run_script.sh /
+COPY ./sentra-node/docker/enclave_run_script.sh /
 
 RUN occlum new /occlum-instance
 RUN rm -rf /occlum-instance/image
 WORKDIR /occlum-instance
 
 RUN mkdir -p ./image
-RUN copy_bom -f /sentra-sbom.yaml --root image --include-dir /opt/occlum/etc/template 
+RUN copy_bom -f /sentra-node-sbom.yaml --root image --include-dir /opt/occlum/etc/template
 
 RUN new_json="$(jq '.metadata.debuggable=false |.feature.enable_edmm=true |.resource_limits.user_space_size = "1MB" |.resource_limits.user_space_max_size = "5400MB" |.resource_limits.kernel_space_heap_size = "1MB" |.resource_limits.kernel_space_heap_max_size = "512MB" |.resource_limits.max_num_of_threads = 64 |.env.default += ["PYTHONHOME=/opt/python-occlum", "OMP_NUM_THREADS=1"]' Occlum.json)" && echo "${new_json}" > Occlum.json
 
@@ -85,8 +85,8 @@ sgx-aesm-service=2.21.100.1-jammy1 wait-for-it
 
 
 #COPY --from=sentra-builder /opt/occlum/start_aesm.sh /opt/occlum/
-COPY ./sgx/entrypoint.sh /
-COPY ./sgx/sgx_sentra_qcnl.conf /etc/sgx_default_qcnl.conf
+COPY ./sentra-node/docker/entrypoint.sh /
+COPY ./sentra-node/docker/sgx_sentra_qcnl.conf /etc/sgx_default_qcnl.conf
 #RUN mkdir -p /var/run/aesmd
 
 COPY --from=sentra-builder /occlum-instance/occlum-instance.tar.gz /
@@ -95,5 +95,5 @@ WORKDIR /
 RUN tar -xf occlum-instance.tar.gz
 RUN rm occlum-instance.tar.gz
 
-WORKDIR /occlum-instance    
+WORKDIR /occlum-instance
 ENTRYPOINT ["/entrypoint.sh"]
