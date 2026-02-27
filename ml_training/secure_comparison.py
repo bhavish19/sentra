@@ -7,6 +7,7 @@ from typing import List
 from ml_training.secret_sharing import Share
 from ml_training.beaver_triples import SecureMultiplier
 import random
+import time
 
 
 class SecureComparator:
@@ -89,6 +90,7 @@ class SecureComparator:
             time.sleep(0.001)
             
             if int(node_id) == int(opener):
+                _t0 = time.time()
                 opened_u64 = self.multiplier.reconstruction_manager.reconstruct_opened_vector_values(
                     context=ctx_in,
                     values_local=np.asarray(y1, dtype=np.uint64),
@@ -116,6 +118,8 @@ class SecureComparator:
                     net.channel.clear_vector(ctx_in)
                 except Exception:
                     pass
+                if hasattr(self.multiplier, "add_prover_time"):
+                    self.multiplier.add_prover_time(time.time() - _t0, "secure_compare_batch_opened")
                 if len(opener_vec) != len(share1_list):
                     raise RuntimeError(
                         f"secure_greater_than_batch length mismatch (opener): got={len(opener_vec)} expected={len(share1_list)} context={context_prefix}"

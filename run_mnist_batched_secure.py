@@ -9,6 +9,8 @@ import argparse
 import numpy as np
 import random
 import time
+from pathlib import Path
+import json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -140,6 +142,120 @@ def evaluate_model(
             return correct / denom, loss_sum / denom, diagnostics
     return 0.0, 0.0, {"max_abs_logit": 0.0, "mean_abs_logit": 0.0, "mean_entropy": 0.0}
 
+
+def _shares_to_flat_mod_p(shares_like, p: int) -> np.ndarray:
+    vals = []
+    if isinstance(shares_like, list) and shares_like and isinstance(shares_like[0], list):
+        # Matrix layer
+        for row in shares_like:
+            for s in row:
+                vals.append(int(s.y) % p)
+    else:
+        # Vector layer (bias)
+        for s in shares_like:
+            vals.append(int(s.y) % p)
+    return np.asarray(vals, dtype=np.uint64)
+
+
+def _mod_p_to_float(arr_u64: np.ndarray, p: int, scale: int) -> np.ndarray:
+    signed = arr_u64.astype(np.int64, copy=False)
+    signed = np.where(signed > (p // 2), signed - p, signed)
+    return signed.astype(np.float64) / float(scale)
+
+
+def export_reconstructed_model(
+    *,
+    weights: list,
+    node_id: int,
+    opener_node_id: int,
+    n_nodes: int,
+    field_size: int,
+    scale_factor: int,
+    reconstruction,
+    export_path: str,
+    timeout_s: float = 180.0,
+) -> None:
+    """
+    Reconstruct final model weights on opener node and save to NPZ.
+    Non-opener nodes only participate by broadcasting their local vectors.
+    """
+    if not export_path:
+        return
+    if reconstruction is None:
+        if node_id == 1:
+            print("[WARN] Model export requested but reconstruction manager is unavailable.")
+        return
+
+    net = reconstruction.network
+    p = int(field_size)
+    opener = int(opener_node_id)
+
+    # Layer descriptors and shapes
+    layer_specs = [
+        ("w1", weights[0], "matrix", (len(weights[0]), len(weights[0][0]) if weights[0] else 0)),
+        ("w2", weights[1], "matrix", (len(weights[1]), len(weights[1][0]) if weights[1] else 0)),
+        ("b1", weights[2], "vector", (len(weights[2]),)),
+        ("b2", weights[3], "vector", (len(weights[3]),)),
+    ]
+
+    reconstructed = {}
+    base_ctx = "final_model_export"
+    x0 = int(weights[0][0][0].x) if weights and weights[0] and weights[0][0] else int(node_id)
+
+    for lname, layer, ltype, shape in layer_specs:
+        local_vals = _shares_to_flat_mod_p(layer, p)
+        ctx = f"{base_ctx}_{lname}"
+        net.broadcast_vector(ctx, x=x0, values=local_vals)
+
+        if int(node_id) == int(opener):
+            opened = reconstruction.reconstruct_opened_vector_values(
+                context=ctx,
+                values_local=local_vals,
+                x=x0,
+                timeout=float(timeout_s),
+            )
+            arr_f = _mod_p_to_float(opened, p, int(scale_factor))
+            if ltype == "matrix":
+                arr_f = arr_f.reshape(shape[0], shape[1])
+            else:
+                arr_f = arr_f.reshape(shape[0])
+            reconstructed[lname] = arr_f
+
+    # Ensure all nodes finished vector broadcast/reconstruct before shutdown.
+    try:
+        net.barrier("final_model_export_done", timeout=float(timeout_s))
+    except Exception:
+        pass
+
+    if int(node_id) != int(opener):
+        return
+
+    out_path = Path(export_path)
+    if out_path.suffix.lower() != ".npz":
+        out_path = out_path.with_suffix(".npz")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    np.savez(
+        out_path,
+        w1=reconstructed["w1"],
+        w2=reconstructed["w2"],
+        b1=reconstructed["b1"],
+        b2=reconstructed["b2"],
+    )
+    meta_path = out_path.with_suffix(".json")
+    meta = {
+        "field_size": int(field_size),
+        "scale_factor": int(scale_factor),
+        "n_nodes": int(n_nodes),
+        "exported_by_node": int(node_id),
+        "weights_file": str(out_path),
+        "format": "npz",
+        "arrays": {"w1": list(reconstructed["w1"].shape), "w2": list(reconstructed["w2"].shape), "b1": list(reconstructed["b1"].shape), "b2": list(reconstructed["b2"].shape)},
+    }
+    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    print(f"Reconstructed model exported: {out_path}")
+    print(f"Model metadata exported: {meta_path}")
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--node-id', type=int, required=True)
@@ -181,6 +297,10 @@ def main():
                         help='Instability threshold for estimated gradient norm (default: 5.0)')
     parser.add_argument('--no-abort-on-instability', action='store_true',
                         help='Do not abort training when instability thresholds are violated')
+    parser.add_argument('--export-reconstructed-model', type=str, default='',
+                        help='Path to save reconstructed final model (.npz). Reconstruction/export is performed on opener node.')
+    parser.add_argument('--export-timeout', type=float, default=180.0,
+                        help='Timeout (seconds) for final model export reconstruction (default: 180)')
     args = parser.parse_args()
 
     random.seed(args.seed)
@@ -413,6 +533,37 @@ def main():
                         break
         if instability_detected and not args.no_abort_on_instability:
             break
+
+    # Emit explicit prover timing summary for post-run parsers/exporters.
+    try:
+        stats = multiplier.prover_time_snapshot(reset=False)
+        prover_total = float(stats.get("total_sec", 0.0))
+        opener_id = int(multiplier._opened_fp_opener()) if hasattr(multiplier, "_opened_fp_opener") else 1
+        print(f"Prover Node: {opener_id}")
+        print(f"Prover Time: {prover_total:.6f}s")
+        by_cat = stats.get("by_category", {})
+        if isinstance(by_cat, dict) and by_cat:
+            cat_parts = [f"{k}={float(v):.6f}s" for k, v in sorted(by_cat.items())]
+            print("Prover Time Breakdown: " + ", ".join(cat_parts))
+    except Exception:
+        pass
+
+    # Optional final model export (reconstructed on opener node).
+    if args.export_reconstructed_model:
+        try:
+            export_reconstructed_model(
+                weights=weights,
+                node_id=args.node_id,
+                opener_node_id=int(multiplier._opened_fp_opener()) if hasattr(multiplier, "_opened_fp_opener") else 1,
+                n_nodes=args.n_nodes,
+                field_size=FIELD_SIZE,
+                scale_factor=SCALE,
+                reconstruction=reconstruction,
+                export_path=args.export_reconstructed_model,
+                timeout_s=float(args.export_timeout),
+            )
+        except Exception as exc:
+            print(f"[WARN] Failed to export reconstructed model: {exc}")
 
 if __name__ == '__main__':
     main()

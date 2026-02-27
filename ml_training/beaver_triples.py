@@ -10,6 +10,7 @@ import secrets
 import random
 import hashlib
 import numpy as np
+import time
 
 
 class BeaverTripleDealerService:
@@ -299,6 +300,8 @@ class SecureMultiplier:
         self.privacy_mode = bool(privacy_mode)
         self._inv_cache: dict[int, int] = {}
         self._init_profile_stats()
+        self._prover_time_sec: float = 0.0
+        self._prover_time_breakdown: Dict[str, float] = {}
         
         # Initialize pool if not already initialized
         if triple_pool.n_nodes == 0:
@@ -354,6 +357,28 @@ class SecureMultiplier:
             self._profile_stats[k] = 0
         return snap
 
+    def add_prover_time(self, seconds: float, category: str = "generic") -> None:
+        """Accumulate prover/opener wall-clock time."""
+        try:
+            s = float(seconds)
+        except Exception:
+            return
+        if s <= 0:
+            return
+        self._prover_time_sec += s
+        self._prover_time_breakdown[category] = self._prover_time_breakdown.get(category, 0.0) + s
+
+    def prover_time_snapshot(self, reset: bool = False) -> Dict[str, object]:
+        """Return accumulated prover timing stats."""
+        out = {
+            "total_sec": float(self._prover_time_sec),
+            "by_category": {k: float(v) for k, v in self._prover_time_breakdown.items()},
+        }
+        if reset:
+            self._prover_time_sec = 0.0
+            self._prover_time_breakdown = {}
+        return out
+
     def _opened_fp_enabled(self) -> bool:
         """
         "A" mode: opener/enclave performs integer truncation and re-shares.
@@ -382,6 +407,7 @@ class SecureMultiplier:
         Returns the opener's own share vector (uint64).
         """
         p = int(self.field_size)
+        _t0 = time.time()
         n = int(self.n_nodes)
         t = int(self.t)
         L = int(secrets_mod_p_u64.size)
@@ -432,6 +458,7 @@ class SecureMultiplier:
 
         if opener_share_vec is None:
             raise RuntimeError("Opener share vector missing (unexpected)")
+        self.add_prover_time(time.time() - _t0, "reshare_vector")
         return opener_share_vec
 
     def _opened_divide_and_reshare_vector(
@@ -477,6 +504,7 @@ class SecureMultiplier:
         net.broadcast_vector(ctx_in, x=int(x), values=np.asarray(values_local_u64, dtype=np.uint64))
 
         if int(node_id) == int(opener):
+            _t0 = time.time()
             opened_u64 = self.reconstruction_manager.reconstruct_opened_vector_values(
                 context=ctx_in,
                 values_local=np.asarray(values_local_u64, dtype=np.uint64),
@@ -515,7 +543,7 @@ class SecureMultiplier:
                 net.channel.clear_vector(ctx_in)
             except Exception:
                 pass
-
+            self.add_prover_time(time.time() - _t0, "opened_divide_and_reshare_vector")
             return opener_vec
 
         # Non-opener: wait for output vector from opener

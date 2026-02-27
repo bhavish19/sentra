@@ -9,6 +9,7 @@ from ml_training.secret_sharing import Share
 from ml_training.beaver_triples import SecureMultiplier
 from ml_training.secure_division import SecureDivider
 import numpy as np
+import time
 
 
 class SecureSoftmax:
@@ -114,6 +115,7 @@ class SecureSoftmax:
         net.broadcast_vector(ctx_t, x=x0, values=flat_targets)
 
         if int(node_id) == opener:
+            _t0 = time.time()
             logits_open_u64 = recon.reconstruct_opened_vector_values(
                 context=ctx_l,
                 values_local=flat_logits,
@@ -166,6 +168,8 @@ class SecureSoftmax:
             out_cols: List[List[Share]] = []
             for i in range(batch_size):
                 out_cols.append(flat_out[i * num_classes : (i + 1) * num_classes])
+            if hasattr(self.multiplier, "add_prover_time"):
+                self.multiplier.add_prover_time(time.time() - _t0, "softmax_opened_exact_grad")
             return out_cols
 
         out_ctx = f"{context}_opened_exact_out_to_{node_id}"
@@ -232,6 +236,7 @@ class SecureSoftmax:
         net.broadcast_vector(ctx_in, x=x0, values=vals_local)
 
         if int(node_id) == opener:
+            _t0 = time.time()
             opened_u64 = recon.reconstruct_opened_vector_values(
                 context=ctx_in,
                 values_local=vals_local,
@@ -255,6 +260,8 @@ class SecureSoftmax:
                 net.channel.clear_vector(ctx_in)
             except Exception:
                 pass
+            if hasattr(self.multiplier, "add_prover_time"):
+                self.multiplier.add_prover_time(time.time() - _t0, "softmax_opened_clip")
             return [Share(x=x0, y=int(v) % p, node_id=node_id) for v in opener_vec]
 
         # Non-opener waits for reshare output.
@@ -322,6 +329,7 @@ class SecureSoftmax:
         net.broadcast_vector(ctx_in, x=x0, values=vals_local)
 
         if int(node_id) == opener:
+            _t0 = time.time()
             opened_u64 = recon.reconstruct_opened_vector_values(
                 context=ctx_in,
                 values_local=vals_local,
@@ -347,6 +355,8 @@ class SecureSoftmax:
                 net.channel.clear_vector(ctx_in)
             except Exception:
                 pass
+            if hasattr(self.multiplier, "add_prover_time"):
+                self.multiplier.add_prover_time(time.time() - _t0, "softmax_opened_group_max")
             return [Share(x=x0, y=int(v) % p, node_id=node_id) for v in opener_vec]
 
         out_ctx = f"{context}_max_out_to_{node_id}"

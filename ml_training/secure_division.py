@@ -7,6 +7,7 @@ from typing import List, Optional
 from ml_training.secret_sharing import Share
 from ml_training.beaver_triples import SecureMultiplier
 import numpy as np
+import time
 
 
 class SecureDivider:
@@ -233,6 +234,7 @@ class SecureDivider:
             net.broadcast_vector(den_ctx, x=int(denominator.x), values=np.asarray([int(denominator.y) % p], dtype=np.uint64))
 
             if int(node_id) == int(opener):
+                _t0 = time.time()
                 num_open_u64 = recon.reconstruct_opened_vector_values(
                     context=num_ctx, values_local=np.asarray([int(numerator.y) % p], dtype=np.uint64), x=int(numerator.x), timeout=timeout
                 )
@@ -273,6 +275,8 @@ class SecureDivider:
                     net.channel.clear_vector(den_ctx)
                 except Exception:
                     pass
+                if hasattr(self.multiplier, "add_prover_time"):
+                    self.multiplier.add_prover_time(time.time() - _t0, "secure_divide_shares_opened")
                 return Share(x=numerator.x, y=int(opener_vec[0]) % p, node_id=node_id)
 
             # Non-opener: wait for reshared output
@@ -345,6 +349,7 @@ class SecureDivider:
             net.broadcast_vector(den_ctx, x=int(x0), values=den_vals)
             
             if int(node_id) == int(opener):
+                _t0 = time.time()
                 num_open_u64 = recon.reconstruct_opened_vector_values(context=num_ctx, values_local=num_vals, x=int(x0), timeout=timeout)
                 den_open_u64 = recon.reconstruct_opened_vector_values(context=den_ctx, values_local=den_vals, x=int(x0), timeout=timeout)
                 
@@ -433,6 +438,8 @@ class SecureDivider:
                     net.channel.clear_vector(den_ctx)
                 except:
                     pass
+                if hasattr(self.multiplier, "add_prover_time"):
+                    self.multiplier.add_prover_time(time.time() - _t0, "secure_divide_shares_batch_opened")
                 return [Share(x=x0, y=int(v) % p, node_id=node_id) for v in opener_vec]
                 
             out_ctx = f"{context}_out_to_{node_id}"

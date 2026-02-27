@@ -156,6 +156,26 @@ Run stage-invariant integration check:
 python -m pytest -q testing/test_batched_stage_invariants.py -s
 ```
 
+## Export Runs to Excel
+
+You can auto-record run parameters and parsed final metrics to an Excel file.
+This uses headless mode so all node logs are captured under `logs/run_<timestamp>/`.
+
+```bash
+python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched \
+  --num-epochs 8 --batch-size 64 --mnist-samples 10000 \
+  --learning-rate 0.002 --loss-mode softmax \
+  --field-size 2305843009213693951 --scale-factor 65536 \
+  --softmax-temperature 2 --exp-approx pade22 \
+  --softmax-grad-mode secure_approx \
+  --record-results-xlsx logs/sentra_runs.xlsx
+```
+
+Notes:
+- `--record-results-xlsx` implies `--headless`.
+- Requires `openpyxl` (`pip install openpyxl`).
+- One row is appended per run (command, params, status, final accuracy/loss, log directory).
+
 ## Benchmark Snapshot
 
 Recent validated local results (3 nodes, MNIST batched secure path):
