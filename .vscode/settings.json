@@ -1,5 +1,5 @@
 {
     "rust-analyzer.linkedProjects": [
-        "./attestation/attester/Cargo.toml"
+        "./sentra-node/rust/Cargo.toml"
     ]
 }

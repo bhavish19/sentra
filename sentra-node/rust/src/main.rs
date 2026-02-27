@@ -16,7 +16,7 @@ mod command_line_options;
 mod sentra_node_grpc;
 mod committee;
 
-const SENTRA_NODE_VERSION: &str = "00.03.078";
+const SENTRA_NODE_VERSION: &str =env!("CARGO_PKG_VERSION");
 
 struct SentraNode
 {

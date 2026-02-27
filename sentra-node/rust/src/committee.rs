@@ -14,7 +14,7 @@ impl fmt::Display for CommitteeMember {
 
 pub struct Committee
 {
-    this_node: String
+    this_node: String,
     committee: Arc<RwLock<HashMap<String, CommitteeMember>>>
 }
 
@@ -23,7 +23,7 @@ impl Default for Committee {
       {
         Committee
         {
-            this_node:String::new();
+            this_node:String::new(),
             committee:Arc::new(RwLock::new(HashMap::new()))
         }
       }
@@ -54,8 +54,8 @@ impl Committee
         self.committee.write().unwrap().insert(new_member.node_id.clone(),new_member);
     }
 
-    pub fn establish_connections()->Result
+    pub fn establish_connections(&self)->Result<(),()>
     {
-        Ok()
+        Ok(())
     }
 }
