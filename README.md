@@ -175,6 +175,15 @@ Notes:
 - `--record-results-xlsx` implies `--headless`.
 - Requires `openpyxl` (`pip install openpyxl`).
 - One row is appended per run (command, params, status, final accuracy/loss, log directory).
+- Timing fields now include detailed metrics when available: `prover_time_sec`, `dataset_share_prep_time_sec`, `training_time_sec`, `client_distribution_time_sec`, `client_eval_time_sec`, `client_eval_upload_time_sec`.
+
+## Evaluate Exported Model
+
+If you export a reconstructed model (`.npz`), you can run plaintext inference on MNIST:
+
+```bash
+python3 testing/eval_exported_model.py --model-npz logs/final_model_run_20260306.npz --split test --samples 1000
+```
 
 ## Benchmark Snapshot
 
@@ -210,6 +219,47 @@ Then restart with a fresh `--base-port`.
 ### Broken pipe / reset by peer
 
 Usually one node exited early. Check per-node logs and ensure all nodes use identical flags.
+
+### Client-side sharing (recommended)
+
+For real deployments, do not load raw MNIST on any training node.
+
+1) Start nodes in receive-only mode:
+
+```bash
+python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched --headless \
+  --receive-dataset-shares-from-client --dataset-source-node-id 0 \
+  --num-epochs 8 --batch-size 64 --mnist-samples 10000
+```
+
+2) Start client distributor (input owner):
+
+```bash
+python3 client_distributor.py --client-node-id 0 --n-nodes 3 --base-port 9600 \
+  --mnist-samples 10000
+```
+
+Or in one command (headless), auto-start the client:
+
+```bash
+python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched --headless \
+  --receive-dataset-shares-from-client --dataset-source-node-id 0 \
+  --start-client-distributor --client-eval-after-training --client-eval-samples 100 \
+  --client-test-samples 100 \
+  --num-epochs 8 --batch-size 64 --mnist-samples 10000
+```
+
+### Keep raw MNIST on one node only (simulation only)
+
+Use distributed dataset-share mode so non-owner nodes never load raw MNIST:
+
+```bash
+python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched \
+  --enable-network --distribute-dataset-shares --dataset-owner-node 1 \
+  --num-epochs 8 --batch-size 64 --mnist-samples 10000
+```
+
+In this mode, owner node `--dataset-owner-node` loads MNIST, creates Shamir shares, and sends each node only its local shares.
 
 ### Non-integer temperature error
 
