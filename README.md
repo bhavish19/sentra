@@ -20,11 +20,15 @@ This repository contains a practical SENTRA training stack for:
 
 ## Repository Structure
 
-- `ml_training/` core secure training, communication, secret-sharing, MPC ops
-- `run_mnist_batched_secure.py` batched secure MNIST runner (single node process)
-- `start_all_nodes.py` launcher for multi-node runs
-- `testing/` regression/integration tests and smoke checks
-- `attestation/` enclave attestation-related assets
+- `ml_training/` — core secure training, communication, secret-sharing, MPC ops
+- `start_all_nodes.py` — launcher for multi-node runs
+- `run_mnist_batched_secure.py` — batched secure MNIST runner (recommended)
+- `run_mnist_secure.py` — sample-wise secure MNIST runner
+- `run_node.py` — generic node runner (synthetic / MNIST via `start_all_nodes`)
+- `client_distributor.py` — client-side dataset owner; loads MNIST, shares data to nodes
+- `testing/` — regression/integration tests and smoke checks
+- `local_adapters/` — in-memory adapters for local testing (`SentraTrainingNode`)
+- `attestation/` — enclave attestation-related assets
 
 ## Architecture Diagram
 
@@ -75,14 +79,15 @@ Data/weight path summary:
 ## Prerequisites
 
 - Python 3.10+
-- TensorFlow (for MNIST loading/evaluation paths)
 - Windows/WSL/Linux environment with multiple local processes allowed
 
-Install dependencies (minimum):
+Install dependencies:
 
 ```bash
-pip install tensorflow pytest numpy
+pip install -r requirements.txt
 ```
+
+Core packages: `tensorflow`, `numpy`, `pytest`. Optional: `openpyxl` (Excel export), `psutil` (memory stats in headless runs).
 
 ## Quick Start
 
@@ -156,6 +161,8 @@ Run stage-invariant integration check:
 python -m pytest -q testing/test_batched_stage_invariants.py -s
 ```
 
+Or use the test runner: `python testing/run_tests.py --type fast`
+
 ## Export Runs to Excel
 
 You can auto-record run parameters and parsed final metrics to an Excel file.
@@ -173,7 +180,7 @@ python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched \
 
 Notes:
 - `--record-results-xlsx` implies `--headless`.
-- Requires `openpyxl` (`pip install openpyxl`).
+- Requires `openpyxl` (included in `requirements.txt`).
 - One row is appended per run (command, params, status, final accuracy/loss, log directory).
 - Timing fields now include detailed metrics when available: `prover_time_sec`, `dataset_share_prep_time_sec`, `training_time_sec`, `client_distribution_time_sec`, `client_eval_time_sec`, `client_eval_upload_time_sec`.
 
@@ -210,11 +217,10 @@ Note: 100-sample evaluation is useful for fast iteration. For reporting, use lar
 
 ### Ports already in use
 
-```bash
-pkill -f "start_all_nodes.py|run_mnist_batched_secure.py" || true
-```
+Stop existing processes before restarting with a fresh `--base-port`:
 
-Then restart with a fresh `--base-port`.
+- Linux/macOS: `pkill -f "start_all_nodes.py|run_mnist_batched_secure.py" || true`
+- Windows: use Task Manager or `taskkill /F /IM python.exe` (closes all Python processes)
 
 ### Broken pipe / reset by peer
 
@@ -249,6 +255,62 @@ python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched --headless \
   --num-epochs 8 --batch-size 64 --mnist-samples 10000
 ```
 
+### Full Recommended Command (Client-Side Sharing + Excel Recording)
+
+Production-style run with client-side dataset sharing, post-training client evaluation, and Excel recording. Raw MNIST is loaded only by the client distributor; training nodes receive only secret shares.
+
+```bash
+python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched \
+  --num-epochs 4 --batch-size 64 --mnist-samples 10000 \
+  --learning-rate 0.003 --loss-mode softmax \
+  --field-size 2305843009213693951 \
+  --scale-factor 65536 --softmax-temperature 2 \
+  --exp-approx pade22 --softmax-grad-mode secure_approx \
+  --grad-clip 0.50 --logit-clip 4.0 \
+  --explode-logit-threshold 100 --loss-growth-threshold 5 \
+  --grad-norm-threshold 1500 --no-abort-on-instability \
+  --debug-numerics --seed 2026 \
+  --receive-dataset-shares-from-client --dataset-source-node-id 0 \
+  --start-client-distributor --client-eval-after-training \
+  --client-eval-samples 100 --client-test-samples 100 \
+  --record-results-xlsx logs/sentra_runs.xlsx
+```
+
+This command implies `--headless`; logs go to `logs/run_<timestamp>/`.
+
+#### Parameter Reference
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `--n-nodes` | 3 | Number of training nodes |
+| `--base-port` | 9600 | Base port (node i uses `base-port + i`) |
+| `--batched` | flag | Use batched secure MNIST path |
+| `--num-epochs` | 4 | Training epochs |
+| `--batch-size` | 64 | Mini-batch size |
+| `--mnist-samples` | 10000 | MNIST training samples per node |
+| `--learning-rate` | 0.003 | SGD learning rate |
+| `--loss-mode` | softmax | Output gradient mode |
+| `--field-size` | 2305843009213693951 | Finite field modulus (`2^61 - 1`) |
+| `--scale-factor` | 65536 | Fixed-point scaling for MPC |
+| `--softmax-temperature` | 2 | Softmax temperature (integer in fixed-point) |
+| `--exp-approx` | pade22 | Secure exp approximation (Pade 2,2) |
+| `--softmax-grad-mode` | secure_approx | SENTRA-compliant softmax gradient path |
+| `--grad-clip` | 0.50 | Gradient clipping bound |
+| `--logit-clip` | 4.0 | Logit clipping before exp approx |
+| `--explode-logit-threshold` | 100 | Trigger for logit explosion checks |
+| `--loss-growth-threshold` | 5 | Loss growth threshold for instability |
+| `--grad-norm-threshold` | 1500 | Gradient norm threshold for instability |
+| `--no-abort-on-instability` | flag | Continue training despite instability checks |
+| `--debug-numerics` | flag | Log probes (logits, gradients, probs) |
+| `--seed` | 2026 | Global RNG seed |
+| `--receive-dataset-shares-from-client` | flag | Nodes receive shares from client; no raw data |
+| `--dataset-source-node-id` | 0 | Client distributor node id |
+| `--start-client-distributor` | flag | Auto-start `client_distributor.py` in headless mode |
+| `--client-eval-after-training` | flag | Client reconstructs final accuracy from shares |
+| `--client-eval-samples` | 100 | Samples for client-side accuracy evaluation |
+| `--client-test-samples` | 100 | Test shares client sends to nodes |
+| `--record-results-xlsx` | logs/sentra_runs.xlsx | Append run metrics to Excel (implies headless) |
+
 ### Keep raw MNIST on one node only (simulation only)
 
 Use distributed dataset-share mode so non-owner nodes never load raw MNIST:
@@ -277,4 +339,4 @@ For published runs, always record:
 ## Notes
 
 - This README reflects the current batched MNIST secure path and tested commands.
-- `USAGE_GUIDE.md` may include older commands/scripts kept for legacy reference.
+- See `USAGE_GUIDE.md` for a concise runbook (quick start, log interpretation, common problems).

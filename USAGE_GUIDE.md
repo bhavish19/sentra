@@ -5,10 +5,10 @@ For project overview and design notes, see `README.md`.
 
 ## 1. Environment
 
-Minimum dependencies:
+Install dependencies:
 
 ```bash
-pip install tensorflow pytest numpy
+pip install -r requirements.txt
 ```
 
 ## 2. Recommended Run Modes

@@ -16,8 +16,8 @@ import math
 
 try:
     import psutil
-except Exception:
-    psutil = None
+except ImportError:
+    psutil = None  # Optional: enables memory stats in headless runs
 
 
 def _build_node_command(args, node_id):
