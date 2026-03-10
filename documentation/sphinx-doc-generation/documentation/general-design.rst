@@ -12,7 +12,7 @@ Overview
     participant "ACME Server (CA)" as Acme
     participant "Sentra Node 1" as SentraNode1
     participant "..." as SentraNodeX
-    participant "Stenta Node n" as SentraNodeN
+    participant "Sentra Node n" as SentraNodeN
 
     group Get TLS Certificates
     SentraBackend -> Acme: Certificate Signig Request (CSR)
@@ -61,20 +61,20 @@ Overview
     alt success
         SentraBackend -> SentraBackend: return new committee
     end
+    end
 
     group Communicate Committee selection
-    SentraBackend --> SentraNode1: Send set of Committee nodes
-    SentraBackend --> SentraNodeX: Send set of Committee nodes
-    SentraBackend --> SentraNodeN: Send set of Committee nodes
+    SentraBackend -> SentraNode1: Send set of Committee nodes
+    SentraBackend -> SentraNodeX: Send set of Committee nodes
+    SentraBackend -> SentraNodeN: Send set of Committee nodes
     end
 
     group Establish connections among Committee nodes
-    SentraNode1 --> SentraNodeX: TLS Channel Establishment
-    SentraNode1 --> SentraNodeN: TLS Channel Establishment
-    SentraNodeX --> SentraNodeN: TLS Channel Establishment
+    SentraNode1 -> SentraNodeX: TLS Channel Establishment
+    SentraNode1 -> SentraNodeN: TLS Channel Establishment
+    SentraNodeX -> SentraNodeN: TLS Channel Establishment
     end
 
-    end
 
 Architecture Overview
 ========
