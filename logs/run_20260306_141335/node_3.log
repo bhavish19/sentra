@@ -1,0 +1,54 @@
+2026-03-06 14:13:38.068468: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-03-06 14:13:48.175766: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+Node 3 starting. Dataset: MNIST. Model: BATCHED MLP (784-128-10)
+Fixed-point scale: 65536, softmax temperature: 2.0, grad clip: 0.5, logit clip: 4.0, grad mode: secure_approx
+Node 3 server started on port 9963
+[SUCCESS] Node 3 connected to node 1 at localhost:9961
+[SUCCESS] Node 3 connected to node 2 at localhost:9962
+
+======================================================================
+Connection Summary for Node 3:
+======================================================================
+[SUCCESS] Connected to 2 node(s): [1, 2]
+======================================================================
+
+Waiting for network barrier...
+DEBUG: Node 3 spawned handle_client thread: Thread-2 (_handle_client)
+DEBUG: Node 3 accepted connection from ('127.0.0.1', 53390)
+DEBUG: Node 3 received SYNC packet from 1
+DEBUG: Node 3 added sync from 1 for tag 'startup'. Current set: {1}
+DEBUG: Node 3 accepted connection from ('127.0.0.1', 53391)DEBUG: Node 3 spawned handle_client thread: Thread-3 (_handle_client)
+
+DEBUG: Node 3 received SYNC packet from 2
+DEBUG: Node 3 added sync from 2 for tag 'startup'. Current set: {1, 2}
+DEBUG: Node 3 barrier 'startup' passed. Got: {1, 2}
+Network ready.
+Node 3: Initializing Dealer Service...
+Node 3: Dealer Service Registered.
+Node 3: waiting for dataset shares from external sender node_id=0. This node will not load raw MNIST.
+DEBUG: Node 3 accepted connection from ('127.0.0.1', 53395)
+DEBUG: Node 3 spawned handle_client thread: Thread-4 (_handle_client)
+Node received train share sample 1/8 from source 0
+Node received test share sample 1/8 from source 0
+DEBUG: Node 3 received SYNC packet from 2
+DEBUG: Node 3 added sync from 2 for tag 'dataset_distributed_v1'. Current set: {2}
+DEBUG: Node 3 received SYNC packet from 1
+DEBUG: Node 3 added sync from 1 for tag 'dataset_distributed_v1'. Current set: {1, 2}
+DEBUG: Node 3 barrier 'dataset_distributed_v1' passed. Got: {1, 2}
+Node 3: dataset shares received (train=8, test=8).
+Dataset Share Prep Time: 0.995365s
+
+Starting BATCHED Training...
+Epoch 1 Batch 1 (4 samples)...DEBUG e0_b0_fwd_relu1: n_size=512, Y1=[1136467820397173629 1599305526839008778 1060983531072403694], Y2=[1670370193796824872  324725667888781797 1666442545949442247], A=[ 922235032693394955 1853878797149330733  550241551462644337], B=[ 540392707551031004  455423477947074528 1876191927283635329], C=[1682407025904657484  305435714062058960 1816421788659785910], d=[1603806260308104535 1893135637509333588 1855945255342144496], e=[1651133068544513123 1800429418736128899 2286389155786769006], Res=[ 924353184796511326 2018595522818161841 1510638704709728491]
+DEBUG BATCH 1 IS_POS RECON: [1, 1, 1, 1, 0]
+DEBUG BATCH 1 A1: [0.026031494140625, 0.0546112060546875, 0.8443145751953125, 0.0969085693359375, 0.0, 0.0, 0.3919219970703125, 0.0, 0.0, 0.5538787841796875]
+Epoch 1 Batch 1 completed in 4.52s
+Epoch 1 Batch 2 (4 samples)...Epoch 1 Batch 2 completed in 2.21s
+Epoch 1 Complete.
+Training Time: 6.739544s
+Prover Node: 3
+Prover Time: 2.110581s
+Prover Time Breakdown: opened_divide_and_reshare_vector=1.263589s, reshare_vector=0.527680s, secure_compare_batch_opened=0.088365s, secure_divide_shares_batch_opened=0.098033s, softmax_opened_clip=0.087204s, softmax_opened_group_max=0.045709s
+[SUCCESS] Node 3 connected to node 0 at localhost:9960
+Client Eval Upload Time: 0.924656s
+DEBUG: Node 3 received SYNC packet from 0

@@ -1,0 +1,41 @@
+Node 3 starting. Dataset: MNIST. Model: BATCHED MLP (784-128-10)
+Fixed-point scale: 65536, softmax temperature: 2.0, grad clip: 0.2, logit clip: 3.0, grad mode: opened_exact
+Loaded 128 training samples
+Node 3 server started on port 14395
+DEBUG: Node 3 accepted connection from ('127.0.0.1', 57321)DEBUG: Node 3 spawned handle_client thread: Thread-2 (_handle_client)
+
+DEBUG: Node 3 received SYNC packet from 2
+DEBUG: Node 3 added sync from 2 for tag 'startup'. Current set: {2}
+DEBUG: Node 3 spawned handle_client thread: Thread-3 (_handle_client)DEBUG: Node 3 accepted connection from ('127.0.0.1', 57319)
+
+DEBUG: Node 3 received SYNC packet from 1
+DEBUG: Node 3 added sync from 1 for tag 'startup'. Current set: {1, 2}
+[SUCCESS] Node 3 connected to node 1 at localhost:14393
+[SUCCESS] Node 3 connected to node 2 at localhost:14394
+
+======================================================================
+Connection Summary for Node 3:
+======================================================================
+[SUCCESS] Connected to 2 node(s): [1, 2]
+======================================================================
+
+Waiting for network barrier...
+DEBUG: Node 3 barrier 'startup' passed. Got: {1, 2}
+Network ready.
+Node 3: Initializing Dealer Service...
+Node 3: Dealer Service Registered.
+
+Starting PRE-TRAIN Evaluation Check...
+Evaluating on 1 test samples (batched)...
+DEBUG Z1 PRE-RELU: [0.45068359375, -0.0538177490234375, 0.2274627685546875, 0.8359375, 0.244140625, 0.2124786376953125, 0.321258544921875, 0.00433349609375, -0.30072021484375, 0.424774169921875]
+Pre-Train Test Accuracy: 0.00%
+Pre-Train Test Loss: 0.0000
+
+Starting BATCHED Training...
+Epoch 1 Batch 1 (64 samples)...DEBUG e0_b0_fwd_relu1: n_size=8192, Y1=[ 672144511972299390 1535735821604223507  159036846296912108], Y2=[ 517608738753910029 1055795740458720792 1390034970500422352], A=[137223812770519637 871747476257891789 326761007672990037], B=[ 911564258625461918  730990298857213768 1718601725611979021], C=[1452886294319172360 2094203933812613342 2201449395140844529], d=[1483465831699401367 1946272672905088049 1653347999961831523], e=[ 622153780455372965 1817857482804074985 2026473011496742371], Res=[1275612705414390851   77264240164550211 1683451356937860097]
+DEBUG BATCH 1 IS_POS RECON: [1, 0, 1, 1, 0]
+DEBUG BATCH 1 A1: [0.9007415771484375, 0.0, 0.5856475830078125, 1.4446258544921875, 0.0, 0.0, 0.432037353515625, 0.0, 0.0, 0.2081451416015625]
+Epoch 1 Batch 1 completed in 9.15s
+Epoch 1 Batch 2 (64 samples)...Epoch 1 Batch 2 completed in 6.55s
+Epoch 1 Complete.
+Evaluating on 100 test samples (batched)...

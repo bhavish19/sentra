@@ -1,0 +1,27 @@
+2026-02-20 19:18:18.526432: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-02-20 19:18:20.525598: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+Traceback (most recent call last):
+  File "C:\Users\BhavishMohee\Desktop\Master's Dissertation\Sentra\sentra2\run_mnist_batched_secure.py", line 292, in <module>
+    main()
+  File "C:\Users\BhavishMohee\Desktop\Master's Dissertation\Sentra\sentra2\run_mnist_batched_secure.py", line 218, in main
+    acc_pre, loss_pre, diag_pre = evaluate_model(model, weights, x_test, y_test, args.node_id, 
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\BhavishMohee\Desktop\Master's Dissertation\Sentra\sentra2\run_mnist_batched_secure.py", line 89, in evaluate_model
+    logits_cols, _ = model.forward_pass_batched(x_shares_cols, weights, node_id, context=context_prefix, open_relu=True, reconstruction_manager=reconstruction)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\BhavishMohee\Desktop\Master's Dissertation\Sentra\sentra2\ml_training\mnist_mlp_batched.py", line 127, in forward_pass_batched
+    z1_cols_no_bias = self.matrix_ops.matrix_multiplier.secure_matrix_matrix_multiply_fixed_point(
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\BhavishMohee\Desktop\Master's Dissertation\Sentra\sentra2\ml_training\secure_matrix_ops.py", line 250, in secure_matrix_matrix_multiply_fixed_point
+    Y_scaled_flat = self.multiplier._opened_divide_and_reshare_vector(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\BhavishMohee\Desktop\Master's Dissertation\Sentra\sentra2\ml_training\beaver_triples.py", line 486, in _opened_divide_and_reshare_vector
+    opener_vec = self._reshare_vector_from_opener(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\BhavishMohee\Desktop\Master's Dissertation\Sentra\sentra2\ml_training\beaver_triples.py", line 418, in _reshare_vector_from_opener
+    net.channel.send_vector(int(nid), ctx_out, x=int(nid), values=y.astype(np.uint32, copy=False))
+  File "C:\Users\BhavishMohee\Desktop\Master's Dissertation\Sentra\sentra2\ml_training\secure_comm.py", line 318, in send_vector
+    self.send_message_with_binary(
+  File "C:\Users\BhavishMohee\Desktop\Master's Dissertation\Sentra\sentra2\ml_training\secure_comm.py", line 259, in send_message_with_binary
+    sock.sendall(header_len + header_bytes + payload)
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host

@@ -1,0 +1,62 @@
+{
+  "args": {
+    "python_exe": "/usr/bin/python3",
+    "n_nodes": 3,
+    "field_size": 2305843009213693951,
+    "loss_mode": "softmax",
+    "explode_logit_threshold": 100.0,
+    "loss_growth_threshold": 5.0,
+    "grad_norm_threshold": 1500.0,
+    "no_abort_on_instability": true,
+    "debug_numerics": false,
+    "debug_division": false,
+    "record_results_xlsx": "logs/sentra_runs.xlsx",
+    "export_reconstructed_model": "",
+    "export_timeout": 180.0,
+    "base_port_start": 12000,
+    "base_port_step": 20,
+    "sleep_between_runs": 2.0,
+    "max_runs": 0,
+    "dry_run": false,
+    "continue_on_error": true,
+    "learning_rates": [
+      0.002,
+      0.003
+    ],
+    "grad_clips": [
+      0.4,
+      0.5
+    ],
+    "logit_clips": [
+      3.5,
+      4.0
+    ],
+    "scale_factors": [
+      65536
+    ],
+    "softmax_temperatures": [
+      2
+    ],
+    "batch_sizes": [
+      64,
+      128
+    ],
+    "epochs_list": [
+      8
+    ],
+    "mnist_samples_list": [
+      10000
+    ],
+    "softmax_grad_modes": [
+      "secure_approx"
+    ],
+    "exp_approxs": [
+      "pade22"
+    ],
+    "seeds": [
+      2026,
+      2027
+    ]
+  },
+  "num_combos": 32
+}

@@ -1,0 +1,30 @@
+Node 3 starting. Dataset: MNIST. Model: BATCHED MLP (784-128-10)
+Loaded 512 training samples
+Node 3 server started on port 9203
+[SUCCESS] Node 3 connected to node 1 at localhost:9201
+[SUCCESS] Node 3 connected to node 2 at localhost:9202
+
+======================================================================
+Connection Summary for Node 3:
+======================================================================
+[SUCCESS] Connected to 2 node(s): [1, 2]
+======================================================================
+
+Waiting for network barrier...
+DEBUG: Node 3 spawned handle_client thread: Thread-2 (_handle_client)DEBUG: Node 3 accepted connection from ('127.0.0.1', 52431)
+
+DEBUG: Node 3 received SYNC packet from 1
+DEBUG: Node 3 added sync from 1 for tag 'startup'. Current set: {1}
+DEBUG: Node 3 spawned handle_client thread: Thread-3 (_handle_client)
+DEBUG: Node 3 accepted connection from ('127.0.0.1', 52433)
+DEBUG: Node 3 received SYNC packet from 2
+DEBUG: Node 3 added sync from 2 for tag 'startup'. Current set: {1, 2}
+DEBUG: Node 3 barrier 'startup' passed. Got: {1, 2}
+Network ready.
+Node 3: Initializing Dealer Service...
+Node 3: Dealer Service Registered.
+
+Starting PRE-TRAIN Evaluation Check...
+Evaluating on 1 test samples (batched)...
+Error reading length: [WinError 10054] An existing connection was forcibly closed by the remote hostError sending binary message to node 1: [WinError 10054] An existing connection was forcibly closed by the remote host
+

@@ -1,0 +1,52 @@
+Node 1 starting. Dataset: MNIST. Model: BATCHED MLP (784-128-10)
+Fixed-point scale: 65536, softmax temperature: 2.0, grad clip: 0.2, logit clip: 3.0, grad mode: opened_exact
+Loaded 128 training samples
+Node 1 server started on port 14393
+[SUCCESS] Node 1 connected to node 2 at localhost:14394
+DEBUG: Node 1 accepted connection from ('127.0.0.1', 57320)DEBUG: Node 1 spawned handle_client thread: Thread-2 (_handle_client)
+
+DEBUG: Node 1 received SYNC packet from 2
+DEBUG: Node 1 added sync from 2 for tag 'startup'. Current set: {2}
+[SUCCESS] Node 1 connected to node 3 at localhost:14395
+
+======================================================================
+Connection Summary for Node 1:
+======================================================================
+[SUCCESS] Connected to 2 node(s): [2, 3]
+======================================================================
+
+Waiting for network barrier...
+DEBUG: Node 1 spawned handle_client thread: Thread-3 (_handle_client)DEBUG: Node 1 accepted connection from ('127.0.0.1', 63511)
+
+DEBUG: Node 1 received SYNC packet from 3
+DEBUG: Node 1 added sync from 3 for tag 'startup'. Current set: {2, 3}
+DEBUG: Node 1 barrier 'startup' passed. Got: {2, 3}
+Network ready.
+
+Starting PRE-TRAIN Evaluation Check...
+Evaluating on 1 test samples (batched)...
+DEBUG Z1 PRE-RELU: [0.45068359375, -0.0538177490234375, 0.2274627685546875, 0.8359375, 0.244140625, 0.2124786376953125, 0.321258544921875, 0.00433349609375, -0.30072021484375, 0.424774169921875]
+DEBUG EVAL LOGITS: [-0.4497833251953125, 0.3819122314453125, -0.7974853515625, 0.0705108642578125, -0.0819854736328125, -0.4038543701171875, -0.091644287109375, 0.60479736328125, 0.2474517822265625, 0.1875762939453125]
+Pre-Train Test Accuracy: 0.00%
+Pre-Train Test Loss: 2.4282
+Pre-Train Diagnostics: mean|logit|=0.3317, max|logit|=0.7975
+
+Starting BATCHED Training...
+Epoch 1 Batch 1 (64 samples)...DEBUG e0_b0_fwd_relu1: n_size=8192, Y1=[224048170657472484 511911940534724255  53012282098996290], Y2=[ 941150582655867994  351931913486240264 2000573662975936752], A=[1362607059004305606  530296049625017617 2081145681534726519], B=[2194928575118599281  568987117225483900  759113907015294061], C=[ 18669218248496128 734872562264874064 635674338667253398], d=[1483465831699401367 1946272672905088049 1653347999961831523], e=[ 622153780455372965 1817857482804074985 2026473011496742371], Res=[1193818571542734288   25754746721516737 1329764788717210270]
+DEBUG BATCH 1 IS_POS RECON: [1, 0, 1, 1, 0]
+DEBUG BATCH 1 A1: [0.9007415771484375, 0.0, 0.5856475830078125, 1.4446258544921875, 0.0, 0.0, 0.432037353515625, 0.0, 0.0, 0.2081451416015625]
+Epoch 1 Batch 1 completed in 9.21s
+Epoch 1 Batch 2 (64 samples)...Epoch 1 Batch 2 completed in 6.52s
+Epoch 1 Complete.
+Evaluating on 100 test samples (batched)...
+DEBUG EVAL LOGITS: [-0.44940185546875, 0.3834075927734375, -0.7967987060546875, 0.0717315673828125, -0.0808563232421875, -0.406585693359375, -0.0909271240234375, 0.605743408203125, 0.2465667724609375, 0.1886749267578125]
+Epoch 1 Test Accuracy: 16.00%
+Epoch 1 Test Loss: 2.3323
+Epoch 1 Diagnostics: mean|logit|=0.3803, max|logit|=1.7115, mean_entropy=2.1804
+Epoch 1 Estimated Grad Norm: 0.0034
+Epoch 1 Update Sample Stats: mean|upd|=0.000007, max|upd|=0.000031
+Epoch 1 Probe logits[0][:10]: [-0.888916015625, 0.7610321044921875, -1.299774169921875, 0.2949676513671875, -0.1367340087890625, -0.3960418701171875, 0.064361572265625, 0.5571746826171875, 0.711273193359375, 0.323028564453125]
+Epoch 1 Probe dz2[0][:10]: [0.0172119140625, 0.0896148681640625, 0.01141357421875, 0.0562286376953125, -0.4634857177734375, 0.0281829833984375, 0.044647216796875, 0.073089599609375, 0.08526611328125, 0.057830810546875]
+Epoch 1 Probe target[0][:10]: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+Epoch 1 Probe probs_est[0][:10]: [0.034423828125, 0.179229736328125, 0.0228271484375, 0.112457275390625, 0.073028564453125, 0.056365966796875, 0.08929443359375, 0.14617919921875, 0.1705322265625, 0.11566162109375]
+Epoch 1 Probe probs_est stats: sum=1.000000, min=0.022827, max=0.179230, target_sum=1.000000

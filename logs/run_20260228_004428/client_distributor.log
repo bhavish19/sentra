@@ -1,0 +1,46 @@
+2026-02-28 00:44:32.263448: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-02-28 00:44:32.310877: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2026-02-28 00:44:33.431529: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+Client 0: loaded MNIST train=10000, test=100
+Node 0 server started on port 9600
+[SUCCESS] Node 0 connected to node 1 at localhost:9601
+[SUCCESS] Node 0 connected to node 2 at localhost:9602
+[SUCCESS] Node 0 connected to node 3 at localhost:9603
+
+======================================================================
+Connection Summary for Node 0:
+======================================================================
+[SUCCESS] Connected to 3 node(s): [1, 2, 3]
+======================================================================
+
+Client 0: distributed train sample 1/10000
+Client 0: distributed train sample 513/10000
+Client 0: distributed train sample 1025/10000
+Client 0: distributed train sample 1537/10000
+Client 0: distributed train sample 2049/10000
+Client 0: distributed train sample 2561/10000
+Client 0: distributed train sample 3073/10000
+Client 0: distributed train sample 3585/10000
+Client 0: distributed train sample 4097/10000
+Client 0: distributed train sample 4609/10000
+Client 0: distributed train sample 5121/10000
+Client 0: distributed train sample 5633/10000
+Client 0: distributed train sample 6145/10000
+Client 0: distributed train sample 6657/10000
+Client 0: distributed train sample 7169/10000
+Client 0: distributed train sample 7681/10000
+Client 0: distributed train sample 8193/10000
+Client 0: distributed train sample 8705/10000
+Client 0: distributed train sample 9217/10000
+Client 0: distributed train sample 9729/10000
+Client 0: distributed test sample 1/100
+Client distribution complete: dataset shares sent to all nodes.
+Traceback (most recent call last):
+  File "/mnt/c/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra2/client_distributor.py", line 209, in <module>
+    main()
+  File "/mnt/c/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra2/client_distributor.py", line 157, in main
+    eval_indices_vals = wait_for_vector_from_sender(
+  File "/mnt/c/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra2/client_distributor.py", line 56, in wait_for_vector_from_sender
+    raise TimeoutError(f"Timed out waiting for context '{context}' from node {sender_id}")
+TimeoutError: Timed out waiting for context 'client_eval_final/meta_indices' from node 1
