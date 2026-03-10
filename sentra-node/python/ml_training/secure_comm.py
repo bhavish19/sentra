@@ -536,12 +536,12 @@ class SecureChannel:
         data = msg_dict.get('data', {})
 
         # Learn/refresh reverse connection on first inbound message from peer.
-    # if isinstance(sender_id, int) and sender_id != self.node_id and client_socket is not None:
-    #     with self.lock:
-    #         existing = self.connections.get(sender_id)
-    #         if existing is None:
-    #             self.connections[sender_id] = client_socket
-        
+        # if isinstance(sender_id, int) and sender_id != self.node_id and client_socket is not None:
+        #     with self.lock:
+        #         existing = self.connections.get(sender_id)
+        #         if existing is None:
+        #             self.connections[sender_id] = client_socket
+
         if msg_type == MessageType.SHARE_EXCHANGE.value:
             self._handle_share_exchange(sender_id, data)
         elif msg_type == MessageType.BATCH_SHARE_EXCHANGE.value:

@@ -16,8 +16,8 @@ import math
 
 try:
     import psutil
-except Exception:
-    psutil = None
+except ImportError:
+    psutil = None  # Optional: enables memory stats in headless runs
 
 
 def _build_node_command(args, node_id):
@@ -54,6 +54,23 @@ def _build_node_command(args, node_id):
                 '--loss-growth-threshold', str(args.loss_growth_threshold),
                 '--grad-norm-threshold', str(args.grad_norm_threshold),
             ])
+            if args.distribute_dataset_shares:
+                cmd.extend([
+                    '--distribute-dataset-shares',
+                    '--dataset-owner-node', str(args.dataset_owner_node),
+                    '--dataset-distribution-timeout', str(args.dataset_distribution_timeout),
+                ])
+            if args.receive_dataset_shares_from_client:
+                cmd.extend([
+                    '--receive-dataset-shares-from-client',
+                    '--dataset-source-node-id', str(args.dataset_source_node_id),
+                    '--dataset-distribution-timeout', str(args.dataset_distribution_timeout),
+                ])
+                if args.client_eval_after_training:
+                    cmd.extend([
+                        '--client-eval-after-training',
+                        '--client-eval-samples', str(args.client_eval_samples),
+                    ])
             if args.export_reconstructed_model:
                 cmd.extend([
                     '--export-reconstructed-model', str(args.export_reconstructed_model),
@@ -99,6 +116,9 @@ def _extract_metrics_from_log(log_text):
         log_text,
         flags=re.IGNORECASE,
     )
+    dataset_prep_matches = re.findall(r"Dataset Share Prep Time:\s*([0-9.]+)s", log_text)
+    training_time_matches = re.findall(r"Training Time:\s*([0-9.]+)s", log_text)
+    eval_upload_matches = re.findall(r"Client Eval Upload Time:\s*([0-9.]+)s", log_text)
     status_ok = "Training completed successfully!" in log_text
     status_err = "Error occurred" in log_text or "Traceback (most recent call last)" in log_text
 
@@ -118,6 +138,12 @@ def _extract_metrics_from_log(log_text):
         metrics["max_batch_time_sec"] = round(max(vals), 4)
     if prover_time_matches:
         metrics["prover_time_sec_logged"] = float(prover_time_matches[-1])
+    if dataset_prep_matches:
+        metrics["dataset_share_prep_time_sec"] = float(dataset_prep_matches[-1])
+    if training_time_matches:
+        metrics["training_time_sec"] = float(training_time_matches[-1])
+    if eval_upload_matches:
+        metrics["client_eval_upload_time_sec"] = float(eval_upload_matches[-1])
     metrics["status_ok"] = status_ok
     metrics["status_err"] = status_err
     return metrics
@@ -163,6 +189,11 @@ def _append_run_to_xlsx(xlsx_path, row_dict):
         "prover_time_sec",
         "avg_batch_time_sec",
         "max_batch_time_sec",
+        "dataset_share_prep_time_sec",
+        "training_time_sec",
+        "client_distribution_time_sec",
+        "client_eval_time_sec",
+        "client_eval_upload_time_sec",
         "memory_baseline_mb",
         "memory_peak_mb",
         "memory_overhead_mb",
@@ -320,10 +351,51 @@ def _run_headless_and_record(args):
         print(f"[headless] started node {node_id} -> {log_path}")
         time.sleep(1)
 
+    client_proc = None
+    client_log_f = None
+    if args.start_client_distributor:
+        client_cmd = [
+            sys.executable,
+            "-u",
+            "client_distributor.py",
+            "--client-node-id", str(args.dataset_source_node_id),
+            "--n-nodes", str(args.n_nodes),
+            "--t", str(args.t),
+            "--base-port", str(args.base_port),
+            "--host", str(args.host),
+            "--mnist-samples", str(args.mnist_samples),
+            "--client-test-samples", str(args.client_test_samples),
+            "--field-size", str(args.field_size),
+            "--scale-factor", str(args.scale_factor),
+            "--seed", str(args.seed),
+            "--barrier-timeout", str(args.dataset_distribution_timeout),
+        ]
+        if args.client_eval_after_training:
+            client_cmd.extend([
+                "--collect-client-eval",
+                "--client-eval-samples", str(args.client_eval_samples),
+                "--eval-timeout", str(args.client_eval_timeout),
+            ])
+        client_log_path = run_dir / "client_distributor.log"
+        client_log_f = open(client_log_path, "w", encoding="utf-8")
+        client_proc = subprocess.Popen(client_cmd, stdout=client_log_f, stderr=subprocess.STDOUT)
+        print(f"[headless] started client distributor -> {client_log_path}")
+
     return_codes = {}
     try:
         finished = set()
         while len(finished) < len(procs):
+            if client_proc is not None:
+                client_rc = client_proc.poll()
+                if client_rc is not None:
+                    print(f"[headless] client distributor exited with code {client_rc}")
+                    try:
+                        if client_log_f is not None:
+                            client_log_f.close()
+                    except Exception:
+                        pass
+                    client_proc = None
+
             for node_id, p, log_f, _ in procs:
                 if node_id in finished:
                     continue
@@ -368,6 +440,20 @@ def _run_headless_and_record(args):
 
     duration = round(time.time() - start_t, 2)
     end_iso = datetime.datetime.now().isoformat(timespec="seconds")
+    if client_proc is not None:
+        try:
+            client_proc.wait(timeout=5)
+        except Exception:
+            try:
+                client_proc.terminate()
+            except Exception:
+                pass
+        try:
+            if client_log_f is not None:
+                client_log_f.close()
+        except Exception:
+            pass
+
     per_node_metrics = {}
     for node_id, log_path in log_paths.items():
         try:
@@ -375,6 +461,24 @@ def _run_headless_and_record(args):
             per_node_metrics[node_id] = _extract_metrics_from_log(text)
         except Exception:
             per_node_metrics[node_id] = {}
+
+    client_metrics = {}
+    if args.start_client_distributor:
+        client_log_path = run_dir / "client_distributor.log"
+        try:
+            client_text = client_log_path.read_text(encoding="utf-8", errors="replace")
+            m = re.search(r"Client Final Accuracy \((\d+) samples\):\s*([0-9.]+)%", client_text)
+            if m:
+                client_metrics["client_eval_samples"] = int(m.group(1))
+                client_metrics["client_final_accuracy_pct"] = float(m.group(2))
+            m_dist = re.search(r"Client Distribution Time:\s*([0-9.]+)s", client_text)
+            if m_dist:
+                client_metrics["client_distribution_time_sec"] = float(m_dist.group(1))
+            m_eval = re.search(r"Client Eval Time:\s*([0-9.]+)s", client_text)
+            if m_eval:
+                client_metrics["client_eval_time_sec"] = float(m_eval.group(1))
+        except Exception:
+            client_metrics = {}
 
     # Prefer node 1 for final report, fallback to first node with values.
     chosen = per_node_metrics.get(1, {})
@@ -392,6 +496,9 @@ def _run_headless_and_record(args):
     avg_batch_time_sec = None
     max_batch_time_sec = None
     prover_time_sec = None
+    dataset_share_prep_time_sec = None
+    training_time_sec = None
+    client_eval_upload_time_sec = None
     for m in per_node_metrics.values():
         if "reconstructed_acc" in m:
             reconstructed_acc = m["reconstructed_acc"]
@@ -408,8 +515,31 @@ def _run_headless_and_record(args):
     ]
     if logged_prover_times:
         prover_time_sec = max(logged_prover_times)
+    dataset_times = [
+        float(m["dataset_share_prep_time_sec"])
+        for m in per_node_metrics.values()
+        if "dataset_share_prep_time_sec" in m
+    ]
+    if dataset_times:
+        dataset_share_prep_time_sec = max(dataset_times)
+    training_times = [
+        float(m["training_time_sec"])
+        for m in per_node_metrics.values()
+        if "training_time_sec" in m
+    ]
+    if training_times:
+        training_time_sec = max(training_times)
+    eval_upload_times = [
+        float(m["client_eval_upload_time_sec"])
+        for m in per_node_metrics.values()
+        if "client_eval_upload_time_sec" in m
+    ]
+    if eval_upload_times:
+        client_eval_upload_time_sec = max(eval_upload_times)
     if prover_time_sec is None and node_elapsed:
         prover_time_sec = round(float(node_elapsed.get(1, min(node_elapsed.values()))), 3)
+    if "client_final_accuracy_pct" in client_metrics:
+        reconstructed_acc = float(client_metrics["client_final_accuracy_pct"])
 
     # Memory summaries (MB)
     node_mem_overhead = {}
@@ -436,6 +566,16 @@ def _run_headless_and_record(args):
     print(f"  duration_sec: {duration}")
     if prover_time_sec is not None:
         print(f"  prover_time_sec: {prover_time_sec}")
+    if dataset_share_prep_time_sec is not None:
+        print(f"  dataset_share_prep_time_sec: {dataset_share_prep_time_sec}")
+    if training_time_sec is not None:
+        print(f"  training_time_sec: {training_time_sec}")
+    if client_metrics.get("client_distribution_time_sec") is not None:
+        print(f"  client_distribution_time_sec: {client_metrics.get('client_distribution_time_sec')}")
+    if client_metrics.get("client_eval_time_sec") is not None:
+        print(f"  client_eval_time_sec: {client_metrics.get('client_eval_time_sec')}")
+    if client_eval_upload_time_sec is not None:
+        print(f"  client_eval_upload_time_sec: {client_eval_upload_time_sec}")
     if total_base_mb is not None:
         print(f"  memory_mb: baseline={total_base_mb}, peak={total_peak_mb}, overhead={total_overhead_mb}")
     print(f"  logs: {run_dir}")
@@ -472,6 +612,11 @@ def _run_headless_and_record(args):
             "prover_time_sec": prover_time_sec if prover_time_sec is not None else "",
             "avg_batch_time_sec": avg_batch_time_sec if avg_batch_time_sec is not None else "",
             "max_batch_time_sec": max_batch_time_sec if max_batch_time_sec is not None else "",
+            "dataset_share_prep_time_sec": dataset_share_prep_time_sec if dataset_share_prep_time_sec is not None else "",
+            "training_time_sec": training_time_sec if training_time_sec is not None else "",
+            "client_distribution_time_sec": client_metrics.get("client_distribution_time_sec", ""),
+            "client_eval_time_sec": client_metrics.get("client_eval_time_sec", ""),
+            "client_eval_upload_time_sec": client_eval_upload_time_sec if client_eval_upload_time_sec is not None else "",
             "memory_baseline_mb": total_base_mb if total_base_mb is not None else "",
             "memory_peak_mb": total_peak_mb if total_peak_mb is not None else "",
             "memory_overhead_mb": total_overhead_mb if total_overhead_mb is not None else "",
@@ -558,6 +703,26 @@ def main():
                        help='Export reconstructed final model to this .npz path (opener node writes file)')
     parser.add_argument('--export-timeout', type=float, default=180.0,
                        help='Timeout in seconds for final model reconstruction/export (default: 180)')
+    parser.add_argument('--distribute-dataset-shares', action='store_true',
+                       help='Owner node shares MNIST to peers (local simulation mode).')
+    parser.add_argument('--dataset-owner-node', type=int, default=1,
+                       help='Owner node id for --distribute-dataset-shares (default: 1).')
+    parser.add_argument('--receive-dataset-shares-from-client', action='store_true',
+                       help='Nodes receive only pre-shared dataset from external client distributor.')
+    parser.add_argument('--dataset-source-node-id', type=int, default=0,
+                       help='External sender node_id for client distributor mode (default: 0).')
+    parser.add_argument('--dataset-distribution-timeout', type=float, default=900.0,
+                       help='Timeout for dataset share distribution/reception barrier (seconds).')
+    parser.add_argument('--start-client-distributor', action='store_true',
+                       help='In headless mode, auto-start client_distributor.py after launching nodes.')
+    parser.add_argument('--client-eval-after-training', action='store_true',
+                       help='After training, nodes send final inference shares to client; client reconstructs accuracy.')
+    parser.add_argument('--client-eval-samples', type=int, default=100,
+                       help='Sample count for client-side reconstructed final accuracy.')
+    parser.add_argument('--client-test-samples', type=int, default=-1,
+                       help='Number of test shares to distribute from client (-1: auto; with client eval uses client-eval-samples).')
+    parser.add_argument('--client-eval-timeout', type=float, default=0.0,
+                       help='Timeout for client-side evaluation share collection and barrier in seconds (0 = no timeout).')
     parser.add_argument('--headless', action='store_true',
                        help='Run all nodes in this terminal and wait for completion (writes per-node logs)')
     parser.add_argument('--record-results-xlsx', type=str, default='',
@@ -567,6 +732,13 @@ def main():
     
     if args.batched:
         args.dataset = 'mnist'
+
+    if args.distribute_dataset_shares and args.receive_dataset_shares_from_client:
+        raise ValueError("Use only one dataset-sharing mode: owner-node or external client distributor")
+    if args.start_client_distributor and not args.receive_dataset_shares_from_client:
+        raise ValueError("--start-client-distributor requires --receive-dataset-shares-from-client")
+    if args.client_eval_after_training and not args.receive_dataset_shares_from_client:
+        raise ValueError("--client-eval-after-training requires --receive-dataset-shares-from-client")
         
     print("=" * 70)
     print("Starting SENTRA Multi-Node Training")
@@ -577,6 +749,12 @@ def main():
     print(f"Training: epochs={args.num_epochs}, batch_size={args.batch_size}, lr={args.learning_rate}")
     if args.batched:
         print(f"Batched secure config: field={args.field_size}, scale={args.scale_factor}, temp={args.softmax_temperature}, grad_clip={args.grad_clip}, logit_clip={args.logit_clip}, exp={args.exp_approx}, grad_mode={args.softmax_grad_mode}, loss_mode={args.loss_mode}")
+        if args.distribute_dataset_shares:
+            print(f"Dataset sharing mode: owner-node (owner={args.dataset_owner_node})")
+        elif args.receive_dataset_shares_from_client:
+            print(f"Dataset sharing mode: external client sender (source_node_id={args.dataset_source_node_id})")
+        if args.client_eval_after_training:
+            print(f"Client-side eval after training: enabled ({args.client_eval_samples} samples)")
         print(f"Instability thresholds: logit={args.explode_logit_threshold}, loss_growth={args.loss_growth_threshold}, grad_norm={args.grad_norm_threshold}, abort={not args.no_abort_on_instability}")
         print(f"Debug flags: numerics={args.debug_numerics}, division={args.debug_division}")
     print(f"Thresholds: t={args.t}, s={args.s}")

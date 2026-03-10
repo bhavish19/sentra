@@ -11,6 +11,7 @@ import random
 import time
 from pathlib import Path
 import json
+from typing import Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -58,6 +59,236 @@ def label_to_shares(label_oh, n_nodes, t, node_id, field_size, shamir, scale):
         shares_list.append(next(s for s in shares if s.node_id == node_id))
     return shares_list
 
+
+def _share_vector_for_all_nodes(values, n_nodes, t, field_size, shamir, scale):
+    per_node = [[] for _ in range(n_nodes)]
+    for val in values:
+        val_int = int(val * scale) % field_size
+        shares = shamir.share(val_int, n_nodes, t)
+        for s in shares:
+            per_node[s.node_id - 1].append(int(s.y))
+    return per_node
+
+
+def _wait_for_vector_from_sender(network, context: str, sender_id: int, timeout_s: float):
+    start = time.time()
+    while True:
+        by_sender = network.channel.get_received_vector(context)
+        if sender_id in by_sender:
+            values = by_sender[sender_id]["values"]
+            network.channel.clear_vector(context)
+            return values
+        if time.time() - start > timeout_s:
+            raise TimeoutError(f"Timed out waiting for dataset context '{context}' from node {sender_id}")
+        time.sleep(0.01)
+
+
+def _to_uint64_array(values, expected_len: int) -> np.ndarray:
+    arr = np.asarray(list(values), dtype=np.uint64)
+    if int(arr.size) != int(expected_len):
+        raise ValueError(f"Dataset share length mismatch: expected {expected_len}, got {int(arr.size)}")
+    return arr
+
+
+def prepare_distributed_dataset_shares(
+    *,
+    network,
+    node_id: int,
+    n_nodes: int,
+    owner_node_id: int,
+    t: int,
+    field_size: int,
+    shamir,
+    scale: int,
+    mnist_samples: Optional[int],
+    timeout_s: float,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
+    """
+    Owner node loads MNIST, secret-shares it, and distributes each node's shares.
+    Non-owner nodes receive only their local share tensors.
+    Returns:
+        train_x_shares, train_y_shares, test_x_shares, test_y_shares, x_test_plain_or_none, y_test_plain_or_none
+    """
+    meta_ctx = "dataset/meta/v1"
+    if int(node_id) == int(owner_node_id):
+        (x_train, y_train), (x_test, y_test) = load_mnist_data(mnist_samples)
+        n_train = int(len(x_train))
+        n_test = int(len(x_test))
+        feat_dim = int(x_train.shape[1])
+        cls_dim = int(y_train.shape[1])
+
+        local_train_x = np.zeros((n_train, feat_dim), dtype=np.uint64)
+        local_train_y = np.zeros((n_train, cls_dim), dtype=np.uint64)
+        local_test_x = np.zeros((n_test, feat_dim), dtype=np.uint64)
+        local_test_y = np.zeros((n_test, cls_dim), dtype=np.uint64)
+
+        for target in range(1, n_nodes + 1):
+            if target == node_id:
+                continue
+            network.channel.send_vector(target, meta_ctx, x=target, values=[n_train, n_test, feat_dim, cls_dim])
+
+        for split_name, x_src, y_src, x_dst, y_dst in (
+            ("train", x_train, y_train, local_train_x, local_train_y),
+            ("test", x_test, y_test, local_test_x, local_test_y),
+        ):
+            n_split = int(len(x_src))
+            for idx in range(n_split):
+                x_per_node = _share_vector_for_all_nodes(
+                    x_src[idx], n_nodes, t, field_size, shamir, scale
+                )
+                y_per_node = _share_vector_for_all_nodes(
+                    y_src[idx], n_nodes, t, field_size, shamir, scale
+                )
+                x_dst[idx, :] = np.asarray(x_per_node[node_id - 1], dtype=np.uint64)
+                y_dst[idx, :] = np.asarray(y_per_node[node_id - 1], dtype=np.uint64)
+
+                x_ctx = f"dataset/{split_name}/x/{idx}"
+                y_ctx = f"dataset/{split_name}/y/{idx}"
+                for target in range(1, n_nodes + 1):
+                    if target == node_id:
+                        continue
+                    network.channel.send_vector(target, x_ctx, x=target, values=x_per_node[target - 1])
+                    network.channel.send_vector(target, y_ctx, x=target, values=y_per_node[target - 1])
+
+                if idx % 512 == 0:
+                    print(f"Owner node {node_id}: shared {split_name} sample {idx + 1}/{n_split}")
+
+        network.barrier("dataset_distributed_v1", timeout=timeout_s)
+        return local_train_x, local_train_y, local_test_x, local_test_y, x_test, y_test
+
+    meta_vals = _wait_for_vector_from_sender(network, meta_ctx, int(owner_node_id), timeout_s)
+    meta_arr = np.asarray(list(meta_vals), dtype=np.int64)
+    if meta_arr.size != 4:
+        raise ValueError(f"Invalid dataset meta from owner node {owner_node_id}: {meta_arr}")
+    n_train, n_test, feat_dim, cls_dim = [int(v) for v in meta_arr.tolist()]
+
+    local_train_x = np.zeros((n_train, feat_dim), dtype=np.uint64)
+    local_train_y = np.zeros((n_train, cls_dim), dtype=np.uint64)
+    local_test_x = np.zeros((n_test, feat_dim), dtype=np.uint64)
+    local_test_y = np.zeros((n_test, cls_dim), dtype=np.uint64)
+
+    for split_name, n_split, feat_len, cls_len, x_dst, y_dst in (
+        ("train", n_train, feat_dim, cls_dim, local_train_x, local_train_y),
+        ("test", n_test, feat_dim, cls_dim, local_test_x, local_test_y),
+    ):
+        for idx in range(n_split):
+            x_ctx = f"dataset/{split_name}/x/{idx}"
+            y_ctx = f"dataset/{split_name}/y/{idx}"
+            x_vals = _wait_for_vector_from_sender(network, x_ctx, int(owner_node_id), timeout_s)
+            y_vals = _wait_for_vector_from_sender(network, y_ctx, int(owner_node_id), timeout_s)
+            x_dst[idx, :] = _to_uint64_array(x_vals, feat_len)
+            y_dst[idx, :] = _to_uint64_array(y_vals, cls_len)
+
+            if idx % 512 == 0:
+                print(f"Node {node_id}: received {split_name} share sample {idx + 1}/{n_split}")
+
+    network.barrier("dataset_distributed_v1", timeout=timeout_s)
+    return local_train_x, local_train_y, local_test_x, local_test_y, None, None
+
+
+def receive_dataset_shares_from_external_source(
+    *,
+    network,
+    source_node_id: int,
+    timeout_s: float,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Receive pre-shared dataset tensors from an external source (e.g. client node_id=0).
+    No node loads raw MNIST in this path.
+    """
+    meta_ctx = "dataset/meta/v1"
+    meta_vals = _wait_for_vector_from_sender(network, meta_ctx, int(source_node_id), timeout_s)
+    meta_arr = np.asarray(list(meta_vals), dtype=np.int64)
+    if meta_arr.size != 4:
+        raise ValueError(f"Invalid dataset meta from source node {source_node_id}: {meta_arr}")
+    n_train, n_test, feat_dim, cls_dim = [int(v) for v in meta_arr.tolist()]
+
+    local_train_x = np.zeros((n_train, feat_dim), dtype=np.uint64)
+    local_train_y = np.zeros((n_train, cls_dim), dtype=np.uint64)
+    local_test_x = np.zeros((n_test, feat_dim), dtype=np.uint64)
+    local_test_y = np.zeros((n_test, cls_dim), dtype=np.uint64)
+
+    for split_name, n_split, feat_len, cls_len, x_dst, y_dst in (
+        ("train", n_train, feat_dim, cls_dim, local_train_x, local_train_y),
+        ("test", n_test, feat_dim, cls_dim, local_test_x, local_test_y),
+    ):
+        for idx in range(n_split):
+            x_ctx = f"dataset/{split_name}/x/{idx}"
+            y_ctx = f"dataset/{split_name}/y/{idx}"
+            x_vals = _wait_for_vector_from_sender(network, x_ctx, int(source_node_id), timeout_s)
+            y_vals = _wait_for_vector_from_sender(network, y_ctx, int(source_node_id), timeout_s)
+            x_dst[idx, :] = _to_uint64_array(x_vals, feat_len)
+            y_dst[idx, :] = _to_uint64_array(y_vals, cls_len)
+            if idx % 512 == 0:
+                print(f"Node received {split_name} share sample {idx + 1}/{n_split} from source {source_node_id}")
+
+    network.barrier("dataset_distributed_v1", timeout=timeout_s)
+    return local_train_x, local_train_y, local_test_x, local_test_y
+
+
+def _row_to_share_list(row_vals, node_id: int):
+    return [Share(x=node_id, y=int(v), node_id=node_id) for v in row_vals]
+
+
+def send_inference_shares_to_client(
+    *,
+    model,
+    weights,
+    test_x_shares: np.ndarray,
+    node_id: int,
+    client_node_id: int,
+    network,
+    host: str,
+    base_port: int,
+    n_samples: int,
+    seed: int,
+    context_prefix: str = "client_eval_final",
+):
+    total = int(len(test_x_shares))
+    if total <= 0 or int(n_samples) <= 0:
+        return
+    n_eval = min(int(n_samples), total)
+    rng = np.random.default_rng(int(seed) + 777)
+    eval_indices = rng.choice(total, size=n_eval, replace=False)
+
+    if int(client_node_id) not in network.channel.connections:
+        ok = network.channel.connect_to_node(
+            int(client_node_id), str(host), int(base_port) + int(client_node_id)
+        )
+        if not ok:
+            raise RuntimeError(f"Unable to connect to client node {client_node_id} for final eval upload")
+
+    # Send deterministic eval indices once from node 1 so client can map labels.
+    if int(node_id) == 1:
+        network.channel.send_vector(
+            int(client_node_id),
+            f"{context_prefix}/meta_indices",
+            x=int(node_id),
+            values=[int(v) for v in eval_indices.tolist()],
+        )
+
+    x_shares_cols = [_row_to_share_list(test_x_shares[int(i)], node_id) for i in eval_indices]
+    logits_cols, _ = model.forward_pass_batched(
+        x_shares_cols, weights, node_id, context=context_prefix, open_relu=True, reconstruction_manager=None
+    )
+
+    for slot_idx, col in enumerate(logits_cols):
+        vec = [int(s.y) for s in col]
+        network.channel.send_vector(
+            int(client_node_id),
+            f"{context_prefix}/logits/{slot_idx}",
+            x=int(node_id),
+            values=vec,
+        )
+
+    # Notify client that this node finished uploading final eval logits.
+    network.channel.send_message(
+        int(client_node_id),
+        "sync",
+        {"tag": "client_eval_final_done"},
+    )
+
+
 def evaluate_model(
     model,
     weights,
@@ -73,19 +304,31 @@ def evaluate_model(
     n_test_samples=100,
     context_prefix="eval",
     fixed_indices=None,
+    x_test_shared=None,
 ):
     print(f"Evaluating on {n_test_samples} test samples (batched)...")
     
+    if x_test_shared is not None:
+        total_samples = int(len(x_test_shared))
+    elif x_test is not None:
+        total_samples = int(len(x_test))
+    else:
+        raise ValueError("Either x_test or x_test_shared must be provided for evaluation")
+
     if fixed_indices is not None and len(fixed_indices) > 0:
         indices = np.asarray(fixed_indices, dtype=np.int64)[:n_test_samples]
     else:
-        indices = np.arange(len(x_test))
+        indices = np.arange(total_samples)
         np.random.shuffle(indices)
         indices = indices[:n_test_samples]
     
     x_shares_cols = []
-    for i in indices:
-        x_shares_cols.append(image_to_shares(x_test[i], n_nodes, t, node_id, field_size, shamir, scale))
+    if x_test_shared is not None:
+        for i in indices:
+            x_shares_cols.append(_row_to_share_list(x_test_shared[int(i)], node_id))
+    else:
+        for i in indices:
+            x_shares_cols.append(image_to_shares(x_test[i], n_nodes, t, node_id, field_size, shamir, scale))
         
     # Forward Pass Batched
     logits_cols, _ = model.forward_pass_batched(x_shares_cols, weights, node_id, context=context_prefix, open_relu=True, reconstruction_manager=reconstruction)
@@ -124,6 +367,8 @@ def evaluate_model(
                 probs = exp_l / np.maximum(np.sum(exp_l), 1e-12)
                 entropy = float(-np.sum(probs * np.log(np.maximum(probs, 1e-12))))
                 mean_entropy_sum += entropy
+                if y_test is None:
+                    continue
                 y_true = np.asarray(y_test[int(indices[i])], dtype=np.float64)
                 loss_sum += float(-np.sum(y_true * np.log(np.maximum(probs, 1e-12))))
 
@@ -301,6 +546,20 @@ def main():
                         help='Path to save reconstructed final model (.npz). Reconstruction/export is performed on opener node.')
     parser.add_argument('--export-timeout', type=float, default=180.0,
                         help='Timeout (seconds) for final model export reconstruction (default: 180)')
+    parser.add_argument('--distribute-dataset-shares', action='store_true',
+                        help='Owner node secret-shares MNIST and distributes only per-node shares over MPC network.')
+    parser.add_argument('--dataset-owner-node', type=int, default=1,
+                        help='Node ID that loads raw MNIST and distributes shares when --distribute-dataset-shares is enabled.')
+    parser.add_argument('--dataset-distribution-timeout', type=float, default=900.0,
+                        help='Timeout (seconds) for dataset share distribution and reception.')
+    parser.add_argument('--receive-dataset-shares-from-client', action='store_true',
+                        help='Do not load MNIST on nodes; receive pre-shared dataset from external client sender.')
+    parser.add_argument('--dataset-source-node-id', type=int, default=0,
+                        help='Sender node_id used by external dataset distributor (default: 0).')
+    parser.add_argument('--client-eval-after-training', action='store_true',
+                        help='After training, send output-share logits to client so client can reconstruct accuracy.')
+    parser.add_argument('--client-eval-samples', type=int, default=100,
+                        help='Number of test samples to use for client-side final accuracy reconstruction.')
     args = parser.parse_args()
 
     random.seed(args.seed)
@@ -315,9 +574,6 @@ def main():
     
     print(f"Node {args.node_id} starting. Dataset: MNIST. Model: BATCHED MLP (784-128-10)")
     print(f"Fixed-point scale: {SCALE}, softmax temperature: {args.softmax_temperature}, grad clip: {args.grad_clip}, logit clip: {args.logit_clip}, grad mode: {args.softmax_grad_mode}")
-    
-    (x_train, y_train), (x_test, y_test) = load_mnist_data(args.mnist_samples)
-    print(f"Loaded {len(x_train)} training samples")
 
     shamir = ShamirSecretSharing(FIELD_SIZE)
     triple_gen = BeaverTripleGenerator(FIELD_SIZE)
@@ -326,10 +582,10 @@ def main():
     
     network = None
     reconstruction = None
+    use_client_distributed_dataset = bool(args.receive_dataset_shares_from_client and args.enable_network and args.n_nodes > 1)
     if args.enable_network and args.n_nodes > 1:
-        network = create_mpc_network(args.node_id, 
-                                   {i: {'host': args.host, 'port': args.base_port + i} for i in range(1, args.n_nodes+1)},
-                                   port=args.base_port + args.node_id)
+        node_configs = {i: {'host': args.host, 'port': args.base_port + i} for i in range(1, args.n_nodes + 1)}
+        network = create_mpc_network(args.node_id, node_configs, port=args.base_port + args.node_id)
         reconstruction = create_reconstruction_manager(network, args.t, FIELD_SIZE)
         print("Waiting for network barrier...")
         network.barrier("startup", 600)
@@ -346,6 +602,58 @@ def main():
             )
             dealer.register()
             print(f"Node {args.node_id}: Dealer Service Registered.")
+
+    use_owner_distributed_dataset = bool(args.distribute_dataset_shares and args.enable_network and args.n_nodes > 1)
+    if use_owner_distributed_dataset and use_client_distributed_dataset:
+        raise ValueError("Choose only one of --distribute-dataset-shares or --receive-dataset-shares-from-client")
+
+    use_distributed_dataset = bool(use_owner_distributed_dataset or use_client_distributed_dataset)
+    if use_owner_distributed_dataset:
+        _t_dataset0 = time.time()
+        print(
+            f"Node {args.node_id}: distributed dataset mode enabled; owner node is {args.dataset_owner_node}. "
+            "Non-owner nodes will not load raw MNIST."
+        )
+        train_x_shares, train_y_shares, test_x_shares, test_y_shares, x_test_plain, y_test_plain = (
+            prepare_distributed_dataset_shares(
+                network=network,
+                node_id=args.node_id,
+                n_nodes=args.n_nodes,
+                owner_node_id=int(args.dataset_owner_node),
+                t=args.t,
+                field_size=FIELD_SIZE,
+                shamir=shamir,
+                scale=SCALE,
+                mnist_samples=args.mnist_samples,
+                timeout_s=float(args.dataset_distribution_timeout),
+            )
+        )
+        print(f"Node {args.node_id}: dataset shares ready (train={len(train_x_shares)}, test={len(test_x_shares)}).")
+        print(f"Dataset Share Prep Time: {time.time() - _t_dataset0:.6f}s")
+    elif use_client_distributed_dataset:
+        _t_dataset0 = time.time()
+        print(
+            f"Node {args.node_id}: waiting for dataset shares from external sender node_id={args.dataset_source_node_id}. "
+            "This node will not load raw MNIST."
+        )
+        train_x_shares, train_y_shares, test_x_shares, test_y_shares = receive_dataset_shares_from_external_source(
+            network=network,
+            source_node_id=int(args.dataset_source_node_id),
+            timeout_s=float(args.dataset_distribution_timeout),
+        )
+        x_test_plain = None
+        y_test_plain = None
+        print(f"Node {args.node_id}: dataset shares received (train={len(train_x_shares)}, test={len(test_x_shares)}).")
+        print(f"Dataset Share Prep Time: {time.time() - _t_dataset0:.6f}s")
+    else:
+        (x_train, y_train), (x_test, y_test) = load_mnist_data(args.mnist_samples)
+        train_x_shares = None
+        train_y_shares = None
+        test_x_shares = None
+        test_y_shares = None
+        x_test_plain = x_test
+        y_test_plain = y_test
+        print(f"Loaded {len(x_train)} training samples")
 
     multiplier = SecureMultiplier(triple_pool, args.n_nodes, args.t, FIELD_SIZE, 
                                   reconstruction_manager=reconstruction,
@@ -380,25 +688,35 @@ def main():
         softmax_grad_mode=str(args.softmax_grad_mode),
     )
 
+    if use_distributed_dataset:
+        train_len = int(train_x_shares.shape[0])
+        test_len = int(test_x_shares.shape[0])
+    else:
+        train_len = int(len(x_train))
+        test_len = int(len(x_test))
+
     rng_eval = np.random.default_rng(args.seed + 777)
-    eval_n = min(100, len(x_test))
-    fixed_eval_indices = rng_eval.choice(len(x_test), size=eval_n, replace=False)
+    eval_n = min(100, test_len)
+    fixed_eval_indices = rng_eval.choice(test_len, size=eval_n, replace=False)
     fixed_pre_indices = fixed_eval_indices[:1]
 
-    print("\nStarting PRE-TRAIN Evaluation Check...")
-    acc_pre, loss_pre, diag_pre = evaluate_model(model, weights, x_test, y_test, args.node_id, 
-                                                 args.n_nodes, args.t, shamir, FIELD_SIZE, SCALE, 
-                                                 reconstruction, n_test_samples=1, context_prefix="eval_pre",
-                                                 fixed_indices=fixed_pre_indices)
-    print(f"Pre-Train Test Accuracy: {acc_pre*100:.2f}%")
-    print(f"Pre-Train Test Loss: {loss_pre:.4f}")
-    if args.node_id == 1:
-        print(
-            f"Pre-Train Diagnostics: mean|logit|={diag_pre['mean_abs_logit']:.4f}, "
-            f"max|logit|={diag_pre['max_abs_logit']:.4f}"
-        )
+    if y_test_plain is not None:
+        print("\nStarting PRE-TRAIN Evaluation Check...")
+        acc_pre, loss_pre, diag_pre = evaluate_model(model, weights, x_test_plain, y_test_plain, args.node_id, 
+                                                     args.n_nodes, args.t, shamir, FIELD_SIZE, SCALE, 
+                                                     reconstruction, n_test_samples=1, context_prefix="eval_pre",
+                                                     fixed_indices=fixed_pre_indices,
+                                                     x_test_shared=test_x_shares)
+        print(f"Pre-Train Test Accuracy: {acc_pre*100:.2f}%")
+        print(f"Pre-Train Test Loss: {loss_pre:.4f}")
+        if args.node_id == 1:
+            print(
+                f"Pre-Train Diagnostics: mean|logit|={diag_pre['mean_abs_logit']:.4f}, "
+                f"max|logit|={diag_pre['max_abs_logit']:.4f}"
+            )
 
     print("\nStarting BATCHED Training...")
+    _t_train0 = time.time()
     prev_epoch_loss = None
     instability_detected = False
     
@@ -406,27 +724,32 @@ def main():
         epoch_grad_norm_estimate = None
         epoch_diag = {}
         n_batches = 0
-        indices = np.arange(len(x_train))
+        indices = np.arange(train_len)
         rng = np.random.default_rng(args.seed + epoch)
         rng.shuffle(indices)
         
-        for start_idx in range(0, len(x_train), args.batch_size):
+        for start_idx in range(0, train_len, args.batch_size):
             if args.node_id == 1:
                 time.sleep(0.001)
 
             batch_idx = indices[start_idx : start_idx + args.batch_size]
-            x_batch = x_train[batch_idx]
-            y_batch = y_train[batch_idx]
-            
-            batch_seed = args.seed + epoch * 100000 + start_idx
-            random.seed(batch_seed)
-            np.random.seed(batch_seed)
-            
             x_shares_cols = []
             y_shares_cols = []
-            for i in range(len(x_batch)):
-                 x_shares_cols.append(image_to_shares(x_batch[i], args.n_nodes, args.t, args.node_id, FIELD_SIZE, shamir, SCALE))
-                 y_shares_cols.append(label_to_shares(y_batch[i], args.n_nodes, args.t, args.node_id, FIELD_SIZE, shamir, SCALE))
+            if use_distributed_dataset:
+                for i in batch_idx:
+                    x_shares_cols.append(_row_to_share_list(train_x_shares[int(i)], args.node_id))
+                    y_shares_cols.append(_row_to_share_list(train_y_shares[int(i)], args.node_id))
+            else:
+                x_batch = x_train[batch_idx]
+                y_batch = y_train[batch_idx]
+
+                batch_seed = args.seed + epoch * 100000 + start_idx
+                random.seed(batch_seed)
+                np.random.seed(batch_seed)
+
+                for i in range(len(x_batch)):
+                     x_shares_cols.append(image_to_shares(x_batch[i], args.n_nodes, args.t, args.node_id, FIELD_SIZE, shamir, SCALE))
+                     y_shares_cols.append(label_to_shares(y_batch[i], args.n_nodes, args.t, args.node_id, FIELD_SIZE, shamir, SCALE))
 
             print(f"Epoch {epoch+1} Batch {n_batches+1} ({len(batch_idx)} samples)...", end='\r')
             
@@ -466,11 +789,12 @@ def main():
                 print("[WARN] Aborting training due to instability thresholds.")
                 break
         
-        if epoch % 1 == 0:
-            acc, loss, diag = evaluate_model(model, weights, x_test, y_test, args.node_id, 
+        if epoch % 1 == 0 and y_test_plain is not None:
+            acc, loss, diag = evaluate_model(model, weights, x_test_plain, y_test_plain, args.node_id, 
                                              args.n_nodes, args.t, shamir, FIELD_SIZE, SCALE, 
                                              reconstruction, n_test_samples=eval_n, context_prefix=f"eval_t{epoch}",
-                                             fixed_indices=fixed_eval_indices)
+                                             fixed_indices=fixed_eval_indices,
+                                             x_test_shared=test_x_shares)
             if args.node_id == 1:
                 print(f"Epoch {epoch+1} Test Accuracy: {acc*100:.2f}%")
                 print(f"Epoch {epoch+1} Test Loss: {loss:.4f}")
@@ -535,6 +859,7 @@ def main():
             break
 
     # Emit explicit prover timing summary for post-run parsers/exporters.
+    print(f"Training Time: {time.time() - _t_train0:.6f}s")
     try:
         stats = multiplier.prover_time_snapshot(reset=False)
         prover_total = float(stats.get("total_sec", 0.0))
@@ -564,6 +889,31 @@ def main():
             )
         except Exception as exc:
             print(f"[WARN] Failed to export reconstructed model: {exc}")
+
+    if (
+        bool(args.client_eval_after_training)
+        and bool(use_client_distributed_dataset)
+        and network is not None
+        and test_x_shares is not None
+    ):
+        _t_eval_upload0 = time.time()
+        try:
+            send_inference_shares_to_client(
+                model=model,
+                weights=weights,
+                test_x_shares=test_x_shares,
+                node_id=args.node_id,
+                client_node_id=int(args.dataset_source_node_id),
+                network=network,
+                host=args.host,
+                base_port=args.base_port,
+                n_samples=int(args.client_eval_samples),
+                seed=int(args.seed),
+                context_prefix="client_eval_final",
+            )
+        except Exception as exc:
+            print(f"[WARN] Failed to send client eval shares: {exc}")
+        print(f"Client Eval Upload Time: {time.time() - _t_eval_upload0:.6f}s")
 
 if __name__ == '__main__':
     main()
