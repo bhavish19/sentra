@@ -28,6 +28,12 @@ Overview
     group Establish GRPC Interface
     activate SentraBackend
     SentraBackend --> SentraBackend: Start GRPC endpoint using provided Certificate
+    activate SentraNode1
+    SentraNode1 --> SentraNode1: Start GRPC endpoint using provided Certificate
+    activate SentraNode1
+    SentraNodeX --> SentraNodeX: Start GRPC endpoint using provided Certificate
+    activate SentraNodeN
+    SentraNodeN --> SentraNodeN: Start GRPC endpoint using provided Certificate
     end
 
     group Node registration
@@ -55,6 +61,19 @@ Overview
     alt success
         SentraBackend -> SentraBackend: return new committee
     end
+
+    group Communicate Committee selection
+    SentraBackend --> SentraNode1: Send set of Committee nodes
+    SentraBackend --> SentraNodeX: Send set of Committee nodes
+    SentraBackend --> SentraNodeN: Send set of Committee nodes
+    end
+
+    group Establish connections among Committee nodes
+    SentraNode1 --> SentraNodeX: TLS Channel Establishment
+    SentraNode1 --> SentraNodeN: TLS Channel Establishment
+    SentraNodeX --> SentraNodeN: TLS Channel Establishment
+    end
+
     end
 
 Architecture Overview

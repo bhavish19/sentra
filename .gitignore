@@ -17,3 +17,5 @@ dcap_c_test
 logs/
 *.egg-info/
 venv/
+
+/sentra-node/rust/Cargo.lock
