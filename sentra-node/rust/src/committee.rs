@@ -8,7 +8,7 @@ pub struct CommitteeMember
 
 impl fmt::Display for CommitteeMember {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "CommitteeMebmer: {} -- GRPC URL: {}", self.node_id,self.grpc_url)
+        writeln!(f, "CommitteeMember: {} -- GRPC URL: {}", self.node_id,self.grpc_url)
     }
 }
 
@@ -30,7 +30,7 @@ impl Default for Committee {
 }
 
 impl fmt::Display for Committee {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result 
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
         let c: std::sync::RwLockReadGuard<'_, HashMap<String, CommitteeMember>>=self.committee.read().unwrap();
         writeln!(f, "Committee with {} members:", c.len());

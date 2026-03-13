@@ -8,6 +8,8 @@ import sys
 import os
 import time
 import random
+from types import SimpleNamespace
+import yaml
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ml_training import SentraTrainingPipeline
@@ -23,6 +25,29 @@ def create_node_configs(n_nodes: int, base_port: int = 8000, host: str = 'localh
         for i in range(1, n_nodes + 1)
     }
 
+def dict_to_obj(d):
+    if isinstance(d, dict):
+        return SimpleNamespace(**{k: dict_to_obj(v) for k, v in d.items()})
+    return d
+
+def read_node_configs(configFile: str):
+    """Read node configurations from a yaml file"""
+    config = yaml.load(open(configFile, 'r'), yaml.Loader)
+    return config
+
+
+def read_train_config(configFile: str):
+    """Read training configuration from a yaml file"""
+    config = yaml.load(open(configFile, 'r'), yaml.Loader)
+
+    with open(configFile) as f:
+        raw = yaml.safe_load(f)
+
+    config = dict_to_obj(raw)
+
+    print(config.training.num_epochs)
+
+    return config
 
 def load_synthetic_dataset():
     """Create the existing synthetic regression-style dataset."""
@@ -453,7 +478,7 @@ Examples:
   python run_node.py --node-id 1 --host 192.168.1.10
         """
     )
-    
+
     parser.add_argument('--node-id', type=int, required=True,
                        help='This node\'s ID (1, 2, 3, ...)')
     parser.add_argument('--n-nodes', type=int, default=5,
@@ -496,19 +521,48 @@ Examples:
                        help='Compute node-local proxy MNIST accuracy (default: disabled)')
     parser.add_argument('--no-wait', action='store_true',
                        help='Exit immediately after training (no "Press Enter" prompt)')
-    
+    parser.add_argument('--node-config', type=str, help="YAML node \
+                        configuration file")
+
     args = parser.parse_args()
-    
+
     # Validate node_id
     if args.node_id < 1 or args.node_id > args.n_nodes:
         print(f"Error: node-id must be between 1 and {args.n_nodes}")
         sys.exit(1)
-    
-    # Create node configurations
-    node_configs = create_node_configs(args.n_nodes, args.base_port, args.host)
+
+    # Create or read node configurations
+    if args.node_config is None:
+        node_configs = create_node_configs(args.n_nodes,
+                                           args.base_port,
+                                           args.host)
+    else:
+        node_configs = read_node_configs(args.node_config)
+
+    train_config.base_port = args.base_port
+    train_config.batched = args.batched
+    train_config.num_epochs = args.num_epochs
+    train_config.batch_size = args.batch_size
+    train_config.mnist_samples = args.mnist_samples
+    train_config.learning_rate = args.learning_rate
+    train_config.loss_mode = args.loss_mode
+    train_config.field_size = args.field_size
+    train_config.scale_factor = args.scale_factor
+    train_config.softmax_temperature = args.softmax_temperature
+    train_config.exp_approx = args.exp_approx
+    train_config.softmax_grad_mode = args.softmax_grad_mode
+    train_config.grad_clip = args.grad_clip
+    train_config.logit_clip = args.logit_clip
+    train_config.explode_logit_threshold = args.explode_logit_threshold
+    train_config.loss_growth_threshold = args.loss_growth_threshold
+    train_config.grad_norm_threshold = args.grad_norm_threshold
+    train_config.no_abort_on_instability = args.no_abort_on_instability
+    train_config.debug_numerics = args.debug_numerics
+    train_config.seed = args.seed
+
     random.seed(args.seed)
     np.random.seed(args.seed)
-    
+
     print("=" * 70)
     print(f"SENTRA Node {args.node_id} Starting")
     print("=" * 70)
@@ -524,7 +578,7 @@ Examples:
     print(f"Network: Enabled")
     print(f"Node configs: {node_configs}")
     print("=" * 70)
-    
+
     # Create pipeline
     try:
         pipeline = SentraTrainingPipeline(
@@ -541,21 +595,21 @@ Examples:
             train_mode=args.train_mode,
             log_mini_batches=args.log_mini_batches,
         )
-        
+
         if args.dataset == 'mnist':
             dataset, labels, weight_shapes = load_mnist_dataset(
                 args.mnist_samples, args.mnist_input_dim, args.mnist_hidden_dim
             )
         else:
             dataset, labels, weight_shapes = load_synthetic_dataset()
-        
+
         print(f"\nNode {args.node_id}: Starting training...")
         print(f"Dataset: {len(dataset)} samples, {len(dataset[0])} features")
         print(f"Model: {weight_shapes}")
         print(f"Train mode: {args.train_mode}")
         print("Multi-Node Mode: ENABLED")
         print("-" * 70)
-        
+
         # Train
         pipeline.train(dataset, labels, weight_shapes)
 
@@ -636,7 +690,7 @@ Examples:
                     print(f"Post-metrics barrier complete on node {args.node_id} ({tag}).")
             except Exception as barrier_exc:
                 print(f"Post-metrics barrier warning: {barrier_exc}")
-        
+
         # Print final status
         print("\n" + "=" * 70)
         print(f"Node {args.node_id} Final Status:")
@@ -652,7 +706,7 @@ Examples:
         else:
             print("Multi-Node: DISABLED (single-node mode)")
         print("=" * 70)
-        
+
         print("\n" + "=" * 70)
         print(f"Node {args.node_id}: Training completed successfully!")
         print("=" * 70)
@@ -678,7 +732,7 @@ Examples:
                         pass
         except Exception:
             pass
-        
+
         # Keep window open
         if not args.no_wait:
             print("\nPress Enter to close this window...")
@@ -686,7 +740,7 @@ Examples:
                 input()
             except:
                 pass
-        
+
     except KeyboardInterrupt:
         print(f"\n\nNode {args.node_id}: Interrupted by user")
         # Best-effort shutdown on interrupt

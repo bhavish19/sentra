@@ -29,32 +29,32 @@ services:
     profiles:
       - test
 
-  sentra-dp-training:
+  sentra-mnist-training:
     <<: *x-sentra-core
-    command: /bin/sentra/run_dp_training.py
-    container_name: sentra-dp-test
+    command: "/bin/sentra/run_mnist_batched_secure.py"
+    container_name: sentra-mnist-batched-secure
     profiles:
-      - dp-test
+      - mnist_batched_secure
 
   sentra-node-1:
     <<: *x-sentra-multi-node
-    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --auto-close --node-id 1
+    command: /bin/sentra/run_mnist_batched_secure.py --config /bin/sentra/node_config.yaml --auto-close --node-id 1
 
   sentra-node-2:
     <<: *x-sentra-multi-node
-    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --auto-close --node-id 2
+    command: /bin/sentra/run_mnist_batched_secure.py --config /bin/sentra/node_config.yaml --auto-close --node-id 2
 
   sentra-node-3:
     <<: *x-sentra-multi-node
-    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --auto-close --node-id 3
+    command: /bin/sentra/run_mnist_batched_secure.py --config /bin/sentra/node_config.yaml --auto-close --node-id 3
 
   sentra-node-4:
     <<: *x-sentra-multi-node
-    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --auto-close --node-id 4
+    command: /bin/sentra/run_mnist_batched_secure.py --config /bin/sentra/node_config.yaml --auto-close --node-id 4
 
   sentra-node-5:
     <<: *x-sentra-multi-node
-    command: /bin/sentra/run_node.py --config /bin/sentra/node_config.yaml --auto-close --node-id 5
+    command: /bin/sentra/run_mnist_batched_secure.py --config /bin/sentra/node_config.yaml --auto-close --node-id 5
 
   sentra-backend:
     build:
@@ -71,5 +71,5 @@ services:
       - 8888:8888
     profiles:
       - test
-      - dp-test
+      - mnist_batched_secure
 

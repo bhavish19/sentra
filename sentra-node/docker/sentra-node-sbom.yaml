@@ -3,11 +3,11 @@ includes:
 targets:
   - target: /bin
     createlinks:
-      - src: /opt/python-occlum/bin/python3
+      - src: /opt/python-occlum/bin/python
         linkname: python3
   # python packages
   - target: /opt
-    copy: 
+    copy:
       - dirs:
           - /python-occlum
   # below are python code and data
@@ -35,6 +35,8 @@ targets:
     copy:
      - files:
         - /sentra-node/rust/pebble.cer
+        - /sentra/training_config.yaml
+        - /sentra/client_config.yaml
 
  # copy lib
 #  - target: /opt/occlum/glibc/lib

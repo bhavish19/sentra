@@ -14,6 +14,7 @@ from .grpc import NodeMessageServiceServicer
 from .SentraACME import SentraACME
 from .Log import log as log
 from .grpc import add_NodeMessageServiceServicer_to_server
+from .ClientDistributor import ClientDistributor
 
 class Backend:
 
@@ -27,6 +28,7 @@ class Backend:
     m_grpcCertsPEM:bytes|None
     m_grpcKeyPEM:bytes|None
     m_commandLineOptions:CommandLineOptions
+    m_clientDistributor: ClientDistributor
 
     def __init__(self):
         self.m_bAppSimulation=False
@@ -75,10 +77,13 @@ class Backend:
 
         self.m_nodeGenerator=SentraNodeAttributeGenerator(1.0,10.0)
         self.m_nodeList=SentraNodeList()
+
         if(self.m_bAppSimulation):
             log("Enable Sentra Node Simulation")
             self.m_appSimulator=AppSimulator(self.m_nodeGenerator,self.m_nodeList, self.m_committee_selection)
             self.m_appSimulator.start()
+        else:
+            self.m_clientDistributor = ClientDistributor()
 
         self.createGRPCServer()
         return self.app
