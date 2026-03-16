@@ -12,9 +12,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # This test suite targets the optional `SentraTrainingNode` runtime path which depends on
 # external service adapters (`coordination`, `kvstore`, `mpc`) and is not part of the
 # `start_all_nodes.py` MNIST MLP workflow. Keep it opt-in so CI/local runs don't fail.
-if os.getenv("SENTRA_RUN_SENTRA_NODE_LOGIC", "0") != "1":
+if os.getenv("SENTRA_RUN_SENTRA_NODE_LOGIC", "1") != "1":
     pytest.skip(
-        "Optional SentraTrainingNode logic tests. Set SENTRA_RUN_SENTRA_NODE_LOGIC=1 to enable.",
+        "Disabled via SENTRA_RUN_SENTRA_NODE_LOGIC=0.",
         allow_module_level=True,
     )
 
@@ -26,6 +26,7 @@ sys.modules["coordination"] = MagicMock()
 import coordination
 import kvstore
 import mpc
+import ml_training.sentra_training_node as sentra_node
 
 from ml_training.sentra_training_node import (
     SentraTrainingNode,
@@ -65,15 +66,20 @@ class TestSentraTrainingNode(unittest.TestCase):
         )
         
         # Reset mocks
-        kvstore.Client.reset_mock()
-        mpc.PackedEngine.reset_mock()
-        coordination.notify.reset_mock()
+        kvstore.Client = MagicMock()
+        mpc.PackedEngine = MagicMock()
+        coordination.notify = MagicMock()
         coordination.get_events = MagicMock(return_value=[])
+
+        # Ensure the module under test sees the same mocked adapters.
+        sentra_node.kvstore = kvstore
+        sentra_node.mpc = mpc
+        sentra_node.coordination = coordination
 
         # Setup default mock behavior
         self.mock_kvs_client = MagicMock()
         kvstore.Client.return_value = self.mock_kvs_client
-        
+
         # Default recursive mock for engine
         self.mock_engine = MagicMock()
         mpc.PackedEngine.return_value = self.mock_engine

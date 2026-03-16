@@ -12,11 +12,9 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from ml_training.kvs import KVSCluster
-from ml_training.coordinator import TrainingCoordinator, SafetyBoundChecker
+from ml_training.coordinator import SafetyBoundChecker
 from ml_training.secure_comm import create_mpc_network
 from ml_training.node_failure_detector import NodeFailureDetector
-import numpy as np
 
 
 def _run_node_stub(node_id: int, node_configs, stop_event: multiprocessing.Event):

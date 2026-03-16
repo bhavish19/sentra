@@ -163,6 +163,18 @@ python -m pytest -q testing/test_batched_stage_invariants.py -s
 
 Or use the test runner: `python testing/run_tests.py --type fast`
 
+Full suite (non-interactive by default, including auto-started stub nodes for failure detection):
+
+```bash
+python3 -m pytest -q
+```
+
+Notes on default test toggles:
+- `SENTRA_RUN_INTERACTIVE=0` skips node failure detection.
+- `SENTRA_RUN_SENTRA_NODE_LOGIC=0` skips SentraTrainingNode logic tests.
+- `SENTRA_RUN_SOFTMAX_QUICK=0` skips the MPC softmax quick tests (these now spin up a 3-node harness).
+- `SENTRA_STRICT_BASELINE=0` skips the secure-vs-plaintext tolerance check.
+
 ## Export Runs to Excel
 
 You can auto-record run parameters and parsed final metrics to an Excel file.
