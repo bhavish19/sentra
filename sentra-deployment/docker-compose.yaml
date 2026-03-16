@@ -62,7 +62,6 @@ services:
       dockerfile: ./demonstrator/ci/docker/SentraBackend.dockerfile
     command: ["--use-acme","--acme-host","127.0.0.1","--acme-server-certificate","/pebble/pebble.cer"]
     image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest
-
     deploy:
       mode: replicated-job
       replicas: 1

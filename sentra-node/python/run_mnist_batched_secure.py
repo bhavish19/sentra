@@ -847,7 +847,7 @@ def main():
                 lr,
                 node_id,
                 f"e{epoch}_b{start_idx}",                                       reconstruction_manager=reconstruction,
-                loss_mode=train_config['loss_mode']                                        diagnostics_out=batch_diag
+                loss_mode=train_config['loss_mode'],                                        diagnostics_out=batch_diag
                 )
             end_time = time.time()
             if "grad_norm_estimate" in batch_diag and epoch_grad_norm_estimate is None:
@@ -867,7 +867,7 @@ def main():
             if node_id != 1:
                 print(
                     f"[WARN] Gradient norm instability: grad_norm={epoch_grad_norm_estimate:.4f} "
-                    f"> threshold={train_config["grad_norm_threshold"]:.4f}"
+                    f"> threshold={train_config['grad_norm_threshold']:.4f}"
                 )
             instability_detected = True
             if not train_config["no_abort_on_instability"]:

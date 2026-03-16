@@ -1,3 +1,5 @@
+node-id: 1
+n-nodes: 4
 base-port: 9600
 batched: true
 num-epochs: 10
@@ -25,7 +27,6 @@ client-eval-after-training: true
 client-eval-samples: 100
 client-test-samples: 100
 record-results-xlsx: logs/sentra_runs.xlsx
-
 distribute-dataset-shares: true
 dataset-owner-node: 0
-dataset-distribution-timeout:
+dataset-distribution-timeout: true
