@@ -48,6 +48,10 @@ message JoinCommitteeResponse {
     bytes report = 1;
 }
 
+message PythonMsg
+{
+    bytes msg=1;
+}
 
 // Message from node to server (client -> server)
 message NodeMessage {
@@ -55,6 +59,7 @@ message NodeMessage {
         RegisterRequest register = 1;
         AttestationResponse quote=2;
         JoinCommitteeResponse join_committee_response=3;
+        PythonMsg python_msg=4;
     }
 }
 
@@ -64,5 +69,6 @@ message ServerMessage {
         RegisterResponse response = 1;
         AttestationRequest attestation=2;
         JoinCommitteeRequest join_committee_request=3;
+        PythonMsg python_msg=4;
     }
 }
