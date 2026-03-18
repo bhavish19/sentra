@@ -533,7 +533,7 @@ def export_reconstructed_model(
 def main():
     print("main of run mnist")
     parser = argparse.ArgumentParser()
-    parser.add_argument('--node-id', type=int, required=True)
+    parser.add_argument('--node-id', type=int)
     parser.add_argument('--n-nodes', type=int, default=3)
     parser.add_argument('--t', type=int, default=1)
     parser.add_argument('--base-port', type=int, default=8000)
