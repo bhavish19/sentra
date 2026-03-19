@@ -16,28 +16,24 @@ from types import SimpleNamespace
 
 import yaml
 import numpy as np
+from sentra.demonstrator.backend.sentrabackend import SentraNode
 from tensorflow import keras
 
 from ml_training.secret_sharing import Share, ShamirSecretSharing
 from ml_training.secure_comm import create_mpc_network
 
-
 def dict_to_obj(d):
     if isinstance(d, dict):
-        return SimpleNamespace(**{k: dict_to_obj(v) for k, v in d.items()})
+        return SimpleNamespace(**{k.replace('-', '_'): dict_to_obj(v) for k, v in d.items()})
     return d
 
 
 def read_client_config(configFile: str):
     """Read client configuration from a yaml file"""
-    config = yaml.load(open(configFile, 'r'), yaml.Loader)
-
     with open(configFile) as f:
         raw = yaml.safe_load(f)
 
     config = dict_to_obj(raw)
-
-    print(config.training.num_epochs)
 
     return config
 
@@ -103,47 +99,54 @@ class ClientDistributor:
             return float(timeout_s)
         return 1e9
 
-    def distribute(self):
-        random.seed(self.config["seed"])
-        np.random.seed(self.config["seed"])
+    def distribute(self, node: SentraNode):
+        random.seed(self.config.seed)
+        np.random.seed(self.config.seed)
 
-        field_size = int(self.config["field_size"])
-        scale = int(self.config["scale_factor"])
+        field_size = int(self.config.field_size)
+        scale = int(self.config.scale_factor)
         if field_size <= 3:
             raise ValueError("--field-size must be > 3")
         if scale <= 0:
             raise ValueError("--scale-factor must be positive")
 
-        train_samples = int(self.config["mnist_samples"]) if self.config["mnist_samples"] is not None else None
-        if int(self.config["client_test_samples"]) >= 0:
-            test_samples = int(self.config["client_test_samples"])
-        elif self.config["collect_client_eval"]:
-            test_samples = int(self.config["client_eval_samples"])
+        train_samples = int(self.config.mnist_samples) \
+            if self.config.mnist_samples is not None else None
+
+        if int(self.config.client_test_samples) >= 0:
+            test_samples = int(self.config.client_test_samples)
+        elif self.config.collect_client_eval:
+            test_samples = int(self.config.client_eval_samples)
         else:
             test_samples = train_samples
 
-        (x_train, y_train), (x_test, y_test) = load_mnist_data(train_samples, test_samples)
+        (x_train, y_train), (x_test, y_test) = self.load_mnist_data(
+            train_samples, test_samples
+            )
         n_train = int(len(x_train))
         n_test = int(len(x_test))
         feat_dim = int(x_train.shape[1])
         cls_dim = int(y_train.shape[1])
 
-        print(f"Client {self.config['client_node_id']}: loaded MNIST train={n_train}, test={n_test}")
+        print(f"Client {node.m_strNodeID}: \
+               loaded MNIST train={n_train}, test={n_test}")
 
+        # remove for the moment
         node_configs = {
-            i: {"host": self.config['host'], "port": self.config['base_port'] + i}
-            for i in range(1, self.config["n_nodes"] + 1)
+            i: {"host": self.config.host, "port": self.config.base_port + i}
+            for i in range(1, self.config.n_nodes + 1)
         }
         network = create_mpc_network(
-            node_id=int(self.config["client_node_id"]),
+            node_id=int(node.m_strNodeID),
             node_configs=node_configs,
-            port=int(self.config["base_port"] + self.config["client_node_id"]),
+            port=int(self.config.base_port + node.m_strNodeID),
         )
         shamir = ShamirSecretSharing(field_size)
 
         meta_ctx = "dataset/meta/v1"
         _t_dist0 = time.time()
-        for target in range(1, self.config["n_nodes"] + 1):
+        # remove for the moment
+        for target in range(1, self.config.n_nodes + 1):
             network.channel.send_vector(
                 target, meta_ctx, x=target, values=[n_train, n_test, feat_dim, cls_dim]
             )
@@ -154,30 +157,32 @@ class ClientDistributor:
         ):
             n_split = int(len(x_src))
             for idx in range(n_split):
-                x_per_node = share_vector_for_all_nodes(
-                    x_src[idx], self.config["n_nodes"], self.config["t, field_size"], shamir, scale
+                x_per_node = self.share_vector_for_all_nodes(
+                    x_src[idx], self.config.n_nodes, self.config.t, field_size, shamir, scale
                 )
-                y_per_node = share_vector_for_all_nodes(
-                    y_src[idx], self.config["n_nodes"], self.config["t"], field_size, shamir, scale
+                y_per_node = self.share_vector_for_all_nodes(
+                    y_src[idx], self.config.n_nodes, self.config.t, field_size, shamir, scale
                 )
 
                 x_ctx = f"dataset/{split_name}/x/{idx}"
                 y_ctx = f"dataset/{split_name}/y/{idx}"
-                for target in range(1, self.config["n_nodes"] + 1):
+                # remove for the moment
+                for target in range(1, self.config.n_nodes + 1):
                     network.channel.send_vector(target, x_ctx, x=target, values=x_per_node[target - 1])
                     network.channel.send_vector(target, y_ctx, x=target, values=y_per_node[target - 1])
 
                 if idx % 512 == 0:
-                    print(f"Client {self.config["client_node_id"]}: distributed {split_name} sample {idx + 1}/{n_split}")
+                    print(f"Client {self.config.client_node_id}: distributed {split_name} sample {idx + 1}/{n_split}")
 
         print("Client distribution complete: dataset shares sent to all nodes.")
         print(f"Client Distribution Time: {time.time() - _t_dist0:.6f}s")
 
-        if self.config["collect_client_eval"]:
+        # remove for the moment
+        if self.config.collect_client_eval:
             _t_eval0 = time.time()
-            n_eval = min(int(self.config["client_eval_samples"]), n_test)
-            eval_indices_vals = wait_for_vector_from_sender(
-                network, "client_eval_final/meta_indices", sender_id=1, timeout_s=float(self.config["eval_timeout"])
+            n_eval = min(int(self.config.client_eval_samples), n_test)
+            eval_indices_vals = self.wait_for_vector_from_sender(
+                network, "client_eval_final/meta_indices", sender_id=1, timeout_s=float(self.config.eval_timeout)
             )
             eval_indices = np.asarray(list(eval_indices_vals), dtype=np.int64)
             if eval_indices.size > n_eval:
@@ -194,7 +199,7 @@ class ClientDistributor:
                     by_sender = network.channel.get_received_vector(ctx)
                     if len(by_sender) >= int(self.config["t"]) + 1:
                         break
-                    if float(self.config["eval_timeout"]) > 0 and (time.time() - start > float(self.config["eval_timeout"])):
+                    if float(self.config.eval_timeout) > 0 and (time.time() - start > float(self.config.eval_timeout)):
                         raise TimeoutError(f"Timed out waiting for client eval shares at {ctx}")
                     time.sleep(0.01)
                 network.channel.clear_vector(ctx)
@@ -210,10 +215,15 @@ class ClientDistributor:
                 for j in range(10):
                     shares_j = [Share(x=x, y=vals[j], node_id=x) for (x, vals) in share_vectors]
                     rec = shamir.reconstruct(shares_j)
-                    logits.append(float(mod_p_to_signed(rec, p)))
+                    logits.append(float(self.mod_p_to_signed(rec, p)))
 
                 pred = int(np.argmax(np.asarray(logits, dtype=np.float64)))
-                true_label = int(np.argmax(np.asarray(y_test[int(eval_indices[slot])], dtype=np.float64)))
+                true_label = int(
+                    np.argmax(
+                        np.asarray(
+                            y_test[int(eval_indices[slot])],
+                            dtype=np.float64)
+                        ))
                 if pred == true_label:
                     correct += 1
 
@@ -221,7 +231,9 @@ class ClientDistributor:
             print(f"Client Final Accuracy ({n_eval} samples): {acc*100:.2f}%")
             print(f"Client Eval Time: {time.time() - _t_eval0:.6f}s")
 
-            network.barrier("client_eval_final_done", timeout=_barrier_timeout(float(self.config["eval_timeout"])))
+            network.barrier(
+                "client_eval_final_done",
+                timeout=self._barrier_timeout(float(self.config.eval_timeout)))
 
         # Give receivers a short tail window before process exit.
         time.sleep(0.5)

@@ -17,7 +17,7 @@ class CommandLineOptions:
         self.m_Parser.add_argument("--acme-host",help="Host of the ACME server.",default="localhost")
         self.m_Parser.add_argument("--acme-server-certificate",help="Path to the CA certificate for verifying TLS connections with the ACME server. If not given, the TLS connection will not be verified.",default=None)
         self.m_Parser.add_argument("--fake-attestation",help="Accept faked attestation reports (for easy testing without SGX).",default=False,action="store_true")
-        self.m_Parser.add_argument('--training-config', type=argparse.FileType('r'), help="YAML training configuration file")
+        self.m_Parser.add_argument('--training-config', type=str, help="YAML training configuration file")
 
         self.m_Args=self.m_Parser.parse_args()
 

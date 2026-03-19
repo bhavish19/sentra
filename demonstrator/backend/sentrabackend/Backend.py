@@ -85,7 +85,8 @@ class Backend:
         else:
             self.m_clientDistributor = ClientDistributor(
                 cmdlineargs.getTrainingConfiguration())
-            self.m_clientDistributor.distribute()
+            for node in self.m_nodeList.m_arNodes:
+                self.m_clientDistributor.distribute(node)
 
         self.createGRPCServer()
         return self.app

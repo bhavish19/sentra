@@ -19,6 +19,8 @@ RUN mkdir /sentra/ml_training
 COPY ./sentra-node/python/ml_training /sentra/ml_training/
 COPY ./sentra-node/python/pyproject.toml /sentra/
 
+COPY ./sentra-node/docker/training_config.yaml /etc/
+
 WORKDIR /sentra/backend
 RUN python -m pip install -r requirements.txt
 WORKDIR /sentra/
