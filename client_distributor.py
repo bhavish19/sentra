@@ -13,7 +13,7 @@ import time
 import numpy as np
 from tensorflow import keras
 
-from ml_training.secret_sharing import Share, ShamirSecretSharing
+from ml_training.secret_sharing import Share, ShamirSecretSharing, PackedShamirSecretSharing
 from ml_training.secure_comm import create_mpc_network
 
 
@@ -41,6 +41,16 @@ def share_vector_for_all_nodes(values, n_nodes, t, field_size, shamir, scale):
         shares = shamir.share(val_int, n_nodes, t)
         for s in shares:
             per_node[s.node_id - 1].append(int(s.y))
+    return per_node
+
+
+def share_vector_for_all_nodes_pss(values, n_nodes, t, field_size, pss, scale, packing_factor):
+    secrets = [int(v * scale) % field_size for v in values]
+    chunks = pss.share_vector(secrets, n_nodes, t, packing_factor=int(packing_factor))
+    per_node = [[] for _ in range(n_nodes)]
+    for chunk in chunks:
+        for s in chunk:
+            per_node[int(s.node_id) - 1].append(int(s.y))
     return per_node
 
 
@@ -133,12 +143,23 @@ def main():
         port=int(args.base_port + args.client_node_id),
     )
     shamir = ShamirSecretSharing(field_size)
+    pss = PackedShamirSecretSharing(field_size)
+    pss_packing_factor = int(pss.max_packing_factor(int(args.n_nodes), int(args.t)))
+    if pss_packing_factor <= 0:
+        raise ValueError(
+            f"No valid PSS packing factor for n_nodes={args.n_nodes}, t={args.t}. "
+            "Need n_nodes > t."
+        )
+    print(f"Client {args.client_node_id}: PSS mode enabled; packing factor={pss_packing_factor}")
 
     meta_ctx = "dataset/meta/v1"
     _t_dist0 = time.time()
+    feat_stored = (int(feat_dim) + int(pss_packing_factor) - 1) // int(pss_packing_factor)
+    cls_stored = (int(cls_dim) + int(pss_packing_factor) - 1) // int(pss_packing_factor)
+    meta_payload = [n_train, n_test, feat_dim, cls_dim, 1, int(pss_packing_factor), int(feat_stored), int(cls_stored)]
     for target in range(1, args.n_nodes + 1):
         network.channel.send_vector(
-            target, meta_ctx, x=target, values=[n_train, n_test, feat_dim, cls_dim]
+            target, meta_ctx, x=target, values=meta_payload
         )
 
     for split_name, x_src, y_src in (
@@ -147,11 +168,11 @@ def main():
     ):
         n_split = int(len(x_src))
         for idx in range(n_split):
-            x_per_node = share_vector_for_all_nodes(
-                x_src[idx], args.n_nodes, args.t, field_size, shamir, scale
+            x_per_node = share_vector_for_all_nodes_pss(
+                x_src[idx], args.n_nodes, args.t, field_size, pss, scale, int(pss_packing_factor)
             )
-            y_per_node = share_vector_for_all_nodes(
-                y_src[idx], args.n_nodes, args.t, field_size, shamir, scale
+            y_per_node = share_vector_for_all_nodes_pss(
+                y_src[idx], args.n_nodes, args.t, field_size, pss, scale, int(pss_packing_factor)
             )
 
             x_ctx = f"dataset/{split_name}/x/{idx}"

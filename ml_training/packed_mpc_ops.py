@@ -14,7 +14,7 @@ while reusing the existing Beaver triple machinery for correctness.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 
 import time
 import random
@@ -94,6 +94,7 @@ class PackedMPCOps:
         self.field_size = int(self.field_size)
         self.shamir = ShamirSecretSharing(self.field_size)
         self.pss = PackedShamirSecretSharing(self.field_size)
+        self._unpack_coeff_cache: Dict[int, Dict[str, object]] = {}
 
     def _secret_xs_for_k(self, k: int) -> List[int]:
         if self.secret_xs is not None:
@@ -101,6 +102,29 @@ class PackedMPCOps:
                 raise ValueError("secret_xs length mismatch")
             return list(self.secret_xs)
         return [-(i + 1) for i in range(int(k))]
+
+    def _get_unpack_coeffs(self, k: int) -> Dict[str, object]:
+        k = int(k)
+        cached = self._unpack_coeff_cache.get(k)
+        if cached is not None:
+            return cached
+        p = int(self.field_size)
+        need = int(self.t) + int(k)
+        if need > int(self.n_nodes):
+            raise ValueError("k exceeds n-t")
+        chosen_nodes = list(range(1, need + 1))
+        xs = chosen_nodes[:]
+        secret_xs = self._secret_xs_for_k(k)
+        lambdas_by_lane: List[List[int]] = []
+        for sx in secret_xs:
+            lambdas_by_lane.append(_lagrange_coeffs_at(sx, xs, p))
+        out: Dict[str, object] = {
+            "need": int(need),
+            "chosen_nodes": chosen_nodes,
+            "lambdas_by_lane": lambdas_by_lane,
+        }
+        self._unpack_coeff_cache[k] = out
+        return out
 
     def unpack_packed_to_lane_shares(
         self,
@@ -117,19 +141,9 @@ class PackedMPCOps:
         p = int(self.field_size)
         node_id = int(self.network.node_id)
         k = int(k)
-        need = int(self.t) + int(k)
-        if need > int(self.n_nodes):
-            raise ValueError("k exceeds n-t")
-
-        chosen_nodes = list(range(1, need + 1))  # deterministic subset
-        xs = chosen_nodes[:]  # x-points are 1..need
-        secret_xs = self._secret_xs_for_k(k)
-
-        # Compute coefficients for each lane secret at secret_xs[j]
-        # secret_j = sum_i lambda_i(secret_xs[j]) * packed_y_i
-        lambdas_by_lane: List[List[int]] = []
-        for sx in secret_xs:
-            lambdas_by_lane.append(_lagrange_coeffs_at(sx, xs, p))
+        coeffs = self._get_unpack_coeffs(k)
+        chosen_nodes = list(coeffs["chosen_nodes"])  # deterministic subset
+        lambdas_by_lane = list(coeffs["lambdas_by_lane"])
 
         # Local contributions m_{i,j} = lambda_i(sx_j) * y_i
         m_vals: List[int] = [0] * k
@@ -160,6 +174,11 @@ class PackedMPCOps:
             if all(sid in recv for sid in chosen_nodes):
                 break
             time.sleep(0.01)
+        if not all(sid in recv for sid in chosen_nodes):
+            raise TimeoutError(
+                f"Timed out waiting for unpack context={context} "
+                f"(have={sorted(recv.keys())}, need={chosen_nodes})"
+            )
 
         # Sum k-lane shares for this receiver
         lane_y = np.zeros((k,), dtype=np.uint64)
@@ -173,6 +192,117 @@ class PackedMPCOps:
             pass
 
         return [Share(x=node_id, y=int(lane_y[j] % p), node_id=node_id) for j in range(k)]
+
+    def unpack_packed_rows_to_lane_rows(
+        self,
+        *,
+        packed_rows: List[List[int]],
+        original_len: int,
+        packing_factor: int,
+        context: str,
+        timeout: float = 120.0,
+    ) -> List[List[Share]]:
+        """
+        Batch-unpack many packed rows with amortized network exchanges.
+
+        For each chunk index c, all rows are unpacked together under one context:
+            f"{context}_c{c}"
+        This reduces per-row context churn and message overhead.
+        """
+        if not packed_rows:
+            return []
+        p = int(self.field_size)
+        node_id = int(self.network.node_id)
+        rows = len(packed_rows)
+        k_max = int(packing_factor)
+        if k_max <= 0:
+            raise ValueError("packing_factor must be positive")
+
+        out: List[List[Share]] = [[] for _ in range(rows)]
+        remaining = int(original_len)
+        n_chunks = max(len(row) for row in packed_rows)
+        for c in range(n_chunks):
+            k_cur = min(k_max, max(0, remaining))
+            if k_cur <= 0:
+                break
+            coeffs = self._get_unpack_coeffs(k_cur)
+            chosen_nodes = list(coeffs["chosen_nodes"])
+            lambdas_by_lane = list(coeffs["lambdas_by_lane"])
+            need = int(coeffs["need"])
+            vec_len = int(rows * k_cur)
+
+            # Local masked contributions for all rows/lanes.
+            m_local = np.zeros((rows, k_cur), dtype=np.uint64)
+            if node_id in chosen_nodes:
+                idx = chosen_nodes.index(node_id)
+                for r in range(rows):
+                    y = int(packed_rows[r][c]) if c < len(packed_rows[r]) else 0
+                    y_mod = y % p
+                    for j in range(k_cur):
+                        m_local[r, j] = (int(lambdas_by_lane[j][idx]) * y_mod) % p
+
+            # Share each m_local[r,j] once, bucketized by recipient into one large vector.
+            per_recipient = {
+                rid: np.zeros((vec_len,), dtype=np.uint32) for rid in range(1, self.n_nodes + 1)
+            }
+            for r in range(rows):
+                base = int(r * k_cur)
+                for j in range(k_cur):
+                    shares = self.shamir.share(int(m_local[r, j]) % p, self.n_nodes, self.t)
+                    for s in shares:
+                        per_recipient[int(s.node_id)][base + j] = np.uint32(int(s.y) & 0xFFFFFFFF)
+
+            ctx = f"{context}_c{c}_k{k_cur}"
+            for rid in range(1, self.n_nodes + 1):
+                if rid == node_id:
+                    continue
+                self.network.channel.send_vector(
+                    int(rid), ctx, x=int(rid), values=per_recipient[int(rid)]
+                )
+
+            start = time.time()
+            recv: Dict[int, Dict[str, object]] = {}
+            while time.time() - start < float(timeout):
+                recv = self.network.channel.get_received_vector(ctx)
+                recv[node_id] = {"x": int(node_id), "values": per_recipient[node_id]}
+                if all(sid in recv for sid in chosen_nodes[:need]):
+                    break
+                time.sleep(0.01)
+            if not all(sid in recv for sid in chosen_nodes[:need]):
+                raise TimeoutError(
+                    f"Timed out waiting for batch-unpack context={ctx} "
+                    f"(have={sorted(recv.keys())}, need={chosen_nodes[:need]})"
+                )
+
+            lane_acc = np.zeros((vec_len,), dtype=np.uint64)
+            for sid in chosen_nodes[:need]:
+                vec = np.asarray(recv[int(sid)]["values"], dtype=np.uint64)
+                lane_acc = (lane_acc + vec) % np.uint64(p)
+
+            for r in range(rows):
+                base = int(r * k_cur)
+                for j in range(k_cur):
+                    out[r].append(
+                        Share(x=node_id, y=int(lane_acc[base + j] % p), node_id=node_id)
+                    )
+
+            try:
+                self.network.channel.clear_vector(ctx)
+            except Exception:
+                pass
+
+            remaining -= k_cur
+
+        # Trim safety (last chunk with tail lanes).
+        want = int(original_len)
+        for r in range(rows):
+            if len(out[r]) > want:
+                out[r] = out[r][:want]
+            elif len(out[r]) < want:
+                raise ValueError(
+                    f"Batch unpack mismatch for row {r}: expected {want}, got {len(out[r])}"
+                )
+        return out
 
     def pack_lane_shares_to_packed(
         self,
