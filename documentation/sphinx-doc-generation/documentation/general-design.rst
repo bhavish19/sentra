@@ -82,3 +82,10 @@ Architecture Overview
 .. image:: figures/sentra_demonstrator.svg
    :class: with-border
    :alt: Architecture diagram
+
+Network Communication
+========
+
+.. image:: figures/sentra_network_comm.svg
+   :class: with-border
+   :alt: Network Communication in Sentra
