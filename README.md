@@ -126,6 +126,18 @@ python3 start_all_nodes.py --n-nodes 3 --base-port 9700 --batched \
   --debug-numerics --seed 2026
 ```
 
+### 3) Plaintext Baseline Runner (Single Process)
+
+Use this to benchmark the same `784→128→10` MLP without MPC/fixed-point overhead.
+It accepts a superset of the batched secure flags, ignoring MPC-only options.
+
+```bash
+python3 run_mnist_plaintext.py \
+  --num-epochs 1 --batch-size 32 --mnist-samples 200 \
+  --learning-rate 0.01 --loss-mode softmax \
+  --client-eval-samples 100
+```
+
 ## Mode Semantics
 
 | Mode | Security posture | Typical accuracy/runtime |
