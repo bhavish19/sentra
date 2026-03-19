@@ -1,0 +1,74 @@
+name: sentra
+
+x-sentra-core: &x-sentra-core
+    build:
+      context: ../
+      dockerfile: ./sentra-node/docker/SentraNodeNoSGX.dockerfile
+    image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-no-sgx:latest
+    deploy:
+      mode: replicated-job
+      replicas: 1
+    ports:
+      - 3000:3000
+    depends_on:
+      - sentra-backend
+    devices:
+      - "/dev/sgx_enclave:/dev/sgx_enclave"
+      - "/dev/sgx_provision:/dev/sgx_provision"
+
+x-sentra-multi-node: &x-sentra-multi-node
+  <<: *x-sentra-core
+  profiles:
+      - multi-node
+
+services:
+  sentra-simple-training:
+    <<: *x-sentra-core
+    command: ["--grpc-url", "https://sentra-backend:8001","--use-acme","--acme-url","https://sentra-backend:14000","--acme-cert","/etc/pebble.cer","---","/bin/sentra/run_training.py"]
+    container_name: sentra-test
+    profiles:
+      - test
+
+  sentra-mnist-training:
+    <<: *x-sentra-core
+    command: "/bin/sentra/run_mnist_batched_secure.py"
+    container_name: sentra-mnist-batched-secure
+    profiles:
+      - mnist_batched_secure-no-sgx
+
+  sentra-node-1:
+    <<: *x-sentra-multi-node
+    command: /bin/sentra/run_mnist_batched_secure.py --config /bin/sentra/node_config.yaml --auto-close --node-id 1
+
+  sentra-node-2:
+    <<: *x-sentra-multi-node
+    command: /bin/sentra/run_mnist_batched_secure.py --config /bin/sentra/node_config.yaml --auto-close --node-id 2
+
+  sentra-node-3:
+    <<: *x-sentra-multi-node
+    command: /bin/sentra/run_mnist_batched_secure.py --config /bin/sentra/node_config.yaml --auto-close --node-id 3
+
+  sentra-node-4:
+    <<: *x-sentra-multi-node
+    command: /bin/sentra/run_mnist_batched_secure.py --config /bin/sentra/node_config.yaml --auto-close --node-id 4
+
+  sentra-node-5:
+    <<: *x-sentra-multi-node
+    command: /bin/sentra/run_mnist_batched_secure.py --config /bin/sentra/node_config.yaml --auto-close --node-id 5
+
+  sentra-backend:
+    build:
+      context: ../
+      dockerfile: ./demonstrator/ci/docker/SentraBackend.dockerfile
+    command: ["--use-acme","--acme-host","127.0.0.1","--acme-server-certificate","/pebble/pebble.cer"]
+    image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest
+    deploy:
+      mode: replicated-job
+      replicas: 1
+    container_name: sentra-backend
+    ports:
+      - 8888:8888
+    profiles:
+      - test
+      - mnist_batched_secure-no-sgx
+

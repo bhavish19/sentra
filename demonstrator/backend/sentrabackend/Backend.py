@@ -83,7 +83,8 @@ class Backend:
             self.m_appSimulator=AppSimulator(self.m_nodeGenerator,self.m_nodeList, self.m_committee_selection)
             self.m_appSimulator.start()
         else:
-            self.m_clientDistributor = ClientDistributor(cmdlineargs.training_config)
+            self.m_clientDistributor = ClientDistributor(
+                cmdlineargs.getTrainingConfiguration())
             self.m_clientDistributor.distribute()
 
         self.createGRPCServer()

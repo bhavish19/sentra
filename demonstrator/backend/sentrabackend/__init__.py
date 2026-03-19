@@ -11,3 +11,4 @@ from .grpc.NodeMessageServiceServicer import NodeMessageServiceServicer as NodeM
 from .AppSimulator import AppSimulator
 from .CustomJSONProvider import CustomJSONProvider
 from .Backend import Backend
+from .ClientDistributor import ClientDistributor

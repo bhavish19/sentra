@@ -20,9 +20,9 @@ COPY ./sentra-node/python/ml_training /sentra/ml_training/
 COPY ./sentra-node/python/pyproject.toml /sentra/
 
 WORKDIR /sentra/backend
-RUN pip install -r requirements.txt
+RUN python -m pip install -r requirements.txt
 WORKDIR /sentra/
-RUN pip install .
+RUN python -m pip install .
 
 COPY --exclude=dist --exclude=node_modules ./demonstrator/frontend /sentra/frontend/
 WORKDIR /sentra/frontend
