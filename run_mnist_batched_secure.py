@@ -889,6 +889,8 @@ def main():
     parser.add_argument('--base-port', type=int, default=8000)
     parser.add_argument('--host', type=str, default='localhost')
     parser.add_argument('--batch-size', type=int, default=64)
+    parser.add_argument('--accum-steps', type=int, default=1,
+                        help='Gradient accumulation steps via effective batch grouping (default: 1). Effective batch = batch_size * accum_steps.')
     parser.add_argument('--num-epochs', type=int, default=1)
     parser.add_argument('--learning-rate', type=float, default=0.05)
     parser.add_argument('--seed', type=int, default=42)
@@ -914,6 +916,8 @@ def main():
                         help='Enable extra numeric probes (logits/dz2/update stats) on first batch each epoch')
     parser.add_argument('--debug-division', action='store_true',
                         help='Enable secure-division debug summaries for first few division calls')
+    parser.add_argument('--packed-forward-pilot', action='store_true',
+                        help='Pilot forward dense kernel mode (larger batched multiply chunk for A/B testing).')
     parser.add_argument('--explode-logit-threshold', type=float, default=10.0,
                         help='Warn if reconstructed |logit| exceeds this value (default: 10.0)')
     parser.add_argument('--loss-growth-threshold', type=float, default=5.0,
@@ -951,9 +955,14 @@ def main():
     SCALE = int(args.scale_factor)
     if SCALE <= 0:
         raise ValueError("--scale-factor must be positive")
+    if int(args.accum_steps) <= 0:
+        raise ValueError("--accum-steps must be >= 1")
     
     print(f"Node {args.node_id} starting. Dataset: MNIST. Model: BATCHED MLP (784-128-10)")
     print(f"Fixed-point scale: {SCALE}, softmax temperature: {args.softmax_temperature}, grad clip: {args.grad_clip}, logit clip: {args.logit_clip}, grad mode: {args.softmax_grad_mode}")
+    print(f"Batch config: batch_size={args.batch_size}, accum_steps={int(args.accum_steps)}, effective_batch={int(args.batch_size)*int(args.accum_steps)}")
+    if bool(args.packed_forward_pilot):
+        print("Forward kernel mode: packed-forward pilot enabled")
 
     shamir = ShamirSecretSharing(FIELD_SIZE)
     pss = PackedShamirSecretSharing(FIELD_SIZE)
@@ -1088,6 +1097,7 @@ def main():
         divider,
         scale_factor=SCALE,
         grad_clip=float(args.grad_clip),
+        use_packed_forward_pilot=bool(args.packed_forward_pilot),
     )
     # 5. Initialize/Distribute weights
     np.random.seed(args.seed) # Ensure identical initialization across all nodes
@@ -1166,16 +1176,27 @@ def main():
         epoch_eval_x_before = _lazy_metrics_snapshot(lazy_unpack_metrics, "eval_x")
         epoch_grad_norm_estimate = None
         epoch_diag = {}
+        epoch_stage_sums = {
+            "t_forward_s": 0.0,
+            "t_output_grad_s": 0.0,
+            "t_dw2_s": 0.0,
+            "t_da1_dz1_s": 0.0,
+            "t_dw1_s": 0.0,
+            "t_update_s": 0.0,
+            "t_train_batch_total_s": 0.0,
+        }
+        epoch_stage_samples = 0
         n_batches = 0
         indices = np.arange(train_len)
         rng = np.random.default_rng(args.seed + epoch)
         rng.shuffle(indices)
         
-        for start_idx in range(0, train_len, args.batch_size):
+        eff_batch_span = int(args.batch_size) * int(args.accum_steps)
+        for start_idx in range(0, train_len, eff_batch_span):
             if args.node_id == 1:
                 time.sleep(0.001)
 
-            batch_idx = indices[start_idx : start_idx + args.batch_size]
+            batch_idx = indices[start_idx : start_idx + eff_batch_span]
             x_shares_cols = []
             y_shares_cols = []
             if use_distributed_dataset:
@@ -1303,6 +1324,12 @@ def main():
             for k, v in batch_diag.items():
                 if k not in epoch_diag:
                     epoch_diag[k] = v
+            if "t_train_batch_total_s" in batch_diag:
+                for sk in epoch_stage_sums.keys():
+                    epoch_stage_sums[sk] += float(batch_diag.get(sk, 0.0))
+                epoch_stage_samples += 1
+            if "relu_backward_mode" in batch_diag and "relu_backward_mode" not in epoch_diag:
+                epoch_diag["relu_backward_mode"] = str(batch_diag.get("relu_backward_mode"))
             
             print(f"Epoch {epoch+1} Batch {n_batches+1} completed in {end_time - start_time:.2f}s", end='\n')
             
@@ -1319,6 +1346,41 @@ def main():
                 f"batches={dtx['batch_calls']},s={dtx['unpack_s']:.3f}] "
                 f"train_y[h={dty['hits']},m={dty['misses']},rows={dty['rows_unpacked']},"
                 f"batches={dty['batch_calls']},s={dty['unpack_s']:.3f}]"
+            )
+        if args.node_id == 1 and epoch_stage_samples > 0:
+            if "forward_kernel_mode" in epoch_diag:
+                print(
+                    f"Epoch {epoch+1} Forward Kernel: "
+                    f"{epoch_diag.get('forward_kernel_mode')} "
+                    f"(chunk={epoch_diag.get('forward_kernel_chunk', 'n/a')})"
+                )
+            if "relu_backward_mode" in epoch_diag:
+                print(f"Epoch {epoch+1} ReLU Backward: {epoch_diag.get('relu_backward_mode')}")
+            if "t_train_batch_total_s" in epoch_diag:
+                print(
+                    "Epoch "
+                    f"{epoch+1} Batch Stage Timing (sampled): "
+                    f"fwd={epoch_diag.get('t_forward_s', 0.0):.3f}s, "
+                    f"dz2={epoch_diag.get('t_output_grad_s', 0.0):.3f}s, "
+                    f"dw2={epoch_diag.get('t_dw2_s', 0.0):.3f}s, "
+                    f"da1_dz1={epoch_diag.get('t_da1_dz1_s', 0.0):.3f}s, "
+                    f"dw1={epoch_diag.get('t_dw1_s', 0.0):.3f}s, "
+                    f"upd={epoch_diag.get('t_update_s', 0.0):.3f}s, "
+                    f"total={epoch_diag.get('t_train_batch_total_s', 0.0):.3f}s"
+                )
+            n_s = float(epoch_stage_samples)
+            avg = {k: float(v) / n_s for k, v in epoch_stage_sums.items()}
+            total = max(1e-9, float(avg["t_train_batch_total_s"]))
+            print(
+                "Epoch "
+                f"{epoch+1} Batch Stage Timing (avg over {epoch_stage_samples} batches): "
+                f"fwd={avg['t_forward_s']:.3f}s ({100.0*avg['t_forward_s']/total:.1f}%), "
+                f"dz2={avg['t_output_grad_s']:.3f}s ({100.0*avg['t_output_grad_s']/total:.1f}%), "
+                f"dw2={avg['t_dw2_s']:.3f}s ({100.0*avg['t_dw2_s']/total:.1f}%), "
+                f"da1_dz1={avg['t_da1_dz1_s']:.3f}s ({100.0*avg['t_da1_dz1_s']/total:.1f}%), "
+                f"dw1={avg['t_dw1_s']:.3f}s ({100.0*avg['t_dw1_s']/total:.1f}%), "
+                f"upd={avg['t_update_s']:.3f}s ({100.0*avg['t_update_s']/total:.1f}%), "
+                f"total={avg['t_train_batch_total_s']:.3f}s"
             )
 
         # Node-local instability guard from estimated gradient norm.

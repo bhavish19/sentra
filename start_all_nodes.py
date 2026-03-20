@@ -42,6 +42,7 @@ def _build_node_command(args, node_id):
         ]
         if args.batched:
             cmd.extend([
+                '--accum-steps', str(args.accum_steps),
                 '--loss-mode', str(args.loss_mode),
                 '--scale-factor', str(args.scale_factor),
                 '--field-size', str(args.field_size),
@@ -82,6 +83,8 @@ def _build_node_command(args, node_id):
                 cmd.append('--debug-numerics')
             if args.debug_division:
                 cmd.append('--debug-division')
+            if args.packed_forward_pilot:
+                cmd.append('--packed-forward-pilot')
     else:
         cmd = [
             sys.executable,
@@ -643,6 +646,8 @@ def main():
                        help='Host for all nodes (default: localhost)')
     parser.add_argument('--batch-size', type=int, default=8,
                        help='Mini-batch size passed to each node (default: 8)')
+    parser.add_argument('--accum-steps', type=int, default=1,
+                       help='Gradient accumulation grouping for batched runner; effective batch = batch-size * accum-steps')
     parser.add_argument('--num-epochs', type=int, default=1,
                        help='Epoch count passed to each node (default: 1)')
     parser.add_argument('--learning-rate', type=float, default=0.01,
@@ -699,6 +704,8 @@ def main():
                        help='Enable numeric probes (updates/logits/dz2) in batched secure mode')
     parser.add_argument('--debug-division', action='store_true',
                        help='Enable secure division debug summaries in batched secure mode')
+    parser.add_argument('--packed-forward-pilot', action='store_true',
+                       help='Enable packed forward kernel pilot mode in batched secure runner')
     parser.add_argument('--export-reconstructed-model', type=str, default='',
                        help='Export reconstructed final model to this .npz path (opener node writes file)')
     parser.add_argument('--export-timeout', type=float, default=180.0,
@@ -749,6 +756,7 @@ def main():
     print(f"Training: epochs={args.num_epochs}, batch_size={args.batch_size}, lr={args.learning_rate}")
     if args.batched:
         print(f"Batched secure config: field={args.field_size}, scale={args.scale_factor}, temp={args.softmax_temperature}, grad_clip={args.grad_clip}, logit_clip={args.logit_clip}, exp={args.exp_approx}, grad_mode={args.softmax_grad_mode}, loss_mode={args.loss_mode}")
+        print(f"Batch config: batch_size={args.batch_size}, accum_steps={args.accum_steps}, effective_batch={args.batch_size * args.accum_steps}")
         if args.distribute_dataset_shares:
             print(f"Dataset sharing mode: owner-node (owner={args.dataset_owner_node})")
         elif args.receive_dataset_shares_from_client:
@@ -756,7 +764,7 @@ def main():
         if args.client_eval_after_training:
             print(f"Client-side eval after training: enabled ({args.client_eval_samples} samples)")
         print(f"Instability thresholds: logit={args.explode_logit_threshold}, loss_growth={args.loss_growth_threshold}, grad_norm={args.grad_norm_threshold}, abort={not args.no_abort_on_instability}")
-        print(f"Debug flags: numerics={args.debug_numerics}, division={args.debug_division}")
+        print(f"Debug flags: numerics={args.debug_numerics}, division={args.debug_division}, packed_forward_pilot={args.packed_forward_pilot}")
     print(f"Thresholds: t={args.t}, s={args.s}")
     print(f"Dataset: {args.dataset}")
     print("=" * 70)

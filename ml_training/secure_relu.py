@@ -64,8 +64,16 @@ class SecureReLU:
         """
         Apply ReLU to a list of shares using true batching.
         """
+        relu_vals, _mask = self.relu_list_with_mask(x_shares, node_id=node_id, context=context)
+        return relu_vals
+
+    def relu_list_with_mask(self, x_shares: List[Share], node_id: int, context: str = None):
+        """
+        Apply ReLU to a list of shares and also return the (x > 0) mask shares.
+        Useful for reusing the same mask during backward pass.
+        """
         if not x_shares:
-            return []
+            return [], []
             
         import numpy as np
         
@@ -94,7 +102,8 @@ class SecureReLU:
              print(f"DEBUG BATCH 1 IS_POS RECON: {is_pos_dbg}", flush=True)
 
         # 4. Convert back to shares
-        return [Share(x=x_shares[0].x, y=int(v), node_id=node_id) for v in prod]
+        relu_shares = [Share(x=x_shares[0].x, y=int(v), node_id=node_id) for v in prod]
+        return relu_shares, is_positive_shares
     
     def relu_2d(self, x_shares_2d: List[List[Share]], node_id: int, context: str = None) -> List[List[Share]]:
         """
@@ -201,10 +210,38 @@ class SecureReLU:
                 f"relu_backward_list mask length mismatch: grad={y_grad.shape} mask={y_pos.shape} context={context}"
             )
         
-        # 3. Batched multiplication: grad * (input > 0)
-        prod = self.multiplier.multiply_batch_values(
-            y_grad, y_pos, x=input_shares[0].x, node_id=node_id, context_prefix=context if context else "relu_bw_batch"
+        return self.relu_backward_with_mask_list(
+            output_grad_shares=output_grad_shares,
+            is_positive_shares=is_positive_shares,
+            node_id=node_id,
+            context=context,
         )
-        
-        # 4. Convert back to shares
-        return [Share(x=input_shares[0].x, y=int(v), node_id=node_id) for v in prod]
+
+    def relu_backward_with_mask_list(
+        self,
+        output_grad_shares: List[Share],
+        is_positive_shares: List[Share],
+        node_id: int,
+        context: str = None,
+    ) -> List[Share]:
+        """
+        Compute ReLU backward given a precomputed (input > 0) mask.
+        This avoids repeating secure comparison in backward pass.
+        """
+        if not output_grad_shares or not is_positive_shares:
+            return []
+        if len(output_grad_shares) != len(is_positive_shares):
+            raise ValueError("output_grad_shares and is_positive_shares length mismatch")
+
+        import numpy as np
+        y_grad = np.array([s.y for s in output_grad_shares], dtype=np.uint64)
+        y_pos = np.array([s.y for s in is_positive_shares], dtype=np.uint64)
+        if y_grad.shape != y_pos.shape:
+            raise RuntimeError(
+                f"relu_backward_with_mask_list shape mismatch: grad={y_grad.shape} mask={y_pos.shape} context={context}"
+            )
+
+        prod = self.multiplier.multiply_batch_values(
+            y_grad, y_pos, x=output_grad_shares[0].x, node_id=node_id, context_prefix=context if context else "relu_bw_batch"
+        )
+        return [Share(x=output_grad_shares[0].x, y=int(v), node_id=node_id) for v in prod]
