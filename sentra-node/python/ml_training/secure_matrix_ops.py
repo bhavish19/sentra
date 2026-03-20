@@ -187,6 +187,39 @@ class SecureMatrixMultiplier:
 
         base_ctx = context if context else "matmat"
         p = np.uint64(self.field_size)
+        p_int = int(self.field_size)
+
+        def _mod_matmul_small_field(lhs: np.ndarray, rhs: np.ndarray, mod_p: int, rhs_block: int = 128) -> np.ndarray:
+            """
+            Fast exact modular matmul for fields <= 32-bit prime.
+
+            Preconditions:
+              - lhs, rhs entries are already reduced mod p
+              - mod_p <= 0xFFFFFFFF
+            Rationale:
+              - Single multiply fits in uint64 exactly since (p-1)^2 < 2^64.
+              - Accumulator is reduced mod p each step, so no overflow drift.
+            """
+            m_local, k_local = lhs.shape
+            if k_local != rhs.shape[0]:
+                raise ValueError("matmul shape mismatch")
+            b_local = rhs.shape[1]
+            mod_u64 = np.uint64(mod_p)
+            out = np.zeros((m_local, b_local), dtype=np.uint64)
+            block = max(1, int(rhs_block))
+            for b0 in range(0, b_local, block):
+                b1 = min(b_local, b0 + block)
+                acc = np.zeros((m_local, b1 - b0), dtype=np.uint64)
+                rhs_blk = rhs[:, b0:b1].astype(np.uint64, copy=False)
+                for kk in range(k_local):
+                    # term = lhs[:,kk] outer rhs[kk,:] (all exact in uint64 for <=32-bit field)
+                    term = (
+                        lhs[:, kk].reshape(m_local, 1).astype(np.uint64, copy=False)
+                        * rhs_blk[kk, :].reshape(1, b1 - b0).astype(np.uint64, copy=False)
+                    ) % mod_u64
+                    acc = (acc + term) % mod_u64
+                out[:, b0:b1] = acc
+            return out
         
         # 1. Get deterministic matrix triples
         A_mac, B_mac, C_mac = self.multiplier.get_prss_matrix_triple(
@@ -225,15 +258,20 @@ class SecureMatrixMultiplier:
             E = E_local
             
         # 4. Y = C_mac + D @ B_mac + A_mac @ E + D @ E  (modulo p)
-        # Cast to object arrays to avoid overflow before modulo, as p^2 * n > uint64
-        D_obj = D.astype(object)
-        E_obj = E.astype(object)
-        A_mac_obj = A_mac.astype(object)
-        B_mac_obj = B_mac.astype(object)
-        
-        DB = (np.dot(D_obj, B_mac_obj) % p).astype(np.uint64)
-        AE = (np.dot(A_mac_obj, E_obj) % p).astype(np.uint64)
-        DE = (np.dot(D_obj, E_obj) % p).astype(np.uint64)
+        # For <=32-bit fields (e.g. 2^32-5), use fast exact uint64 modular matmul.
+        if p_int <= 0xFFFFFFFF:
+            DB = _mod_matmul_small_field(D.astype(np.uint64, copy=False), B_mac.astype(np.uint64, copy=False), p_int, rhs_block=int(chunk))
+            AE = _mod_matmul_small_field(A_mac.astype(np.uint64, copy=False), E.astype(np.uint64, copy=False), p_int, rhs_block=int(chunk))
+            DE = _mod_matmul_small_field(D.astype(np.uint64, copy=False), E.astype(np.uint64, copy=False), p_int, rhs_block=int(chunk))
+        else:
+            # Fallback for wider fields: object arithmetic avoids overflow before modulo.
+            D_obj = D.astype(object)
+            E_obj = E.astype(object)
+            A_mac_obj = A_mac.astype(object)
+            B_mac_obj = B_mac.astype(object)
+            DB = (np.dot(D_obj, B_mac_obj) % p).astype(np.uint64)
+            AE = (np.dot(A_mac_obj, E_obj) % p).astype(np.uint64)
+            DE = (np.dot(D_obj, E_obj) % p).astype(np.uint64)
         
         Y_share = C_mac.copy()
         Y_share = (Y_share + DB) % p

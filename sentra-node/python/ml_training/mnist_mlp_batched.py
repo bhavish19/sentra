@@ -25,13 +25,15 @@ class BatchedSecureMNISTMLP:
                  divider: Optional[Any] = None,
                  scale_factor: int = 1000,
                  init_gain: float = 1.0,
-                 grad_clip: float = 2.0):
+                 grad_clip: float = 2.0,
+                 use_packed_forward_pilot: bool = False):
         self.n_nodes = n_nodes
         self.t = t
         self.field_size = field_size
         self.scale_factor = int(scale_factor)
         self.init_gain = float(init_gain)
         self.grad_clip = float(grad_clip)
+        self.use_packed_forward_pilot = bool(use_packed_forward_pilot)
         
         # Initialize secure operations
         self.matrix_ops = SecureMatrixOperations(multiplier, field_size, scale_factor=self.scale_factor)
@@ -114,7 +116,8 @@ class BatchedSecureMNISTMLP:
                              node_id: int = 1,
                              context: Optional[str] = None,
                              open_relu: bool = False,
-                             reconstruction_manager: Any = None) -> Tuple[List[List[Share]], dict]:
+                             reconstruction_manager: Any = None,
+                             diagnostics_out: Optional[dict] = None) -> Tuple[List[List[Share]], dict]:
         """
         Batched forward pass.
         input_shares_cols is a list of batch columns, each of length input_dim (784).
@@ -123,9 +126,17 @@ class BatchedSecureMNISTMLP:
         base_ctx = context if context else "mnist_mlp_batched"
         batch_size = len(input_shares_cols)
         
+        # Pilot mode: keep semantics identical but use a larger fixed-point multiply chunk to
+        # reduce round-trip overhead in the forward dense kernels.
+        fwd_chunk = 65536 if self.use_packed_forward_pilot else 32768
+        if diagnostics_out is not None:
+            diagnostics_out["forward_kernel_mode"] = (
+                "packed_forward_pilot" if self.use_packed_forward_pilot else "baseline_forward"
+            )
+            diagnostics_out["forward_kernel_chunk"] = int(fwd_chunk)
         # 1. Z1 = W1 @ X (Output is list of batch columns, each length 128)
         z1_cols_no_bias = self.matrix_ops.matrix_multiplier.secure_matrix_matrix_multiply_fixed_point(
-            w1, input_shares_cols, node_id=node_id, context=f"{base_ctx}_dense1"
+            w1, input_shares_cols, node_id=node_id, context=f"{base_ctx}_dense1", chunk=int(fwd_chunk)
         )
         
         
@@ -147,15 +158,15 @@ class BatchedSecureMNISTMLP:
             print(f"DEBUG Z1 PRE-RELU: {[(v if v <= self.field_size//2 else v - self.field_size)/self.scale_factor for v in r_z1]}", flush=True)
 
         if open_relu and reconstruction_manager:
-            flat_a1 = self.relu_op.relu_list(flat_z1, node_id, context=f"{base_ctx}_relu1")
+            flat_a1, flat_relu_mask = self.relu_op.relu_list_with_mask(flat_z1, node_id, context=f"{base_ctx}_relu1")
         else:
-            flat_a1 = self.relu_op.relu_list(flat_z1, node_id, context=f"{base_ctx}_relu1")
+            flat_a1, flat_relu_mask = self.relu_op.relu_list_with_mask(flat_z1, node_id, context=f"{base_ctx}_relu1")
             
         a1_cols = [flat_a1[i*self.hidden_dim : (i+1)*self.hidden_dim] for i in range(batch_size)]
         
         # 2. Z2 = W2 @ A1 (Output is list of batch columns, each length 10)
         z2_cols_no_bias = self.matrix_ops.matrix_multiplier.secure_matrix_matrix_multiply_fixed_point(
-            w2, a1_cols, node_id=node_id, context=f"{base_ctx}_dense2"
+            w2, a1_cols, node_id=node_id, context=f"{base_ctx}_dense2", chunk=int(fwd_chunk)
         )
         
         z2_cols = []
@@ -165,7 +176,7 @@ class BatchedSecureMNISTMLP:
                 for s, b in zip(col, b2)
             ])
             
-        cache = {'input_cols': input_shares_cols, 'z1_cols': z1_cols, 'a1_cols': a1_cols}
+        cache = {'input_cols': input_shares_cols, 'z1_cols': z1_cols, 'a1_cols': a1_cols, 'relu_mask_flat': flat_relu_mask}
         return z2_cols, cache
 
     def train_batch(self, x_shares_cols: List[List[Share]], y_shares_cols: List[List[Share]], 
@@ -183,14 +194,19 @@ class BatchedSecureMNISTMLP:
             raise ValueError("train_batch requires non-empty mini-batch")
         w1, w2, b1, b2 = weights
         base_ctx = context
+        t_train0 = time.time()
         
         # 1. Forward
+        t_fwd0 = time.time()
         logits_cols, cache = self.forward_pass_batched(x_shares_cols, weights, node_id, 
                                                       context=f"{base_ctx}_fwd",
                                                       reconstruction_manager=reconstruction_manager,
-                                                      open_relu=True)
+                                                      open_relu=True,
+                                                      diagnostics_out=diagnostics_out)
+        t_fwd1 = time.time()
                                                       
         # 2. Output gradient
+        t_dz20 = time.time()
         # `softmax` mode keeps the original secure softmax CE gradient.
         # `mse` mode is more numerically stable in this fixed-point MPC prototype.
         if str(loss_mode).lower() == "softmax":
@@ -214,6 +230,7 @@ class BatchedSecureMNISTMLP:
                     grad = int(round(float(signed) / float(denom))) % p
                     col_grads.append(Share(x=logits_cols[i][j].x, y=grad, node_id=node_id))
                 dz2_cols.append(col_grads)
+        t_dz21 = time.time()
             
         a1_cols = cache['a1_cols']
         input_cols = cache['input_cols']
@@ -222,6 +239,7 @@ class BatchedSecureMNISTMLP:
         # 3. Backward
         # dW2 = dZ2 @ A1.T
         # B_cols are the columns of A1.T, which are the rows of A1.
+        t_dw20 = time.time()
         e2_rows = self.transpose(dz2_cols) # Shape: 10 x batch_size
         a1_rows = self.transpose(a1_cols)  # Shape: 128 x batch_size
         
@@ -229,8 +247,10 @@ class BatchedSecureMNISTMLP:
             e2_rows, a1_rows, node_id=node_id, context=f"{base_ctx}_dw2"
         ) # Returns 128 cols of length 10
         dw2_accum = self.transpose(dw2_cols) # Shape: 10 x 128
+        t_dw21 = time.time()
         
         # dA1 = W2.T @ dZ2
+        t_da10 = time.time()
         w2_T_rows = self.transpose(w2) # Shape: 128 x 10
         da1_cols = self.matrix_ops.matrix_multiplier.secure_matrix_matrix_multiply_fixed_point(
             w2_T_rows, dz2_cols, node_id=node_id, context=f"{base_ctx}_da1"
@@ -239,10 +259,25 @@ class BatchedSecureMNISTMLP:
         # dZ1 = dA1 * relu'(Z1)
         flat_da1 = [s for col in da1_cols for s in col]
         flat_z1 = [s for col in z1_cols for s in col]
-        flat_dz1 = self.relu_op.relu_backward_list(flat_da1, flat_z1, node_id, context=f"{base_ctx}_dz1")
+        relu_mask_flat = cache.get("relu_mask_flat")
+        if relu_mask_flat is not None and len(relu_mask_flat) == len(flat_da1):
+            flat_dz1 = self.relu_op.relu_backward_with_mask_list(
+                output_grad_shares=flat_da1,
+                is_positive_shares=relu_mask_flat,
+                node_id=node_id,
+                context=f"{base_ctx}_dz1",
+            )
+            if diagnostics_out is not None:
+                diagnostics_out["relu_backward_mode"] = "reuse_forward_mask"
+        else:
+            flat_dz1 = self.relu_op.relu_backward_list(flat_da1, flat_z1, node_id, context=f"{base_ctx}_dz1")
+            if diagnostics_out is not None:
+                diagnostics_out["relu_backward_mode"] = "recompute_mask"
         dz1_cols = [flat_dz1[i*self.hidden_dim : (i+1)*self.hidden_dim] for i in range(batch_size)]
+        t_da11 = time.time()
         
         # dW1 = dZ1 @ X.T
+        t_dw10 = time.time()
         e1_rows = self.transpose(dz1_cols) # Shape: 128 x batch_size
         x_rows = self.transpose(input_cols) # Shape: 784 x batch_size
         
@@ -250,6 +285,7 @@ class BatchedSecureMNISTMLP:
             e1_rows, x_rows, node_id=node_id, context=f"{base_ctx}_dw1"
         ) # Returns 784 cols of length 128
         dw1_accum = self.transpose(dw1_cols) # Shape: 128 x 784
+        t_dw11 = time.time()
         
         # Calculate db2 and db1 by summing the gradients across the batch
         db2_accum = []
@@ -298,38 +334,51 @@ class BatchedSecureMNISTMLP:
             for r in range(self.output_dim):
                 db2_accum[r] = _clip_share(db2_accum[r])
 
-        # To avoid fractional overflow noise through the finite field via modular inversion
-        # of batch_size, we apply integer batch division entirely in the secure divider enclave.
-        # Dimensional analysis:
-        # dW_accum is scaled at S^1 (due to matrix multiplication dividing by S)
-        # lr_fixed is scaled at S^1
-        # product = dW_accum * lr_fixed is conceptually scaled at S^2
-        # We need the update to be scaled at S^1 to subtract from weights (scaled at S^1).
-        # We also need to average across batch_size (B).
-        # Therefore, divisor = S^1 * B
-        
+        # To avoid fractional overflow noise through modular inversion of batch_size, we apply
+        # integer batch division in the secure divider enclave. We batch ALL parameter updates
+        # into one divide-and-reshare call per batch to reduce opener/dealer overhead.
         lr_fixed = int(lr * self.scale_factor) % self.field_size
-        divisor_w = int(self.scale_factor * batch_size)
-        if divisor_w <= 0:
-            raise RuntimeError("Invalid fixed-point divisor_w; scale_factor and batch_size must be positive")
-        
-        flat_upd_w1 = []
+        divisor = int(self.scale_factor * batch_size)
+        if divisor <= 0:
+            raise RuntimeError("Invalid fixed-point divisor; scale_factor and batch_size must be positive")
+
+        flat_grad_w1 = []
         for r in range(self.hidden_dim):
             for c in range(self.input_dim):
-                flat_upd_w1.append(Share(dw1_accum[r][c].x, dw1_accum[r][c].y, node_id))
-        flat_upd_w1 = self.divider.secure_scalar_divide_batch(
-            flat_upd_w1,
-            divisor_w,
+                flat_grad_w1.append(Share(dw1_accum[r][c].x, dw1_accum[r][c].y, node_id))
+        flat_grad_w2 = []
+        for r in range(self.output_dim):
+            for c in range(self.hidden_dim):
+                flat_grad_w2.append(Share(dw2_accum[r][c].x, dw2_accum[r][c].y, node_id))
+        flat_grad_b1 = [Share(db1_accum[r].x, db1_accum[r].y, node_id) for r in range(self.hidden_dim)]
+        flat_grad_b2 = [Share(db2_accum[r].x, db2_accum[r].y, node_id) for r in range(self.output_dim)]
+
+        n_w1 = len(flat_grad_w1)
+        n_w2 = len(flat_grad_w2)
+        n_b1 = len(flat_grad_b1)
+        n_b2 = len(flat_grad_b2)
+        flat_all = flat_grad_w1 + flat_grad_w2 + flat_grad_b1 + flat_grad_b2
+        flat_all_upd = self.divider.secure_scalar_divide_batch(
+            flat_all,
+            divisor,
             node_id,
-            context=f"{base_ctx}_updw1",
+            context=f"{base_ctx}_updall",
             multiplier_factor=lr_fixed,
             clip_min=-clip_abs if opened_mode else None,
             clip_max=clip_abs if opened_mode else None,
         )
+        flat_upd_w1 = flat_all_upd[:n_w1]
+        flat_upd_w2 = flat_all_upd[n_w1:n_w1 + n_w2]
+        flat_upd_b1 = flat_all_upd[n_w1 + n_w2:n_w1 + n_w2 + n_b1]
+        flat_upd_b2 = flat_all_upd[n_w1 + n_w2 + n_b1:n_w1 + n_w2 + n_b1 + n_b2]
+
         # Final sanity clipping after averaging/update scaling.
         if not opened_mode:
             flat_upd_w1 = [_clip_share(s) for s in flat_upd_w1]
-        
+            flat_upd_w2 = [_clip_share(s) for s in flat_upd_w2]
+            flat_upd_b1 = [_clip_share(s) for s in flat_upd_b1]
+            flat_upd_b2 = [_clip_share(s) for s in flat_upd_b2]
+
         new_w1 = []
         idx = 0
         for r in range(self.hidden_dim):
@@ -338,29 +387,12 @@ class BatchedSecureMNISTMLP:
                 row.append(Share(w1[r][c].x, (w1[r][c].y - flat_upd_w1[idx].y) % self.field_size, node_id))
                 idx += 1
             new_w1.append(row)
-            
+
         if reconstruction_manager is not None and "e0_b0" in base_ctx[:5]:
             # Dump the first 10 elements of a1_cols[0] (which corresponds to a1 of sample 0 in batch 1)
             a1_dbg = [reconstruction_manager.get_reconstructed_value([a1_cols[0][i]], f"{base_ctx}_a1_{i}", use_cache=False) for i in range(10)]
             print(f"DEBUG BATCH 1 A1: {[ (v if v<=self.field_size//2 else v-self.field_size)/self.scale_factor for v in a1_dbg]}", flush=True)
-            
-        flat_upd_w2 = []
-        for r in range(self.output_dim):
-            for c in range(self.hidden_dim):
-                flat_upd_w2.append(Share(dw2_accum[r][c].x, dw2_accum[r][c].y, node_id))
-        flat_upd_w2 = self.divider.secure_scalar_divide_batch(
-            flat_upd_w2,
-            divisor_w,
-            node_id,
-            context=f"{base_ctx}_updw2",
-            multiplier_factor=lr_fixed,
-            clip_min=-clip_abs if opened_mode else None,
-            clip_max=clip_abs if opened_mode else None,
-        )
-        # Final sanity clipping after averaging/update scaling.
-        if not opened_mode:
-            flat_upd_w2 = [_clip_share(s) for s in flat_upd_w2]
-        
+
         new_w2 = []
         idx = 0
         for r in range(self.output_dim):
@@ -369,52 +401,11 @@ class BatchedSecureMNISTMLP:
                 row.append(Share(w2[r][c].x, (w2[r][c].y - flat_upd_w2[idx].y) % self.field_size, node_id))
                 idx += 1
             new_w2.append(row)
-            
-        # Biases: db_accum is the sum of dZ directly.
-        # dZ is scaled at S^1
-        # product = db_accum * lr_fixed is scaled at S^2
-        # We need the update to be scaled at S^1 to subtract from biases (scaled at S^1).
-        # We also need to average across batch_size (B).
-        # Therefore, divisor_b = S^1 * B
-        divisor_b = int(self.scale_factor * batch_size)
-        if divisor_b <= 0:
-            raise RuntimeError("Invalid fixed-point divisor_b; scale_factor and batch_size must be positive")
-        
-        flat_upd_b1 = []
-        for r in range(self.hidden_dim):
-            flat_upd_b1.append(Share(db1_accum[r].x, db1_accum[r].y, node_id))
-        flat_upd_b1 = self.divider.secure_scalar_divide_batch(
-            flat_upd_b1,
-            divisor_b,
-            node_id,
-            context=f"{base_ctx}_updb1",
-            multiplier_factor=lr_fixed,
-            clip_min=-clip_abs if opened_mode else None,
-            clip_max=clip_abs if opened_mode else None,
-        )
-        # Final sanity clipping after averaging/update scaling.
-        if not opened_mode:
-            flat_upd_b1 = [_clip_share(s) for s in flat_upd_b1]
-        
+
         new_b1 = []
         for r in range(self.hidden_dim):
             new_b1.append(Share(b1[r].x, (b1[r].y - flat_upd_b1[r].y) % self.field_size, node_id))
-            
-        flat_upd_b2 = []
-        for r in range(self.output_dim):
-            flat_upd_b2.append(Share(db2_accum[r].x, db2_accum[r].y, node_id))
-        flat_upd_b2 = self.divider.secure_scalar_divide_batch(
-            flat_upd_b2,
-            divisor_b,
-            node_id,
-            context=f"{base_ctx}_updb2",
-            multiplier_factor=lr_fixed,
-            clip_min=-clip_abs if opened_mode else None,
-            clip_max=clip_abs if opened_mode else None,
-        )
-        # Final sanity clipping after averaging/update scaling.
-        if not opened_mode:
-            flat_upd_b2 = [_clip_share(s) for s in flat_upd_b2]
+        t_upd1 = time.time()
 
         # Optional gradient-norm estimate on the first batch of an epoch only (to limit overhead).
         # Uses reconstructed update values (post-avg, post-clip), then reports L2 norm estimate.
@@ -510,5 +501,14 @@ class BatchedSecureMNISTMLP:
         new_b2 = []
         for r in range(self.output_dim):
             new_b2.append(Share(b2[r].x, (b2[r].y - flat_upd_b2[r].y) % self.field_size, node_id))
+        
+        if diagnostics_out is not None:
+            diagnostics_out["t_forward_s"] = float(t_fwd1 - t_fwd0)
+            diagnostics_out["t_output_grad_s"] = float(t_dz21 - t_dz20)
+            diagnostics_out["t_dw2_s"] = float(t_dw21 - t_dw20)
+            diagnostics_out["t_da1_dz1_s"] = float(t_da11 - t_da10)
+            diagnostics_out["t_dw1_s"] = float(t_dw11 - t_dw10)
+            diagnostics_out["t_update_s"] = float(t_upd1 - t_dw11)
+            diagnostics_out["t_train_batch_total_s"] = float(t_upd1 - t_train0)
             
         return [new_w1, new_w2, new_b1, new_b2]
