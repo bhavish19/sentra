@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 import yaml
 import numpy as np
-from sentra.demonstrator.backend.sentrabackend import SentraNode
+from .SentraNode import SentraNode
 from tensorflow import keras
 
 from ml_training.secret_sharing import Share, ShamirSecretSharing
