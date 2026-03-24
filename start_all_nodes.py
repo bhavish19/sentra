@@ -85,6 +85,23 @@ def _build_node_command(args, node_id):
                 cmd.append('--debug-division')
             if args.packed_forward_pilot:
                 cmd.append('--packed-forward-pilot')
+            if args.packed_forward_native:
+                cmd.append('--packed-forward-native')
+            if args.packed_end2end:
+                cmd.append('--packed-end2end')
+            if args.dpss_refresh_interval > 0:
+                cmd.extend(['--dpss-refresh-interval', str(args.dpss_refresh_interval)])
+            cmd.extend(['--membership-epoch', str(args.membership_epoch)])
+            if args.enable_failure_detection:
+                cmd.append('--enable-failure-detection')
+            if getattr(args, "enable_dropout_reshare_recovery", False):
+                cmd.append('--enable-dropout-reshare-recovery')
+            if getattr(args, "enable_join_recovery", False):
+                cmd.append('--enable-join-recovery')
+            if getattr(args, "use_kvs_dataset", False):
+                cmd.append('--use-kvs-dataset')
+            if getattr(args, "use_weight_versioning", False):
+                cmd.append('--use-weight-versioning')
     else:
         cmd = [
             sys.executable,
@@ -372,6 +389,7 @@ def _run_headless_and_record(args):
             "--scale-factor", str(args.scale_factor),
             "--seed", str(args.seed),
             "--barrier-timeout", str(args.dataset_distribution_timeout),
+            "--membership-epoch", str(args.membership_epoch),
         ]
         if args.client_eval_after_training:
             client_cmd.extend([
@@ -706,6 +724,26 @@ def main():
                        help='Enable secure division debug summaries in batched secure mode')
     parser.add_argument('--packed-forward-pilot', action='store_true',
                        help='Enable packed forward kernel pilot mode in batched secure runner')
+    parser.add_argument('--packed-forward-native', action='store_true',
+                       help='Enable experimental packed-native dense1 forward kernel in batched secure runner')
+    parser.add_argument('--packed-end2end', action='store_true',
+                       help='Enable experimental packed API path in batched secure runner')
+    parser.add_argument('--dpss-refresh-interval', type=int, default=0,
+                       help='Herzberg proactive refresh every N epochs in batched mode (0=disabled). Requires --batched --enable-network.')
+    parser.add_argument('--membership-epoch', type=int, default=0,
+                       help='Membership epoch e for batched nodes + client distributor: MPC/barrier prefix m{e}_ (default: 0).')
+    parser.add_argument('--enable-failure-detection', action='store_true',
+                        help='Enable heartbeat-based failure detection; use dynamic n_active for packing safety.')
+    parser.add_argument(
+        '--enable-dropout-reshare-recovery',
+        action='store_true',
+        help='Forward to batched runner: on failure, Lagrange reshare weights among survivors and resume if safe.',
+    )
+    parser.add_argument(
+        '--enable-join-recovery',
+        action='store_true',
+        help='Forward to batched runner: on node rejoin, Lagrange reshare weights to new committee and resume.',
+    )
     parser.add_argument('--export-reconstructed-model', type=str, default='',
                        help='Export reconstructed final model to this .npz path (opener node writes file)')
     parser.add_argument('--export-timeout', type=float, default=180.0,
@@ -730,6 +768,10 @@ def main():
                        help='Number of test shares to distribute from client (-1: auto; with client eval uses client-eval-samples).')
     parser.add_argument('--client-eval-timeout', type=float, default=0.0,
                        help='Timeout for client-side evaluation share collection and barrier in seconds (0 = no timeout).')
+    parser.add_argument('--use-kvs-dataset', action='store_true',
+                       help='Store dataset shares in local KVS and retrieve mini-batches from KVS. Requires distributed dataset.')
+    parser.add_argument('--use-weight-versioning', action='store_true',
+                       help='Store weight shares to local KVS with v_theta after each epoch.')
     parser.add_argument('--headless', action='store_true',
                        help='Run all nodes in this terminal and wait for completion (writes per-node logs)')
     parser.add_argument('--record-results-xlsx', type=str, default='',
@@ -746,6 +788,30 @@ def main():
         raise ValueError("--start-client-distributor requires --receive-dataset-shares-from-client")
     if args.client_eval_after_training and not args.receive_dataset_shares_from_client:
         raise ValueError("--client-eval-after-training requires --receive-dataset-shares-from-client")
+    if getattr(args, "enable_dropout_reshare_recovery", False):
+        if not bool(args.enable_failure_detection):
+            raise ValueError("--enable-dropout-reshare-recovery requires --enable-failure-detection")
+        if not bool(args.batched):
+            raise ValueError("--enable-dropout-reshare-recovery requires --batched")
+    if getattr(args, "enable_join_recovery", False):
+        if not bool(args.enable_failure_detection):
+            raise ValueError("--enable-join-recovery requires --enable-failure-detection")
+        if not bool(args.batched):
+            raise ValueError("--enable-join-recovery requires --batched")
+    if getattr(args, "use_kvs_dataset", False):
+        if not (bool(args.distribute_dataset_shares) or bool(args.receive_dataset_shares_from_client)):
+            raise ValueError("--use-kvs-dataset requires --distribute-dataset-shares or --receive-dataset-shares-from-client")
+    if (
+        bool(args.packed_forward_native)
+        and bool(args.start_client_distributor)
+        and bool(args.client_eval_after_training)
+        and float(args.client_eval_timeout) > 0.0
+    ):
+        print(
+            "Packed native forward is enabled; overriding --client-eval-timeout to 0 "
+            "(no timeout) to avoid premature client disconnect during long runs."
+        )
+        args.client_eval_timeout = 0.0
         
     print("=" * 70)
     print("Starting SENTRA Multi-Node Training")
@@ -763,8 +829,14 @@ def main():
             print(f"Dataset sharing mode: external client sender (source_node_id={args.dataset_source_node_id})")
         if args.client_eval_after_training:
             print(f"Client-side eval after training: enabled ({args.client_eval_samples} samples)")
+        print(f"Membership epoch: e={args.membership_epoch} (prefix m{args.membership_epoch}_)")
         print(f"Instability thresholds: logit={args.explode_logit_threshold}, loss_growth={args.loss_growth_threshold}, grad_norm={args.grad_norm_threshold}, abort={not args.no_abort_on_instability}")
-        print(f"Debug flags: numerics={args.debug_numerics}, division={args.debug_division}, packed_forward_pilot={args.packed_forward_pilot}")
+        print(
+            f"Debug flags: numerics={args.debug_numerics}, division={args.debug_division}, "
+            f"packed_forward_pilot={args.packed_forward_pilot}, "
+            f"packed_forward_native={args.packed_forward_native}, "
+            f"packed_end2end={args.packed_end2end}"
+        )
     print(f"Thresholds: t={args.t}, s={args.s}")
     print(f"Dataset: {args.dataset}")
     print("=" * 70)

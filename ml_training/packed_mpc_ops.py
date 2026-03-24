@@ -153,11 +153,12 @@ class PackedMPCOps:
                 m_vals[j] = (int(lambdas_by_lane[j][idx]) * int(packed_share.y)) % p
 
         # Each node Shamir-shares each m_vals[j] to all nodes, then sends per-recipient vector.
-        per_recipient = {rid: np.zeros((k,), dtype=np.uint32) for rid in range(1, self.n_nodes + 1)}
+        # Use uint64 so values fit when field_size > 2^32 (e.g. 2^61-1); uint32 truncation corrupts.
+        per_recipient = {rid: np.zeros((k,), dtype=np.uint64) for rid in range(1, self.n_nodes + 1)}
         for j in range(k):
             shares = self.shamir.share(int(m_vals[j]) % p, self.n_nodes, self.t)
             for s in shares:
-                per_recipient[int(s.node_id)][j] = np.uint32(int(s.y) & 0xFFFFFFFF)
+                per_recipient[int(s.node_id)][j] = int(s.y) % p
 
         # Send to all recipients (including those not in chosen_nodes; they just sum zeros+noise)
         for rid in range(1, self.n_nodes + 1):
@@ -242,15 +243,16 @@ class PackedMPCOps:
                         m_local[r, j] = (int(lambdas_by_lane[j][idx]) * y_mod) % p
 
             # Share each m_local[r,j] once, bucketized by recipient into one large vector.
+            # Use uint64 so values fit when field_size > 2^32; uint32 truncation corrupts.
             per_recipient = {
-                rid: np.zeros((vec_len,), dtype=np.uint32) for rid in range(1, self.n_nodes + 1)
+                rid: np.zeros((vec_len,), dtype=np.uint64) for rid in range(1, self.n_nodes + 1)
             }
             for r in range(rows):
                 base = int(r * k_cur)
                 for j in range(k_cur):
                     shares = self.shamir.share(int(m_local[r, j]) % p, self.n_nodes, self.t)
                     for s in shares:
-                        per_recipient[int(s.node_id)][base + j] = np.uint32(int(s.y) & 0xFFFFFFFF)
+                        per_recipient[int(s.node_id)][base + j] = int(s.y) % p
 
             ctx = f"{context}_c{c}_k{k_cur}"
             for rid in range(1, self.n_nodes + 1):
@@ -367,10 +369,10 @@ class PackedMPCOps:
 
             total = (int(base_contrib) + int(mask_contrib)) % p
 
-            # Send to target under a per-target context
+            # Send to target under a per-target context (no truncation; field can be > 2^32)
             ctx_t = f"{context}_to_{target}"
             if target != node_id:
-                self.network.channel.send_vector(int(target), ctx_t, x=int(node_id), values=np.asarray([int(total) & 0xFFFFFFFF], dtype=np.uint32))
+                self.network.channel.send_vector(int(target), ctx_t, x=int(node_id), values=[int(total)])
 
         # Receive contributions addressed to us and sum them
         ctx_me = f"{context}_to_{node_id}"
@@ -385,12 +387,13 @@ class PackedMPCOps:
 
         # Sum from all nodes (including self)
         total_sum = 0
-        # Include received from others
+        # Include received from others (preserve full value; field can be > 2^32)
         for sid, item in recv.items():
             vec = item.get("values")
             if vec is None:
                 continue
-            total_sum = (total_sum + int(np.asarray(vec, dtype=np.uint32)[0])) % p
+            v0 = vec[0] if vec else 0
+            total_sum = (total_sum + int(v0)) % p
 
         # Add our own contribution (computed during the send loop above) by re-running for target=node_id
         coeffs = _secret_point_basis_coeffs_at(node_id, secret_xs, p)

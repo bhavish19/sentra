@@ -52,7 +52,8 @@ class SecureChannel:
     Provides authenticated and encrypted communication
     """
     
-    def __init__(self, node_id: int, port: int = 8000, use_tls: bool = False, host: str = '0.0.0.0'):
+    def __init__(self, node_id: int, port: int = 8000, use_tls: bool = False, host: str = '0.0.0.0',
+                 expected_membership_epoch: Optional[int] = None):
         """
         Initialize secure channel
         Args:
@@ -60,11 +61,13 @@ class SecureChannel:
             port: Port to listen on
             use_tls: Whether to use TLS encryption (default: False for testing)
             host: Host interface to bind to
+            expected_membership_epoch: If set, reject/ignore SYNC messages with different e (stale epoch).
         """
         self.node_id = node_id
         self.port = port
         self.use_tls = use_tls
         self.host = host
+        self.expected_membership_epoch = expected_membership_epoch
         self.connections: Dict[int, socket.socket] = {}
         self.server_socket: Optional[socket.socket] = None
         self.running = False
@@ -564,7 +567,10 @@ class SecureChannel:
             self.message_handlers[msg_type](sender_id, data)
 
     def _handle_sync(self, sender_id: int, data: Dict):
-        """Handle barrier/sync message."""
+        """Handle barrier/sync message. Reject stale epoch if expected_membership_epoch is set."""
+        if self.expected_membership_epoch is not None and "e" in data:
+            if data["e"] != self.expected_membership_epoch:
+                return  # Ignore stale epoch
         tag = data.get("tag", "default")
         with self.lock:
             if tag not in self.received_sync:
@@ -761,7 +767,7 @@ class SecureMPCNetwork:
     """
     
     def __init__(self, node_id: int, node_configs: Dict[int, Dict[str, Any]],
-                 port: int = 8000, use_tls: bool = False):
+                 port: int = 8000, use_tls: bool = False, membership_epoch: Optional[int] = None):
         """
         Initialize MPC network
         Args:
@@ -769,12 +775,18 @@ class SecureMPCNetwork:
             node_configs: Dictionary mapping node_id to {host, port}
             port: Port for this node
             use_tls: Whether to use TLS (default: False for testing)
+            membership_epoch: If set, include e in SYNC messages and reject SYNCs with different e.
         """
         self.node_id = node_id
         self.node_configs = node_configs
+        self.membership_epoch = membership_epoch
+        self._active_peer_ids: Optional[set] = None  # If set, restrict sends to these (for post-dropout)
         # Get host for this node from config, default to 0.0.0.0 if not found
         host = node_configs.get(node_id, {}).get('host', '0.0.0.0')
-        self.channel = SecureChannel(node_id, port, use_tls, host=host)
+        self.channel = SecureChannel(
+            node_id, port, use_tls, host=host,
+            expected_membership_epoch=membership_epoch,
+        )
         self.sss = ShamirSecretSharing()
         
         # Start server
@@ -821,7 +833,9 @@ class SecureMPCNetwork:
         print(f"{'='*70}\n")
     
     def send_share(self, target_node_id: int, share: Share, context: str):
-        """Send a share to another node"""
+        """Send a share to another node (skips if target not in active peers post-dropout)."""
+        if self._active_peer_ids is not None and target_node_id not in self._active_peer_ids:
+            return
         self.channel.send_share(target_node_id, share, context)
     
     def connect_to_others(self):
@@ -845,10 +859,28 @@ class SecureMPCNetwork:
             if not connected:
                 print(f"[ERROR] Could not connect to node {node_id} after retries.")
 
+    def _get_peers_for_send(self) -> list:
+        """Peers to send to (excludes self). Uses _active_peer_ids when set (post-dropout)."""
+        if self._active_peer_ids is not None:
+            return [i for i in self._active_peer_ids if i != self.node_id]
+        return [i for i in self.node_configs.keys() if i != self.node_id]
+
+    def set_active_peers(self, peer_ids) -> None:
+        """
+        Restrict sends to these peers (for post-dropout MPC reconfiguration).
+        Call after successful dropout recovery so broadcasts skip dead nodes.
+        Pass None to reset to all node_configs.
+        """
+        self._active_peer_ids = set(int(i) for i in peer_ids) if peer_ids else None
+
+    def update_membership_epoch(self, new_e: int) -> None:
+        """Update membership epoch (e.g. after join recovery bump)."""
+        self.membership_epoch = int(new_e)
+        self.channel.expected_membership_epoch = int(new_e)
+
     def broadcast_share(self, share: Share, context: str):
-        """Broadcast a share to all nodes"""
-        for node_id in self.node_configs.keys():
-            if node_id != self.node_id:
+        """Broadcast a share to all nodes (or active peers if set_active_peers was called)."""
+        for node_id in self._get_peers_for_send():
                 try:
                     self.send_share(node_id, share, context)
                 except Exception as e:
@@ -856,18 +888,16 @@ class SecureMPCNetwork:
                     # print(f"Warning: Could not broadcast to node {node_id}: {e}")
 
     def broadcast_shares_batch(self, shares: List[Share], contexts: List[str]):
-        """Broadcast a batch of shares to all nodes."""
-        for node_id in self.node_configs.keys():
-            if node_id != self.node_id:
+        """Broadcast a batch of shares to all nodes (or active peers if set)."""
+        for node_id in self._get_peers_for_send():
                 try:
                     self.channel.send_shares_batch(node_id, shares, contexts)
                 except Exception as e:
                     print(f"Warning: Could not batch-broadcast to node {node_id}: {e}")
 
     def broadcast_vector(self, context: str, x: int, values: List[int]):
-        """Broadcast a vector payload to all nodes."""
-        for node_id in self.node_configs.keys():
-            if node_id != self.node_id:
+        """Broadcast a vector payload to all nodes (or active peers if set)."""
+        for node_id in self._get_peers_for_send():
                 try:
                     self.channel.send_vector(node_id, context, x, values)
                 except Exception as e:
@@ -877,9 +907,8 @@ class SecureMPCNetwork:
     def broadcast_vector_pair(
         self, context_d: str, context_e: str, x: int, values_d: List[int], values_e: List[int]
     ):
-        """Broadcast both d and e vectors in one message per peer (one round-trip per chunk)."""
-        for node_id in self.node_configs.keys():
-            if node_id != self.node_id:
+        """Broadcast both d and e vectors (or active peers if set)."""
+        for node_id in self._get_peers_for_send():
                 try:
                     self.channel.send_vector_pair(
                         node_id, context_d, context_e, x, values_d, values_e
@@ -901,11 +930,14 @@ class SecureMPCNetwork:
         Simple multi-node barrier: each node broadcasts a SYNC(tag) and waits until
         it has received SYNC(tag) from all other nodes.
         """
-        # Broadcast our presence for this tag
+        # Broadcast our presence for this tag (include e for stale-epoch rejection)
+        payload: Dict[str, Any] = {"tag": tag}
+        if self.membership_epoch is not None:
+            payload["e"] = self.membership_epoch
         for other_id in self.node_configs.keys():
             if other_id != self.node_id:
                 try:
-                    self.channel.send_message(other_id, MessageType.SYNC, {"tag": tag})
+                    self.channel.send_message(other_id, MessageType.SYNC, payload)
                 except Exception as e:
                     raise RuntimeError(f"Failed to send SYNC to node {other_id}: {e}")
 
@@ -924,9 +956,49 @@ class SecureMPCNetwork:
         print(f"DEBUG: Node {self.node_id} barrier '{tag}' TIMED OUT. Got: {got}, Expected: {expected_peers}")
         raise RuntimeError(f"Barrier timed out for tag={tag}; got={sorted(list(got))}, expected={sorted(list(expected_peers))}")
 
+    def barrier_with_peers(self, tag: str, participating_node_ids: set, timeout: float = 300.0):
+        """
+        Barrier among a subset of nodes (e.g. survivors after dropout).
+        Each node in ``participating_node_ids`` sends SYNC to every other participant
+        and waits until it has received SYNC from all other participants.
+        """
+        sid = int(self.node_id)
+        peers = {int(i) for i in participating_node_ids}
+        if sid not in peers:
+            raise ValueError(
+                f"barrier_with_peers: this node {sid} not in participating set {sorted(peers)}"
+            )
+        others = {i for i in peers if i != sid}
+        payload: Dict[str, Any] = {"tag": tag}
+        if self.membership_epoch is not None:
+            payload["e"] = self.membership_epoch
+        for other_id in others:
+            try:
+                self.channel.send_message(other_id, MessageType.SYNC, payload)
+            except Exception as e:
+                raise RuntimeError(f"Failed to send SYNC to node {other_id}: {e}") from e
+
+        start = time.time()
+        while time.time() - start < timeout:
+            got = self.channel.get_received_sync(tag)
+            if others.issubset(got):
+                self.channel.clear_sync(tag)
+                print(
+                    f"DEBUG: Node {self.node_id} barrier_with_peers '{tag}' passed. "
+                    f"Got: {got}, expected others: {others}"
+                )
+                return
+            time.sleep(0.05)
+
+        got = self.channel.get_received_sync(tag)
+        raise RuntimeError(
+            f"barrier_with_peers timed out tag={tag}; got={sorted(got)}, expected_others={sorted(others)}"
+        )
+
 
 def create_mpc_network(node_id: int, node_configs: Dict[int, Dict[str, Any]],
-                       port: int = 8000, use_tls: bool = False) -> SecureMPCNetwork:
+                       port: int = 8000, use_tls: bool = False,
+                       membership_epoch: Optional[int] = None) -> SecureMPCNetwork:
     """
     Factory function to create an MPC network
     
@@ -938,4 +1010,4 @@ def create_mpc_network(node_id: int, node_configs: Dict[int, Dict[str, Any]],
     Returns:
         Configured SecureMPCNetwork instance
     """
-    return SecureMPCNetwork(node_id, node_configs, port, use_tls)
+    return SecureMPCNetwork(node_id, node_configs, port, use_tls, membership_epoch=membership_epoch)
