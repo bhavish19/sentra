@@ -15,6 +15,8 @@ from tensorflow import keras
 
 from ml_training.secret_sharing import Share, ShamirSecretSharing, PackedShamirSecretSharing
 from ml_training.secure_comm import create_mpc_network
+from ml_training.membership_epoch import MembershipEpochScope
+from ml_training.packing_safety import get_max_safe_packing_factor
 
 
 def load_mnist_data(train_samples=None, test_samples=None):
@@ -105,7 +107,15 @@ def main():
     parser.add_argument("--client-eval-samples", type=int, default=100)
     parser.add_argument("--eval-timeout", type=float, default=0.0,
                         help="Timeout in seconds for client-side eval waits (0 = no timeout).")
+    parser.add_argument(
+        "--membership-epoch",
+        type=int,
+        default=0,
+        help="Must match training nodes' --membership-epoch (MPC/barrier prefix m{e}_, default: 0).",
+    )
     args = parser.parse_args()
+
+    me = MembershipEpochScope(int(args.membership_epoch))
 
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -132,6 +142,7 @@ def main():
     cls_dim = int(y_train.shape[1])
 
     print(f"Client {args.client_node_id}: loaded MNIST train={n_train}, test={n_test}")
+    print(f"Client {args.client_node_id}: membership epoch e={me.e} (MPC/barrier prefix m{me.e}_)")
 
     node_configs = {
         i: {"host": args.host, "port": args.base_port + i}
@@ -141,18 +152,26 @@ def main():
         node_id=int(args.client_node_id),
         node_configs=node_configs,
         port=int(args.base_port + args.client_node_id),
+        membership_epoch=int(me.e),
     )
     shamir = ShamirSecretSharing(field_size)
     pss = PackedShamirSecretSharing(field_size)
-    pss_packing_factor = int(pss.max_packing_factor(int(args.n_nodes), int(args.t)))
-    if pss_packing_factor <= 0:
+    raw_packing = int(pss.max_packing_factor(int(args.n_nodes), int(args.t)))
+    if raw_packing <= 0:
         raise ValueError(
             f"No valid PSS packing factor for n_nodes={args.n_nodes}, t={args.t}. "
             "Need n_nodes > t."
         )
+    n_active = int(args.n_nodes)
+    pss_packing_factor = min(raw_packing, get_max_safe_packing_factor(int(args.t), n_active))
+    if pss_packing_factor < raw_packing:
+        print(
+            f"Client {args.client_node_id}: [Packing safety] Capped packing factor "
+            f"{raw_packing} -> {pss_packing_factor} (2*(t+s-1) < n_active={n_active})"
+        )
     print(f"Client {args.client_node_id}: PSS mode enabled; packing factor={pss_packing_factor}")
 
-    meta_ctx = "dataset/meta/v1"
+    meta_ctx = me.ctx("dataset/meta/v1")
     _t_dist0 = time.time()
     feat_stored = (int(feat_dim) + int(pss_packing_factor) - 1) // int(pss_packing_factor)
     cls_stored = (int(cls_dim) + int(pss_packing_factor) - 1) // int(pss_packing_factor)
@@ -175,8 +194,8 @@ def main():
                 y_src[idx], args.n_nodes, args.t, field_size, pss, scale, int(pss_packing_factor)
             )
 
-            x_ctx = f"dataset/{split_name}/x/{idx}"
-            y_ctx = f"dataset/{split_name}/y/{idx}"
+            x_ctx = me.ctx(f"dataset/{split_name}/x/{idx}")
+            y_ctx = me.ctx(f"dataset/{split_name}/y/{idx}")
             for target in range(1, args.n_nodes + 1):
                 network.channel.send_vector(target, x_ctx, x=target, values=x_per_node[target - 1])
                 network.channel.send_vector(target, y_ctx, x=target, values=y_per_node[target - 1])
@@ -191,7 +210,7 @@ def main():
         _t_eval0 = time.time()
         n_eval = min(int(args.client_eval_samples), n_test)
         eval_indices_vals = wait_for_vector_from_sender(
-            network, "client_eval_final/meta_indices", sender_id=1, timeout_s=float(args.eval_timeout)
+            network, me.ctx("client_eval_final/meta_indices"), sender_id=1, timeout_s=float(args.eval_timeout)
         )
         eval_indices = np.asarray(list(eval_indices_vals), dtype=np.int64)
         if eval_indices.size > n_eval:
@@ -201,7 +220,7 @@ def main():
         correct = 0
         p = int(field_size)
         for slot in range(n_eval):
-            ctx = f"client_eval_final/logits/{slot}"
+            ctx = me.ctx(f"client_eval_final/logits/{slot}")
             by_sender = {}
             start = time.time()
             while True:
@@ -235,7 +254,7 @@ def main():
         print(f"Client Final Accuracy ({n_eval} samples): {acc*100:.2f}%")
         print(f"Client Eval Time: {time.time() - _t_eval0:.6f}s")
 
-        network.barrier("client_eval_final_done", timeout=_barrier_timeout(float(args.eval_timeout)))
+        network.barrier(me.barrier_tag("client_eval_final_done"), timeout=_barrier_timeout(float(args.eval_timeout)))
 
     # Give receivers a short tail window before process exit.
     time.sleep(0.5)

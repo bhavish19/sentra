@@ -179,12 +179,227 @@ class BatchedSecureMNISTMLP:
         cache = {'input_cols': input_shares_cols, 'z1_cols': z1_cols, 'a1_cols': a1_cols, 'relu_mask_flat': flat_relu_mask}
         return z2_cols, cache
 
+    def train_batch_packed(
+        self,
+        *,
+        x_packed_rows: List[Any],
+        y_packed_rows: List[Any],
+        x_lane_cols: Optional[List[List[Share]]] = None,
+        y_lane_cols: Optional[List[List[Share]]] = None,
+        weights: List,
+        softmax_op: Any,
+        lr: float,
+        node_id: int,
+        context: str,
+        reconstruction_manager: Any,
+        loss_mode: str,
+        diagnostics_out: Optional[dict],
+        packed_ops: Optional[Any] = None,
+        packing_factor: Optional[int] = None,
+        use_packed_forward_native: bool = False,
+        x_row_to_lane_shares_fn: Optional[Any] = None,
+        y_row_to_lane_shares_fn: Optional[Any] = None,
+    ) -> List:
+        """
+        Experimental packed-batch API.
+
+        Current Phase-3 behavior:
+        - Accept packed rows at model boundary.
+        - Prefer precomputed lane columns (batched unpack in runner).
+        - Optional adapter callbacks exist only as explicit compatibility fallback.
+        - Reuse existing train_batch pipeline for correctness.
+        """
+        if bool(use_packed_forward_native):
+            if packed_ops is None or packing_factor is None:
+                raise ValueError("packed_forward_native requires packed_ops and packing_factor")
+            t_native0 = time.time()
+            logits_cols, cache = self._forward_pass_batched_native_packed_dense1(
+                x_packed_rows=x_packed_rows,
+                weights=weights,
+                packed_ops=packed_ops,
+                packing_factor=int(packing_factor),
+                node_id=int(node_id),
+                context=f"{context}_nativefwd",
+                reconstruction_manager=reconstruction_manager,
+                diagnostics_out=diagnostics_out,
+            )
+            t_native1 = time.time()
+            if diagnostics_out is not None:
+                diagnostics_out["packed_end2end_mode"] = "packed_forward_native_dense1"
+            if y_lane_cols is None:
+                if y_row_to_lane_shares_fn is None:
+                    raise ValueError("packed_forward_native requires y_lane_cols or y_row_to_lane_shares_fn")
+                y_cols_native = [y_row_to_lane_shares_fn(r, i) for i, r in enumerate(y_packed_rows)]
+            else:
+                y_cols_native = y_lane_cols
+            return self.train_batch(
+                [],
+                y_cols_native,
+                weights,
+                softmax_op,
+                lr,
+                node_id=node_id,
+                context=context,
+                reconstruction_manager=reconstruction_manager,
+                loss_mode=loss_mode,
+                diagnostics_out=diagnostics_out,
+                prefwd_logits_cols=logits_cols,
+                prefwd_cache=cache,
+                prefwd_elapsed_s=float(t_native1 - t_native0),
+            )
+        elif x_lane_cols is not None and y_lane_cols is not None:
+            x_cols = x_lane_cols
+            y_cols = y_lane_cols
+            mode = "adapter_batched_unpack"
+        elif x_row_to_lane_shares_fn is not None and y_row_to_lane_shares_fn is not None:
+            x_cols = [x_row_to_lane_shares_fn(r, i) for i, r in enumerate(x_packed_rows)]
+            y_cols = [y_row_to_lane_shares_fn(r, i) for i, r in enumerate(y_packed_rows)]
+            mode = "adapter_lane_fallback"
+        else:
+            raise ValueError(
+                "train_batch_packed requires either precomputed lane columns or both row->lane adapters"
+            )
+        if diagnostics_out is not None:
+            diagnostics_out["packed_end2end_mode"] = mode
+        return self.train_batch(
+            x_cols,
+            y_cols,
+            weights,
+            softmax_op,
+            lr,
+            node_id=node_id,
+            context=context,
+            reconstruction_manager=reconstruction_manager,
+            loss_mode=loss_mode,
+            diagnostics_out=diagnostics_out,
+        )
+
+    def _forward_pass_batched_native_packed_dense1(
+        self,
+        *,
+        x_packed_rows: List[Any],
+        weights: List,
+        packed_ops: Any,
+        packing_factor: int,
+        node_id: int,
+        context: str,
+        reconstruction_manager: Any = None,
+        diagnostics_out: Optional[dict] = None,
+    ) -> Tuple[List[List[Share]], dict]:
+        """
+        Experimental packed-native dense1 forward:
+        - Uses packed operations for dense1 products directly from packed input rows.
+        - Then continues with standard lane-share ReLU/dense2 path.
+        """
+        w1, w2, b1, b2 = weights
+        p = int(self.field_size)
+        k_max = int(packing_factor)
+        if k_max <= 0:
+            raise ValueError("packing_factor must be positive")
+        batch_size = len(x_packed_rows)
+        x0 = int(node_id)
+        n_chunks = (int(self.input_dim) + k_max - 1) // k_max
+        base_ctx = context if context else "mnist_mlp_batched_nativefwd"
+
+        # Also recover lane columns once (needed by backward dW1 path).
+        x_lane_cols = packed_ops.unpack_packed_rows_to_lane_rows(
+            packed_rows=x_packed_rows,
+            original_len=int(self.input_dim),
+            packing_factor=int(k_max),
+            context=f"{base_ctx}_x_for_backward",
+            timeout=120.0,
+        )
+
+        # Pack W1 lanes into packed shares once per batch.
+        t_pack0 = time.time()
+        w1_packed = []
+        for h in range(self.hidden_dim):
+            row_chunks = []
+            for c in range(n_chunks):
+                s0 = c * k_max
+                s1 = min(s0 + k_max, self.input_dim)
+                k_cur = int(s1 - s0)
+                packed_w = packed_ops.pack_lane_shares_to_packed(
+                    lane_shares=w1[h][s0:s1],
+                    k=int(k_cur),
+                    context=f"{base_ctx}_w1pack_h{h}_c{c}",
+                    timeout=120.0,
+                )
+                row_chunks.append((packed_w, int(k_cur)))
+            w1_packed.append(row_chunks)
+        t_pack1 = time.time()
+
+        # Dense1 in packed domain (chunk-wise), then lane-sum for scalar neuron output.
+        z1_cols: List[List[Share]] = []
+        for s_idx in range(batch_size):
+            x_row = x_packed_rows[s_idx]
+            col: List[Share] = []
+            for h in range(self.hidden_dim):
+                acc = 0
+                for c, (w_pack, k_cur) in enumerate(w1_packed[h]):
+                    x_val = int(x_row[c]) if c < len(x_row) else 0
+                    x_pack = Share(x=x0, y=int(x_val % p), node_id=int(node_id))
+                    prod_pack = packed_ops.packed_mul(
+                        a_packed=x_pack,
+                        b_packed=w_pack,
+                        k=int(k_cur),
+                        multiplier=self.matrix_ops.multiplier,
+                        context=f"{base_ctx}_w1mul_s{s_idx}_h{h}_c{c}",
+                        timeout=120.0,
+                    )
+                    lanes = packed_ops.unpack_packed_to_lane_shares(
+                        packed_share=prod_pack,
+                        k=int(k_cur),
+                        context=f"{base_ctx}_w1sum_s{s_idx}_h{h}_c{c}",
+                        timeout=120.0,
+                    )
+                    lane_sum = 0
+                    for ls in lanes:
+                        lane_sum = (lane_sum + int(ls.y)) % p
+                    acc = (acc + lane_sum) % p
+                acc = (acc + int(b1[h].y)) % p
+                col.append(Share(x=x0, y=int(acc), node_id=int(node_id)))
+            z1_cols.append(col)
+
+        # ReLU and dense2 reuse existing lane-share kernels.
+        flat_z1 = [s for col in z1_cols for s in col]
+        flat_a1, flat_relu_mask = self.relu_op.relu_list_with_mask(
+            flat_z1, int(node_id), context=f"{base_ctx}_relu1"
+        )
+        a1_cols = [flat_a1[i * self.hidden_dim: (i + 1) * self.hidden_dim] for i in range(batch_size)]
+
+        fwd_chunk = 65536 if self.use_packed_forward_pilot else 32768
+        z2_cols_no_bias = self.matrix_ops.matrix_multiplier.secure_matrix_matrix_multiply_fixed_point(
+            w2, a1_cols, node_id=int(node_id), context=f"{base_ctx}_dense2", chunk=int(fwd_chunk)
+        )
+        z2_cols = []
+        for col in z2_cols_no_bias:
+            z2_cols.append([
+                Share(x=s.x, y=(s.y + b.y) % self.field_size, node_id=int(node_id))
+                for s, b in zip(col, b2)
+            ])
+
+        if diagnostics_out is not None:
+            diagnostics_out["forward_kernel_mode"] = "packed_native_dense1_pilot"
+            diagnostics_out["forward_kernel_chunk"] = int(fwd_chunk)
+            diagnostics_out["packed_native_w1_pack_s"] = float(t_pack1 - t_pack0)
+        cache = {
+            "input_cols": x_lane_cols,
+            "z1_cols": z1_cols,
+            "a1_cols": a1_cols,
+            "relu_mask_flat": flat_relu_mask,
+        }
+        return z2_cols, cache
+
     def train_batch(self, x_shares_cols: List[List[Share]], y_shares_cols: List[List[Share]], 
                    weights: List, softmax_op: Any, lr: float,
                    node_id: int = 1, context: str = "",
                    reconstruction_manager: Any = None,
                    loss_mode: str = "mse",
-                   diagnostics_out: Optional[dict] = None) -> List:
+                   diagnostics_out: Optional[dict] = None,
+                   prefwd_logits_cols: Optional[List[List[Share]]] = None,
+                   prefwd_cache: Optional[dict] = None,
+                   prefwd_elapsed_s: Optional[float] = None) -> List:
         """
         Run a full train step on a mini-batch with SIMD matrix-matrix multiplications.
         Returns updated weights.
@@ -198,12 +413,20 @@ class BatchedSecureMNISTMLP:
         
         # 1. Forward
         t_fwd0 = time.time()
-        logits_cols, cache = self.forward_pass_batched(x_shares_cols, weights, node_id, 
-                                                      context=f"{base_ctx}_fwd",
-                                                      reconstruction_manager=reconstruction_manager,
-                                                      open_relu=True,
-                                                      diagnostics_out=diagnostics_out)
-        t_fwd1 = time.time()
+        if prefwd_logits_cols is not None and prefwd_cache is not None:
+            logits_cols = prefwd_logits_cols
+            cache = prefwd_cache
+            if prefwd_elapsed_s is not None:
+                t_fwd1 = t_fwd0 + float(prefwd_elapsed_s)
+            else:
+                t_fwd1 = time.time()
+        else:
+            logits_cols, cache = self.forward_pass_batched(x_shares_cols, weights, node_id, 
+                                                          context=f"{base_ctx}_fwd",
+                                                          reconstruction_manager=reconstruction_manager,
+                                                          open_relu=True,
+                                                          diagnostics_out=diagnostics_out)
+            t_fwd1 = time.time()
                                                       
         # 2. Output gradient
         t_dz20 = time.time()
