@@ -1,2 +1,4 @@
 from .NodeMessageServiceServicer import NodeMessageServiceServicer
 from .generated import add_NodeMessageServiceServicer_to_server
+from .generated import add_TCPProxyServiceServicer_to_server
+from .generated import TCPProxyServiceServicer

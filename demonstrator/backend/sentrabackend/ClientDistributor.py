@@ -22,6 +22,7 @@ from tensorflow import keras
 from ml_training.secret_sharing import Share, ShamirSecretSharing
 from ml_training.secure_comm import create_mpc_network
 
+
 def dict_to_obj(d):
     if isinstance(d, dict):
         return SimpleNamespace(**{k.replace('-', '_'): dict_to_obj(v) for k, v in d.items()})
@@ -131,7 +132,7 @@ class ClientDistributor:
         print(f"Client {node.m_strNodeID}: \
                loaded MNIST train={n_train}, test={n_test}")
 
-        # remove for the moment
+        # change that so that the node_configs are pointing to the proxies
         node_configs = {
             i: {"host": self.config.host, "port": self.config.base_port + i}
             for i in range(1, self.config.n_nodes + 1)
@@ -177,7 +178,6 @@ class ClientDistributor:
         print("Client distribution complete: dataset shares sent to all nodes.")
         print(f"Client Distribution Time: {time.time() - _t_dist0:.6f}s")
 
-        # remove for the moment
         if self.config.collect_client_eval:
             _t_eval0 = time.time()
             n_eval = min(int(self.config.client_eval_samples), n_test)

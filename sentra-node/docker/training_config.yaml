@@ -1,4 +1,3 @@
-node-id: 1
 n-nodes: 4
 base-port: 9600
 batched: true

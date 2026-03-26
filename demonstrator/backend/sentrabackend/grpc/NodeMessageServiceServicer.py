@@ -57,6 +57,9 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                 message=f"Node {node_id} already registered"
             ),None,None)
 
+    def generatePythonMessage(self, msg)->SentraBackend_GRPC_Services_pb2.PythonMsg:
+        return SentraBackend_GRPC_Services_pb2.PythonMsg(msg=msg)
+
 
     def generateAttestationRequest(self)->SentraBackend_GRPC_Services_pb2.AttestationRequest:
         return SentraBackend_GRPC_Services_pb2.AttestationRequest(nonce="Nonce")
@@ -129,11 +132,11 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                 async for node_message in request_iterator:
                     if node_message.HasField('quote'):
                         log("Received quote")
-                        attestation = Attestation()                       
+                        attestation = Attestation()
                         bVerified: bool = False
                         if(self.m_commandLineOptions.getAcceptFakeAttestation()):
                             bVerified=True
-                        else:    
+                        else:
                             bVerified=await attestation.verify(node_message.quote.report)
                         if bVerified:
                             attest_time = time.time()
@@ -143,6 +146,9 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                         else:
                             log(f"Node {node_id} failed verification")
                             break
+                    if node_message.HasField('python'):
+                        log("received python message")
+                        # pass to tcp proxy
                     else:
                         log(f"Unexpected message type from node {node_id}")
                         break

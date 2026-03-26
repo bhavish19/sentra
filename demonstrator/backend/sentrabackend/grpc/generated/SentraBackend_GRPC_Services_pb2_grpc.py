@@ -95,3 +95,75 @@ class NodeMessageService(object):
             timeout,
             metadata,
             _registered_method=True)
+
+
+class TCPProxyServiceStub(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.Stream = channel.stream_stream(
+                '/sentra_backend_grpc_services.TCPProxyService/Stream',
+                request_serializer=SentraBackend__GRPC__Services__pb2.NodeMessage.SerializeToString,
+                response_deserializer=SentraBackend__GRPC__Services__pb2.ServerMessage.FromString,
+                _registered_method=True)
+
+
+class TCPProxyServiceServicer(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def Stream(self, request_iterator, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_TCPProxyServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'Stream': grpc.stream_stream_rpc_method_handler(
+                    servicer.Stream,
+                    request_deserializer=SentraBackend__GRPC__Services__pb2.NodeMessage.FromString,
+                    response_serializer=SentraBackend__GRPC__Services__pb2.ServerMessage.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'sentra_backend_grpc_services.TCPProxyService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('sentra_backend_grpc_services.TCPProxyService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class TCPProxyService(object):
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def Stream(request_iterator,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.stream_stream(
+            request_iterator,
+            target,
+            '/sentra_backend_grpc_services.TCPProxyService/Stream',
+            SentraBackend__GRPC__Services__pb2.NodeMessage.SerializeToString,
+            SentraBackend__GRPC__Services__pb2.ServerMessage.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

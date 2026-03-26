@@ -521,8 +521,7 @@ Examples:
                        help='Compute node-local proxy MNIST accuracy (default: disabled)')
     parser.add_argument('--no-wait', action='store_true',
                        help='Exit immediately after training (no "Press Enter" prompt)')
-    parser.add_argument('--node-config', type=str, help="YAML node \
-                        configuration file")
+
 
     args = parser.parse_args()
 

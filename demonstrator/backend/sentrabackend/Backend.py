@@ -14,7 +14,10 @@ from .grpc import NodeMessageServiceServicer
 from .SentraACME import SentraACME
 from .Log import log as log
 from .grpc import add_NodeMessageServiceServicer_to_server
+from .grpc import add_TCPProxyServiceServicer_to_server
 from .ClientDistributor import ClientDistributor
+from .TcpProxy import TCPProxyServicer, TCPProxyBridge
+
 
 class Backend:
 
@@ -38,8 +41,12 @@ class Backend:
 
     async def runGRPCServer(self):
         self.server = grpc_aio.server()
+
         self.m_NodeMessageServiceServicer = NodeMessageServiceServicer(self.m_nodeGenerator,self.m_nodeList,self.m_commandLineOptions)
-        add_NodeMessageServiceServicer_to_server(self.m_NodeMessageServiceServicer,self.server)
+
+        add_NodeMessageServiceServicer_to_server(
+            self.m_NodeMessageServiceServicer, self.server)
+
         self.server.add_insecure_port('0.0.0.0:8000')
         log(f"Starting HTTP gRPC server on port 8000...")
         if(not (self.m_grpcKeyPEM is None) and not (self.m_grpcCertsPEM is None)):
@@ -48,6 +55,14 @@ class Backend:
             log(f"Starting HTTPS gRPC server on port 8001...")
         await self.server.start()
         await self.server.wait_for_termination()
+
+    def addTcpServicer(self, port):
+        proxy_servicer = TCPProxyServicer(
+            target_host="127.0.0.1",   # wherever the real TCP service lives
+            target_port=9000,
+        )
+        pb2_grpc.add_TCPProxyServiceServicer_to_server(
+            proxy_servicer, self.server)
 
     def startGRPCServer(self):
         # Create a new event loop for this thread
@@ -86,6 +101,19 @@ class Backend:
             self.m_clientDistributor = ClientDistributor(
                 cmdlineargs.getTrainingConfiguration())
             for node in self.m_nodeList.m_arNodes:
+                if (not node.m_tcpProxy):
+
+                    port = self.m_clientDistributor.config.base_port \
+                        + node.m_strNodeID
+
+                    bridge = TCPProxyBridge(
+                        listen_host="0.0.0.0",
+                        listen_port=port,        # local TCP clients connects
+                        grpc_host="0.0.0.0",
+                        grpc_port=8000,          # existing gRPC server port
+                    )
+                    bridge.createBridge()        # returns immediately, runs in background thread
+
                 self.m_clientDistributor.distribute(node)
 
         self.createGRPCServer()
