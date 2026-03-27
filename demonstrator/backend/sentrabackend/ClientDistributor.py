@@ -16,11 +16,14 @@ from types import SimpleNamespace
 
 import yaml
 import numpy as np
+from .SentraNode import TcpProxy
 from .SentraNode import SentraNode
+from sentrabackend import log as log
+
 from tensorflow import keras
 
-from ml_training.secret_sharing import Share, ShamirSecretSharing
-from ml_training.secure_comm import create_mpc_network
+from secret_sharing.secret_sharing import Share, ShamirSecretSharing
+from secret_sharing.secure_comm import create_mpc_network
 
 
 def dict_to_obj(d):
@@ -44,6 +47,7 @@ class ClientDistributor:
     def __init__(self, config):
 
         self.config = read_client_config(config)
+        log("read configuration from training config")
 
     def load_mnist_data(self, train_samples=None, test_samples=None):
         (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
@@ -100,7 +104,7 @@ class ClientDistributor:
             return float(timeout_s)
         return 1e9
 
-    def distribute(self, node: SentraNode):
+    def distribute(self, node: SentraNode, tcpProxy: TcpProxy):
         random.seed(self.config.seed)
         np.random.seed(self.config.seed)
 
@@ -129,7 +133,7 @@ class ClientDistributor:
         feat_dim = int(x_train.shape[1])
         cls_dim = int(y_train.shape[1])
 
-        print(f"Client {node.m_strNodeID}: \
+        log(f"Client {node.m_strNodeID}: \
                loaded MNIST train={n_train}, test={n_test}")
 
         # change that so that the node_configs are pointing to the proxies
@@ -173,10 +177,10 @@ class ClientDistributor:
                     network.channel.send_vector(target, y_ctx, x=target, values=y_per_node[target - 1])
 
                 if idx % 512 == 0:
-                    print(f"Client {self.config.client_node_id}: distributed {split_name} sample {idx + 1}/{n_split}")
+                    log(f"Client {self.config.client_node_id}: distributed {split_name} sample {idx + 1}/{n_split}")
 
-        print("Client distribution complete: dataset shares sent to all nodes.")
-        print(f"Client Distribution Time: {time.time() - _t_dist0:.6f}s")
+        log("Client distribution complete: dataset shares sent to all nodes.")
+        log(f"Client Distribution Time: {time.time() - _t_dist0:.6f}s")
 
         if self.config.collect_client_eval:
             _t_eval0 = time.time()
@@ -228,8 +232,8 @@ class ClientDistributor:
                     correct += 1
 
             acc = float(correct) / float(max(1, n_eval))
-            print(f"Client Final Accuracy ({n_eval} samples): {acc*100:.2f}%")
-            print(f"Client Eval Time: {time.time() - _t_eval0:.6f}s")
+            log(f"Client Final Accuracy ({n_eval} samples): {acc*100:.2f}%")
+            log(f"Client Eval Time: {time.time() - _t_eval0:.6f}s")
 
             network.barrier(
                 "client_eval_final_done",

@@ -97,7 +97,10 @@ class Backend:
             log("Enable Sentra Node Simulation")
             self.m_appSimulator=AppSimulator(self.m_nodeGenerator,self.m_nodeList, self.m_committee_selection)
             self.m_appSimulator.start()
-        else:
+
+        self.createGRPCServer()
+
+        if (not self.m_bAppSimulation):
             self.m_clientDistributor = ClientDistributor(
                 cmdlineargs.getTrainingConfiguration())
             for node in self.m_nodeList.m_arNodes:
@@ -116,7 +119,6 @@ class Backend:
 
                 self.m_clientDistributor.distribute(node)
 
-        self.createGRPCServer()
         return self.app
 
     def sendMessageToNode(self,node_id:str,message:object)->None:

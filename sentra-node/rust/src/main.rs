@@ -57,7 +57,7 @@ impl SentraNode
             println!("✓ ACK: {} - {}", ack.success, ack.message);
         },
         Some(server_message::MessageType::Attestation(req)) => {
-            println!("Attestation request with nonce: {}...",req.nonce);        
+            println!("Attestation request with nonce: {}...",req.nonce);
             println!("Spwan send quote thread...");
             let tx_clone: mpsc::Sender<NodeMessage>=tx;
 	        tokio::spawn(async move {
@@ -69,17 +69,21 @@ impl SentraNode
                         report: quote
                     }))
                 };
-                
+
                 if tx_clone.send(register_msg).await.is_err() {
                     eprintln!("Failed to send attestation");
                     return;
                 }
             });
         },
+        Some(server_message::MessageType::PythonMsg(_)) => {
+            println!("Some(server_message::MessageType::PythonMsg(_)) - not implemented");
+        }
         Some(server_message::MessageType::JoinCommitteeRequest(request)) => {
             println!("Received JoinCommittee request -- Committee: {:?}", request.committee);
             self.handle_join_committee_message(&request.committee);
         },
+
         None => {
             println!("Received empty message");
         }
@@ -92,15 +96,15 @@ fn main()
     println!("Starting Sentra Node version: {} [compiled using {:?}]",SENTRA_NODE_VERSION,rustc_version_runtime::version());
     let mut sentra_node:SentraNode=SentraNode::default();
 
-    sentra_node.node_id=match hostname::get() 
+    sentra_node.node_id=match hostname::get()
         {
-            Ok(name) => 
+            Ok(name) =>
                 {
                     let hname: String=name.to_string_lossy().to_string();
                     println!("Hostname: {}", hname);
                     hname
                 }
-            Err(e) => 
+            Err(e) =>
                 {
                     eprintln!("Failed to get hostname: {}", e);
                     String::from("Unknown")
@@ -114,18 +118,18 @@ fn main()
     {
         match acme::get_tls_certificate(&sentra_node.args.acme_url,&sentra_node.args.acme_cert,&sentra_node.node_id)
             {
-                Ok((cert, key)) => 
+                Ok((cert, key)) =>
                     {
                         println!("Got certificate!");
                         grpc_cert=Some(cert);
                         _grpc_key=Some(key);
                     }
-                Err(e) => 
+                Err(e) =>
                     {
                         eprintln!("MAIN ERROR: {}", e);
                         eprintln!("Full error chain:");
                         let mut current: Option<&dyn Error> = e.source();
-                        while let Some(cause) = current 
+                        while let Some(cause) = current
                             {
                                 eprintln!("Caused by: {}", cause);
                                 current = cause.source();
@@ -138,9 +142,9 @@ fn main()
     sentra_node_grpc::startGRPCServer();
 
     let grpc_server_url: String=sentra_node.args.grpc_url.clone();
-     
+
     let rt: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async 
+    rt.block_on(async
         {
             // Connect to the server
             println!("Try to connect to GRPC interface of Sentra backend: {}",grpc_server_url);
@@ -151,7 +155,7 @@ fn main()
                 println!("Loaded CA certificate");
 
                 let endpoint = Channel::from_shared(grpc_server_url).expect("REASON-1")
-                    .tls_config(            
+                    .tls_config(
                                 tonic::transport::ClientTlsConfig::new()
                                 .ca_certificate(ca_cert)
                                 .domain_name("sentra-backend")
@@ -169,15 +173,15 @@ fn main()
             // Create a channel for sending messages to the server
             println!("Create channels...");
             let (tx, rx) = mpsc::channel(32);
-    
+
             // Create the stream from the receiver
             println!("Create outbound stream...");
             let outbound: ReceiverStream<NodeMessage> = ReceiverStream::new(rx);
-    
+
             let tx_register: mpsc::Sender<NodeMessage>=tx.clone();
             println!("Spawn registration thread...");
             let node_id:String=sentra_node.node_id.clone();
-            tokio::spawn(async move 
+            tokio::spawn(async move
                 {
                     // Send registration message
                     println!("Sending registration...");
@@ -186,13 +190,13 @@ fn main()
                             node_id: node_id
                         }))
                     };
-        
+
                     if tx_register.send(register_msg).await.is_err() {
                         eprintln!("Failed to send registration");
                         return;
                     }
                 });
-            
+
             tokio::time::sleep(Duration::from_millis(100)).await;
 
             // Start the bidirectional stream
@@ -202,14 +206,14 @@ fn main()
             println!("Wait for inbound...");
 
             let mut inbound: tonic::Streaming<ServerMessage> = response_stream.expect("REASON").into_inner();
-    
+
             // Receive messages from the server
             println!("Listening for server messages...");
-            loop 
+            loop
                 {
                     match inbound.message().await
                         {
-                            Ok(Some(server_msg)) => 
+                            Ok(Some(server_msg)) =>
                                 {
                                     sentra_node.handle_server_message(server_msg,tx.clone(),sentra_node.args.fake_attestation);
                                 }
@@ -219,7 +223,7 @@ fn main()
                                     println!("Stream closed by server");
                                     break;
                                 }
-                            Err(status) => 
+                            Err(status) =>
                                 {
                                     eprintln!("Error receiving message: {}", status);
                                     break;

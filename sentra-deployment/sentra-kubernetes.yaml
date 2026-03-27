@@ -101,7 +101,7 @@ spec:
             app: sentra-node
       containers:
       - name: sentra-node
-        image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-no-sgx:latest
+        image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-sgx:latest
         imagePullPolicy: Always
         args: ["--grpc-url", "https://sentra-backend:8001","--use-acme","--acme-url","https://sentra-backend:14000","--acme-cert","/etc/pebble.cer", "--client-config", "/etc/client_config", "---", "/bin/sentra/run_mnist_batched_secure.py", "--training-config", "/etc/training_config.yaml"]
         securityContext:
