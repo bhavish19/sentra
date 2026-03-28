@@ -16,3 +16,4 @@ testing\\tmp_bench\\*
 logs/run_*/
 logs/~$*.xlsxsentra-node/python/logs/
 sentra-node/python/testing/tmp_bench/
+sentra-node/python/logs/run_*/
