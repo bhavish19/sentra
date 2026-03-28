@@ -7,3 +7,11 @@ build/
 src/libos/target/
 tools/toolchains/dcap_lib/target/
 dcap_c_test
+__pycache__/
+*.py[cod]
+.pytest_cache/
+testing/tmp_bench/
+testing/tmp_bench\\*
+testing\\tmp_bench\\*
+logs/run_*/
+logs/~$*.xlsx

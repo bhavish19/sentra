@@ -18,7 +18,7 @@ pip install -r requirements.txt
 Use this when you need protocol-faithful results.
 
 ```bash
-python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched \
+python3 start_all_nodes.py --n-nodes 3 --base-port 9600 \
   --num-epochs 8 --batch-size 64 --mnist-samples 10000 \
   --learning-rate 0.002 --loss-mode softmax \
   --field-size 2305843009213693951 \
@@ -35,7 +35,7 @@ python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched \
 Use this for benchmarking/ablation against the compliant mode.
 
 ```bash
-python3 start_all_nodes.py --n-nodes 3 --base-port 9700 --batched \
+python3 start_all_nodes.py --n-nodes 3 --base-port 9700 \
   --num-epochs 8 --batch-size 64 --mnist-samples 10000 \
   --learning-rate 0.002 --loss-mode softmax \
   --field-size 2305843009213693951 \
@@ -108,4 +108,5 @@ Always record:
 
 - `secure_approx` is the SENTRA-compliant run mode.
 - `opened_exact` should be labeled as a comparison/accelerated variant.
-- Older scripts in this repository may still exist for legacy experiments.
+- Multi-node training is MNIST-only; you do not need `--batched` (it is deprecated and always on).
+- Plaintext baselines: `run_mnist_plaintext.py` (flags aligned with the secure runner) or `testing/run_training_baseline.py` (minimal Keras trainer, useful for CI/smoke).

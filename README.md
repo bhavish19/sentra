@@ -22,9 +22,8 @@ This repository contains a practical SENTRA training stack for:
 
 - `ml_training/` — core secure training, communication, secret-sharing, MPC ops
 - `start_all_nodes.py` — launcher for multi-node runs
-- `run_mnist_batched_secure.py` — batched secure MNIST runner (recommended)
-- `run_mnist_secure.py` — sample-wise secure MNIST runner
-- `run_node.py` — generic node runner (synthetic / MNIST via `start_all_nodes`)
+- `run_mnist_batched_secure.py` — batched secure MNIST runner (default)
+- `start_all_nodes.py` + `run_mnist_batched_secure.py` — canonical multi-node training path
 - `client_distributor.py` — client-side dataset owner; loads MNIST, shares data to nodes
 - `testing/` — regression/integration tests and smoke checks
 - `local_adapters/` — in-memory adapters for local testing (`SentraTrainingNode`)
@@ -42,7 +41,6 @@ This repository contains a practical SENTRA training stack for:
                 |                       |                       |
         +-------v--------+      +-------v--------+      +-------v--------+
         |    Node 1      |      |    Node 2      |      |    Node 3      |
-        | run_node /     |      | run_node /     |      | run_node /     |
         | batched runner |      | batched runner |      | batched runner |
         +-------+--------+      +-------+--------+      +-------+--------+
                 |                       |                       |
@@ -96,7 +94,7 @@ Core packages: `tensorflow`, `numpy`, `pytest`. Optional: `openpyxl` (Excel expo
 This mode keeps softmax gradient in the secure approximation path.
 
 ```bash
-python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched \
+python3 start_all_nodes.py --n-nodes 3 --base-port 9600 \
   --num-epochs 8 --batch-size 64 --mnist-samples 10000 \
   --learning-rate 0.002 --loss-mode softmax \
   --field-size 2305843009213693951 \
@@ -114,7 +112,7 @@ This mode uses opened exact output-layer softmax gradient, then re-shares it.
 Use for benchmarking/ablation, not as vanilla SENTRA protocol claim.
 
 ```bash
-python3 start_all_nodes.py --n-nodes 3 --base-port 9700 --batched \
+python3 start_all_nodes.py --n-nodes 3 --base-port 9700 \
   --num-epochs 8 --batch-size 64 --mnist-samples 10000 \
   --learning-rate 0.002 --loss-mode softmax \
   --field-size 2305843009213693951 \
@@ -193,7 +191,7 @@ You can auto-record run parameters and parsed final metrics to an Excel file.
 This uses headless mode so all node logs are captured under `logs/run_<timestamp>/`.
 
 ```bash
-python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched \
+python3 start_all_nodes.py --n-nodes 3 --base-port 9600 \
   --num-epochs 8 --batch-size 64 --mnist-samples 10000 \
   --learning-rate 0.002 --loss-mode softmax \
   --field-size 2305843009213693951 --scale-factor 65536 \
@@ -257,7 +255,7 @@ For real deployments, do not load raw MNIST on any training node.
 1) Start nodes in receive-only mode:
 
 ```bash
-python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched --headless \
+python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --headless \
   --receive-dataset-shares-from-client --dataset-source-node-id 0 \
   --num-epochs 8 --batch-size 64 --mnist-samples 10000
 ```
@@ -272,7 +270,7 @@ python3 client_distributor.py --client-node-id 0 --n-nodes 3 --base-port 9600 \
 Or in one command (headless), auto-start the client:
 
 ```bash
-python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched --headless \
+python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --headless \
   --receive-dataset-shares-from-client --dataset-source-node-id 0 \
   --start-client-distributor --client-eval-after-training --client-eval-samples 100 \
   --client-test-samples 100 \
@@ -284,7 +282,7 @@ python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched --headless \
 Production-style run with client-side dataset sharing, post-training client evaluation, and Excel recording. Raw MNIST is loaded only by the client distributor; training nodes receive only secret shares.
 
 ```bash
-python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched \
+python3 start_all_nodes.py --n-nodes 3 --base-port 9600 \
   --num-epochs 4 --batch-size 64 --mnist-samples 10000 \
   --learning-rate 0.003 --loss-mode softmax \
   --field-size 2305843009213693951 \
@@ -304,11 +302,13 @@ This command implies `--headless`; logs go to `logs/run_<timestamp>/`.
 
 #### Parameter Reference
 
+The launcher always invokes the batched secure MNIST runner (`run_mnist_batched_secure.py`). The `--batched` flag is deprecated and has no effect.
+
 | Parameter | Value | Description |
 |-----------|-------|-------------|
 | `--n-nodes` | 3 | Number of training nodes |
 | `--base-port` | 9600 | Base port (node i uses `base-port + i`) |
-| `--batched` | flag | Use batched secure MNIST path |
+| `--dataset` | mnist | Dataset mode (MNIST only; default `mnist`) |
 | `--num-epochs` | 4 | Training epochs |
 | `--batch-size` | 64 | Mini-batch size |
 | `--mnist-samples` | 10000 | MNIST training samples per node |
@@ -340,7 +340,7 @@ This command implies `--headless`; logs go to `logs/run_<timestamp>/`.
 Use distributed dataset-share mode so non-owner nodes never load raw MNIST:
 
 ```bash
-python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched \
+python3 start_all_nodes.py --n-nodes 3 --base-port 9600 \
   --enable-network --distribute-dataset-shares --dataset-owner-node 1 \
   --num-epochs 8 --batch-size 64 --mnist-samples 10000
 ```
@@ -363,4 +363,5 @@ For published runs, always record:
 ## Notes
 
 - This README reflects the current batched MNIST secure path and tested commands.
+- `start_all_nodes.py` always launches the batched secure runner; `--batched` is optional and deprecated.
 - See `USAGE_GUIDE.md` for a concise runbook (quick start, log interpretation, common problems).

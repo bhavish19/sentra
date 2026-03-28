@@ -6,13 +6,13 @@ Usage: python start_all_nodes.py [--use-dp-sgd]
 import subprocess
 import sys
 import time
-import argparse
 import os
 import json
 import datetime
 import re
 from pathlib import Path
 import math
+from start_all_nodes_cli import parse_and_validate_args
 
 try:
     import psutil
@@ -22,105 +22,83 @@ except ImportError:
 
 def _build_node_command(args, node_id):
     """Build command for a node process."""
-    if args.dataset == 'mnist':
-        script_name = 'run_mnist_batched_secure.py' if args.batched else 'run_mnist_secure.py'
-        cmd = [
-            sys.executable,
-            '-u',
-            script_name,
-            '--node-id', str(node_id),
-            '--n-nodes', str(args.n_nodes),
-            '--base-port', str(args.base_port),
-            '--host', str(args.host),
-            '--batch-size', str(args.batch_size),
-            '--num-epochs', str(args.num_epochs),
-            '--learning-rate', str(args.learning_rate),
-            '--t', str(args.t),
-            '--seed', str(args.seed),
-            '--mnist-samples', str(args.mnist_samples),
-            '--enable-network',
-        ]
-        if args.batched:
+    cmd = [
+        sys.executable,
+        '-u',
+        'run_mnist_batched_secure.py',
+        '--node-id', str(node_id),
+        '--n-nodes', str(args.n_nodes),
+        '--base-port', str(args.base_port),
+        '--host', str(args.host),
+        '--batch-size', str(args.batch_size),
+        '--num-epochs', str(args.num_epochs),
+        '--learning-rate', str(args.learning_rate),
+        '--t', str(args.t),
+        '--seed', str(args.seed),
+        '--mnist-samples', str(args.mnist_samples),
+        '--enable-network',
+    ]
+    cmd.extend([
+        '--accum-steps', str(args.accum_steps),
+        '--loss-mode', str(args.loss_mode),
+        '--scale-factor', str(args.scale_factor),
+        '--field-size', str(args.field_size),
+        '--softmax-temperature', str(args.softmax_temperature),
+        '--grad-clip', str(args.grad_clip),
+        '--logit-clip', str(args.logit_clip),
+        '--exp-approx', str(args.exp_approx),
+        '--softmax-grad-mode', str(args.softmax_grad_mode),
+        '--explode-logit-threshold', str(args.explode_logit_threshold),
+        '--loss-growth-threshold', str(args.loss_growth_threshold),
+        '--grad-norm-threshold', str(args.grad_norm_threshold),
+    ])
+    if args.distribute_dataset_shares:
+        cmd.extend([
+            '--distribute-dataset-shares',
+            '--dataset-owner-node', str(args.dataset_owner_node),
+            '--dataset-distribution-timeout', str(args.dataset_distribution_timeout),
+        ])
+    if args.receive_dataset_shares_from_client:
+        cmd.extend([
+            '--receive-dataset-shares-from-client',
+            '--dataset-source-node-id', str(args.dataset_source_node_id),
+            '--dataset-distribution-timeout', str(args.dataset_distribution_timeout),
+        ])
+        if args.client_eval_after_training:
             cmd.extend([
-                '--accum-steps', str(args.accum_steps),
-                '--loss-mode', str(args.loss_mode),
-                '--scale-factor', str(args.scale_factor),
-                '--field-size', str(args.field_size),
-                '--softmax-temperature', str(args.softmax_temperature),
-                '--grad-clip', str(args.grad_clip),
-                '--logit-clip', str(args.logit_clip),
-                '--exp-approx', str(args.exp_approx),
-                '--softmax-grad-mode', str(args.softmax_grad_mode),
-                '--explode-logit-threshold', str(args.explode_logit_threshold),
-                '--loss-growth-threshold', str(args.loss_growth_threshold),
-                '--grad-norm-threshold', str(args.grad_norm_threshold),
+                '--client-eval-after-training',
+                '--client-eval-samples', str(args.client_eval_samples),
             ])
-            if args.distribute_dataset_shares:
-                cmd.extend([
-                    '--distribute-dataset-shares',
-                    '--dataset-owner-node', str(args.dataset_owner_node),
-                    '--dataset-distribution-timeout', str(args.dataset_distribution_timeout),
-                ])
-            if args.receive_dataset_shares_from_client:
-                cmd.extend([
-                    '--receive-dataset-shares-from-client',
-                    '--dataset-source-node-id', str(args.dataset_source_node_id),
-                    '--dataset-distribution-timeout', str(args.dataset_distribution_timeout),
-                ])
-                if args.client_eval_after_training:
-                    cmd.extend([
-                        '--client-eval-after-training',
-                        '--client-eval-samples', str(args.client_eval_samples),
-                    ])
-            if args.export_reconstructed_model:
-                cmd.extend([
-                    '--export-reconstructed-model', str(args.export_reconstructed_model),
-                    '--export-timeout', str(args.export_timeout),
-                ])
-            if args.no_abort_on_instability:
-                cmd.append('--no-abort-on-instability')
-            if args.debug_numerics:
-                cmd.append('--debug-numerics')
-            if args.debug_division:
-                cmd.append('--debug-division')
-            if args.packed_forward_pilot:
-                cmd.append('--packed-forward-pilot')
-            if args.packed_forward_native:
-                cmd.append('--packed-forward-native')
-            if args.packed_end2end:
-                cmd.append('--packed-end2end')
-            if args.dpss_refresh_interval > 0:
-                cmd.extend(['--dpss-refresh-interval', str(args.dpss_refresh_interval)])
-            cmd.extend(['--membership-epoch', str(args.membership_epoch)])
-            if args.enable_failure_detection:
-                cmd.append('--enable-failure-detection')
-            if getattr(args, "enable_dropout_reshare_recovery", False):
-                cmd.append('--enable-dropout-reshare-recovery')
-            if getattr(args, "enable_join_recovery", False):
-                cmd.append('--enable-join-recovery')
-            if getattr(args, "use_kvs_dataset", False):
-                cmd.append('--use-kvs-dataset')
-            if getattr(args, "use_weight_versioning", False):
-                cmd.append('--use-weight-versioning')
-    else:
-        cmd = [
-            sys.executable,
-            '-u',
-            'run_node.py',
-            '--node-id', str(node_id),
-            '--n-nodes', str(args.n_nodes),
-            '--base-port', str(args.base_port),
-            '--host', str(args.host),
-            '--batch-size', str(args.batch_size),
-            '--num-epochs', str(args.num_epochs),
-            '--learning-rate', str(args.learning_rate),
-            '--t', str(args.t),
-            '--s', str(args.s),
-            '--dataset', str(args.dataset),
-            '--seed', str(args.seed),
-            '--train-mode', str(args.train_mode),
-            '--no-wait',
-        ]
+    if args.export_reconstructed_model:
+        cmd.extend([
+            '--export-reconstructed-model', str(args.export_reconstructed_model),
+            '--export-timeout', str(args.export_timeout),
+        ])
+    if args.no_abort_on_instability:
+        cmd.append('--no-abort-on-instability')
+    if args.debug_numerics:
+        cmd.append('--debug-numerics')
+    if args.debug_division:
+        cmd.append('--debug-division')
+    if args.packed_forward_pilot:
+        cmd.append('--packed-forward-pilot')
+    if args.packed_forward_native:
+        cmd.append('--packed-forward-native')
+    if args.packed_end2end:
+        cmd.append('--packed-end2end')
+    if args.dpss_refresh_interval > 0:
+        cmd.extend(['--dpss-refresh-interval', str(args.dpss_refresh_interval)])
+    cmd.extend(['--membership-epoch', str(args.membership_epoch)])
+    if args.enable_failure_detection:
+        cmd.append('--enable-failure-detection')
+    if getattr(args, "enable_dropout_reshare_recovery", False):
+        cmd.append('--enable-dropout-reshare-recovery')
+    if getattr(args, "enable_join_recovery", False):
+        cmd.append('--enable-join-recovery')
+    if getattr(args, "use_kvs_dataset", False):
+        cmd.append('--use-kvs-dataset')
+    if getattr(args, "use_weight_versioning", False):
+        cmd.append('--use-weight-versioning')
     return cmd
 
 
@@ -613,7 +591,7 @@ def _run_headless_and_record(args):
             "n_nodes": args.n_nodes,
             "dataset": args.dataset,
             "batched": bool(args.batched),
-            "train_mode": args.train_mode,
+            "train_mode": "secure",
             "loss_mode": args.loss_mode,
             "softmax_grad_mode": args.softmax_grad_mode,
             "num_epochs": args.num_epochs,
@@ -655,163 +633,7 @@ def _run_headless_and_record(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Start all SENTRA nodes')
-    parser.add_argument('--n-nodes', type=int, default=5,
-                       help='Number of nodes to start (default: 5)')
-    parser.add_argument('--base-port', type=int, default=8000,
-                       help='Base port number (default: 8000)')
-    parser.add_argument('--host', type=str, default='localhost',
-                       help='Host for all nodes (default: localhost)')
-    parser.add_argument('--batch-size', type=int, default=8,
-                       help='Mini-batch size passed to each node (default: 8)')
-    parser.add_argument('--accum-steps', type=int, default=1,
-                       help='Gradient accumulation grouping for batched runner; effective batch = batch-size * accum-steps')
-    parser.add_argument('--num-epochs', type=int, default=1,
-                       help='Epoch count passed to each node (default: 1)')
-    parser.add_argument('--learning-rate', type=float, default=0.01,
-                       help='Learning rate passed to each node (default: 0.01)')
-    parser.add_argument('--t', type=int, default=1,
-                       help='Privacy threshold (default: 1)')
-    parser.add_argument('--s', type=int, default=1,
-                       help='Adversarial share limit (default: 1)')
-    parser.add_argument('--dataset', choices=['synthetic', 'mnist'], default='synthetic',
-                       help='Dataset mode for each node (default: synthetic)')
-    parser.add_argument('--mnist-samples', type=int, default=128,
-                       help='MNIST sample count per node when --dataset mnist (default: 128)')
-    parser.add_argument('--mnist-input-dim', type=int, default=64,
-                       help='Flattened MNIST features to keep when --dataset mnist (default: 64, max: 784)')
-    parser.add_argument('--mnist-hidden-dim', type=int, default=16,
-                       help='Hidden layer width for MNIST when --dataset mnist (default: 16)')
-    parser.add_argument('--mnist-test-samples', type=int, default=1000,
-                       help='MNIST test sample count for post-training accuracy proxy (default: 1000)')
-    parser.add_argument('--no-test-accuracy', action='store_true',
-                       help='Disable post-training MNIST test accuracy reporting on nodes')
-    parser.add_argument('--post-metrics-barrier-timeout', type=float, default=180.0,
-                       help='Seconds to wait at post-metrics barrier before shutdown (default: 180)')
-    parser.add_argument('--seed', type=int, default=2026,
-                       help='Global random seed passed to all nodes (default: 2026)')
-    parser.add_argument('--train-mode', choices=['secure', 'hybrid'], default='secure',
-                       help='Training mode passed to all nodes (default: secure)')
-    parser.add_argument('--batched', action='store_true',
-                       help='Run the batched version of the MNIST MLP (much faster)')
-    parser.add_argument('--loss-mode', choices=['mse', 'softmax'], default='softmax',
-                       help='Output gradient mode for batched MNIST secure training (default: softmax)')
-    parser.add_argument('--scale-factor', type=int, default=2**20,
-                       help='Fixed-point scale for batched secure MNIST (default: 2^20 = 1048576)')
-    parser.add_argument('--field-size', type=int, default=2**32 - 5,
-                       help='Finite field modulus for batched secure MNIST (default: 2^32-5)')
-    parser.add_argument('--softmax-temperature', type=float, default=1.0,
-                       help='Softmax temperature for batched secure MNIST (default: 1.0)')
-    parser.add_argument('--grad-clip', type=float, default=2.0,
-                       help='Gradient clip bound for batched secure MNIST (default: 2.0)')
-    parser.add_argument('--logit-clip', type=float, default=8.0,
-                       help='Logit clip bound before secure exp approximation (default: 8.0)')
-    parser.add_argument('--exp-approx', choices=['taylor5', 'pade22'], default='pade22',
-                       help='Secure exp approximation used in softmax (default: pade22)')
-    parser.add_argument('--softmax-grad-mode', choices=['secure_approx', 'opened_exact'], default='secure_approx',
-                       help='Softmax CE gradient path in batched mode (default: secure_approx)')
-    parser.add_argument('--explode-logit-threshold', type=float, default=10.0,
-                       help='Logit explosion threshold for batched secure MNIST (default: 10.0)')
-    parser.add_argument('--loss-growth-threshold', type=float, default=5.0,
-                       help='Loss growth threshold for instability checks (default: 5.0)')
-    parser.add_argument('--grad-norm-threshold', type=float, default=5.0,
-                       help='Estimated gradient norm threshold for instability checks (default: 5.0)')
-    parser.add_argument('--no-abort-on-instability', action='store_true',
-                       help='Do not abort batched secure training when instability is detected')
-    parser.add_argument('--debug-numerics', action='store_true',
-                       help='Enable numeric probes (updates/logits/dz2) in batched secure mode')
-    parser.add_argument('--debug-division', action='store_true',
-                       help='Enable secure division debug summaries in batched secure mode')
-    parser.add_argument('--packed-forward-pilot', action='store_true',
-                       help='Enable packed forward kernel pilot mode in batched secure runner')
-    parser.add_argument('--packed-forward-native', action='store_true',
-                       help='Enable experimental packed-native dense1 forward kernel in batched secure runner')
-    parser.add_argument('--packed-end2end', action='store_true',
-                       help='Enable experimental packed API path in batched secure runner')
-    parser.add_argument('--dpss-refresh-interval', type=int, default=0,
-                       help='Herzberg proactive refresh every N epochs in batched mode (0=disabled). Requires --batched --enable-network.')
-    parser.add_argument('--membership-epoch', type=int, default=0,
-                       help='Membership epoch e for batched nodes + client distributor: MPC/barrier prefix m{e}_ (default: 0).')
-    parser.add_argument('--enable-failure-detection', action='store_true',
-                        help='Enable heartbeat-based failure detection; use dynamic n_active for packing safety.')
-    parser.add_argument(
-        '--enable-dropout-reshare-recovery',
-        action='store_true',
-        help='Forward to batched runner: on failure, Lagrange reshare weights among survivors and resume if safe.',
-    )
-    parser.add_argument(
-        '--enable-join-recovery',
-        action='store_true',
-        help='Forward to batched runner: on node rejoin, Lagrange reshare weights to new committee and resume.',
-    )
-    parser.add_argument('--export-reconstructed-model', type=str, default='',
-                       help='Export reconstructed final model to this .npz path (opener node writes file)')
-    parser.add_argument('--export-timeout', type=float, default=180.0,
-                       help='Timeout in seconds for final model reconstruction/export (default: 180)')
-    parser.add_argument('--distribute-dataset-shares', action='store_true',
-                       help='Owner node shares MNIST to peers (local simulation mode).')
-    parser.add_argument('--dataset-owner-node', type=int, default=1,
-                       help='Owner node id for --distribute-dataset-shares (default: 1).')
-    parser.add_argument('--receive-dataset-shares-from-client', action='store_true',
-                       help='Nodes receive only pre-shared dataset from external client distributor.')
-    parser.add_argument('--dataset-source-node-id', type=int, default=0,
-                       help='External sender node_id for client distributor mode (default: 0).')
-    parser.add_argument('--dataset-distribution-timeout', type=float, default=900.0,
-                       help='Timeout for dataset share distribution/reception barrier (seconds).')
-    parser.add_argument('--start-client-distributor', action='store_true',
-                       help='In headless mode, auto-start client_distributor.py after launching nodes.')
-    parser.add_argument('--client-eval-after-training', action='store_true',
-                       help='After training, nodes send final inference shares to client; client reconstructs accuracy.')
-    parser.add_argument('--client-eval-samples', type=int, default=100,
-                       help='Sample count for client-side reconstructed final accuracy.')
-    parser.add_argument('--client-test-samples', type=int, default=-1,
-                       help='Number of test shares to distribute from client (-1: auto; with client eval uses client-eval-samples).')
-    parser.add_argument('--client-eval-timeout', type=float, default=0.0,
-                       help='Timeout for client-side evaluation share collection and barrier in seconds (0 = no timeout).')
-    parser.add_argument('--use-kvs-dataset', action='store_true',
-                       help='Store dataset shares in local KVS and retrieve mini-batches from KVS. Requires distributed dataset.')
-    parser.add_argument('--use-weight-versioning', action='store_true',
-                       help='Store weight shares to local KVS with v_theta after each epoch.')
-    parser.add_argument('--headless', action='store_true',
-                       help='Run all nodes in this terminal and wait for completion (writes per-node logs)')
-    parser.add_argument('--record-results-xlsx', type=str, default='',
-                       help='Append run parameters + parsed final metrics to an Excel file (implies --headless)')
-    
-    args = parser.parse_args()
-    
-    if args.batched:
-        args.dataset = 'mnist'
-
-    if args.distribute_dataset_shares and args.receive_dataset_shares_from_client:
-        raise ValueError("Use only one dataset-sharing mode: owner-node or external client distributor")
-    if args.start_client_distributor and not args.receive_dataset_shares_from_client:
-        raise ValueError("--start-client-distributor requires --receive-dataset-shares-from-client")
-    if args.client_eval_after_training and not args.receive_dataset_shares_from_client:
-        raise ValueError("--client-eval-after-training requires --receive-dataset-shares-from-client")
-    if getattr(args, "enable_dropout_reshare_recovery", False):
-        if not bool(args.enable_failure_detection):
-            raise ValueError("--enable-dropout-reshare-recovery requires --enable-failure-detection")
-        if not bool(args.batched):
-            raise ValueError("--enable-dropout-reshare-recovery requires --batched")
-    if getattr(args, "enable_join_recovery", False):
-        if not bool(args.enable_failure_detection):
-            raise ValueError("--enable-join-recovery requires --enable-failure-detection")
-        if not bool(args.batched):
-            raise ValueError("--enable-join-recovery requires --batched")
-    if getattr(args, "use_kvs_dataset", False):
-        if not (bool(args.distribute_dataset_shares) or bool(args.receive_dataset_shares_from_client)):
-            raise ValueError("--use-kvs-dataset requires --distribute-dataset-shares or --receive-dataset-shares-from-client")
-    if (
-        bool(args.packed_forward_native)
-        and bool(args.start_client_distributor)
-        and bool(args.client_eval_after_training)
-        and float(args.client_eval_timeout) > 0.0
-    ):
-        print(
-            "Packed native forward is enabled; overriding --client-eval-timeout to 0 "
-            "(no timeout) to avoid premature client disconnect during long runs."
-        )
-        args.client_eval_timeout = 0.0
+    args = parse_and_validate_args()
         
     print("=" * 70)
     print("Starting SENTRA Multi-Node Training")
@@ -837,7 +659,7 @@ def main():
             f"packed_forward_native={args.packed_forward_native}, "
             f"packed_end2end={args.packed_end2end}"
         )
-    print(f"Thresholds: t={args.t}, s={args.s}")
+    print(f"Thresholds: t={args.t}")
     print(f"Dataset: {args.dataset}")
     print("=" * 70)
     print()
