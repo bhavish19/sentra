@@ -9,21 +9,19 @@ This process is the input owner:
 based on: sentra-node/python/client_distributor.py
 """
 
-import argparse
 import random
 import time
 from types import SimpleNamespace
 
 import yaml
 import numpy as np
-from .SentraNode import TcpProxy
 from .SentraNode import SentraNode
 from sentrabackend import log as log
 
 from tensorflow import keras
 
-from secret_sharing.secret_sharing import Share, ShamirSecretSharing
-from secret_sharing.secure_comm import create_mpc_network
+from ml_training.secret_sharing import Share, ShamirSecretSharing
+from ml_training.secure_comm import create_mpc_network
 
 
 def dict_to_obj(d):
@@ -104,7 +102,7 @@ class ClientDistributor:
             return float(timeout_s)
         return 1e9
 
-    def distribute(self, node: SentraNode, tcpProxy: TcpProxy):
+    def distribute(self, node: SentraNode):
         random.seed(self.config.seed)
         np.random.seed(self.config.seed)
 

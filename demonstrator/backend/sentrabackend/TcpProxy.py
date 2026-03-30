@@ -1,11 +1,11 @@
 import asyncio
 import threading
-from venv import logger
 import grpc
 import grpc.aio as grpc_aio
 from .grpc import TCPProxyServiceServicer
 from .grpc.generated import SentraBackend_GRPC_Services_pb2 as SentraBackend_GRPC_Services_pb2
 from .grpc.generated import SentraBackend_GRPC_Services_pb2_grpc as SentraBackend_GRPC_Services_pb2_grpc
+from .Log import log as log
 
 
 class TCPProxyServicer(TCPProxyServiceServicer):
@@ -24,21 +24,21 @@ class TCPProxyServicer(TCPProxyServiceServicer):
 
     async def Stream(self, request_iterator, context):
         peer = context.peer()
-        logger.info(f"[TCPProxy] gRPC stream opened from {peer}")
+        log(f"[TCPProxy] gRPC stream opened from {peer}")
 
         try:
             target_reader, target_writer = await asyncio.open_connection(
                 self.target_host, self.target_port
             )
         except OSError as exc:
-            logger.error(
+            log(
                 f"[TCPProxy] Cannot connect to target "
                 f"{self.target_host}:{self.target_port}: {exc}"
             )
             await context.abort(grpc.StatusCode.UNAVAILABLE, "Target unreachable")
             return
 
-        logger.info(
+        log(
             f"[TCPProxy] Connected to target {self.target_host}:{self.target_port}"
         )
 
@@ -48,13 +48,13 @@ class TCPProxyServicer(TCPProxyServiceServicer):
             """Read PythonMsg.msg from the gRPC stream, write raw bytes to TCP."""
             try:
                 async for message in request_iterator:
-                    logger.debug(f"[TCPProxy] gRPC→TCP: {len(message.msg)} bytes")
+                    log(f"[TCPProxy] gRPC→TCP: {len(message.msg)} bytes")
                     async for message in request_iterator:
                         if message.HasField('python_msg'):
                             target_writer.write(message.python_msg.msg)
                             await target_writer.drain()
             except grpc.aio.AioRpcError as exc:
-                logger.warning(f"[TCPProxy] gRPC read error: {exc}")
+                log(f"[TCPProxy] gRPC read error: {exc}")
             finally:
                 grpc_done.set()
                 target_writer.close()
@@ -66,17 +66,17 @@ class TCPProxyServicer(TCPProxyServiceServicer):
                     data = await target_reader.read(4096)
                     if not data:
                         break
-                    logger.debug(f"[TCPProxy] TCP→gRPC: {len(data)} bytes")
+                    log(f"[TCPProxy] TCP→gRPC: {len(data)} bytes")
                     yield SentraBackend_GRPC_Services_pb2.ServerMessage(python_msg=SentraBackend_GRPC_Services_pb2.PythonMsg(msg=data))
             except OSError as exc:
-                logger.warning(f"[TCPProxy] TCP read error: {exc}")
+                log(f"[TCPProxy] TCP read error: {exc}")
 
         pump = asyncio.create_task(grpc_to_tcp())
         async for msg in tcp_to_grpc():
             yield msg
         await pump
 
-        logger.info(f"[TCPProxy] gRPC stream closed from {peer}")
+        log(f"[TCPProxy] gRPC stream closed from {peer}")
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ class TCPProxyBridge:
             self.listen_port,
         )
         addr = self._server.sockets[0].getsockname()
-        logger.info(f"[TCPBridge] Listening for TCP clients on {addr}")
+        log(f"[TCPBridge] Listening for TCP clients on {addr}")
         async with self._server:
             await self._server.serve_forever()
 
@@ -156,7 +156,7 @@ class TCPProxyBridge:
         tcp_writer: asyncio.StreamWriter,
     ):
         peer = tcp_writer.get_extra_info("peername")
-        logger.info(f"[TCPBridge] TCP client connected from {peer}")
+        log(f"[TCPBridge] TCP client connected from {peer}")
 
         channel = grpc_aio.insecure_channel(f"{self.grpc_host}:{self.grpc_port}")
         stub = SentraBackend_GRPC_Services_pb2.TCPProxyServiceStub(channel)
@@ -169,25 +169,25 @@ class TCPProxyBridge:
                     data = await tcp_reader.read(4096)
                     if not data:
                         break
-                    logger.debug(f"[TCPBridge] TCP→gRPC: {len(data)} bytes")
+                    log(f"[TCPBridge] TCP→gRPC: {len(data)} bytes")
                     yield SentraBackend_GRPC_Services_pb2.NodeMessage(python_msg=SentraBackend_GRPC_Services_pb2.PythonMsg(msg=data))
             except OSError as exc:
-                logger.warning(f"[TCPBridge] TCP read error: {exc}")
+                log(f"[TCPBridge] TCP read error: {exc}")
             finally:
                 tcp_done.set()
 
         try:
             call = stub.Stream(tcp_to_grpc_generator())
             async for message in call:
-                logger.debug(f"[TCPBridge] gRPC→TCP: {len(message.msg)} bytes")
+                log(f"[TCPBridge] gRPC→TCP: {len(message.msg)} bytes")
                 async for message in call:
                     if message.HasField('python_msg'):
                         tcp_writer.write(message.python_msg.msg)
                         await tcp_writer.drain()
         except grpc.aio.AioRpcError as exc:
-            logger.error(f"[TCPBridge] gRPC stream error: {exc}")
+            log(f"[TCPBridge] gRPC stream error: {exc}")
         finally:
             tcp_done.set()
             tcp_writer.close()
             await channel.close()
-            logger.info(f"[TCPBridge] TCP client disconnected: {peer}")
+            log(f"[TCPBridge] TCP client disconnected: {peer}")
