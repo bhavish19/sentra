@@ -17,7 +17,7 @@ RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 RUN bash ./Miniconda3-latest-Linux-x86_64.sh -b -p /miniconda
 RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
 RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
-RUN /miniconda/bin/conda create --prefix /python-occlum -y  python=3.10.0 numpy==1.26.4 pyyaml==6.0.3 pip
+RUN /miniconda/bin/conda create --prefix /python-occlum -y  python==3.10.0 numpy==1.26.4 pyyaml==6.0.3 tensorflow==2.11.0
 
 COPY ./sentra-node/docker/sentra-node-sbom.yaml /
 RUN mkdir /sentra
@@ -55,7 +55,7 @@ COPY ./demonstrator/ci/docker/config/pebble/pebble.cer /sentra-node/rust/
 COPY ./sentra-node/docker/enclave_run_script.sh /
 
 WORKDIR /sentra
-RUN /python-occlum/bin/pip install .
+#RUN /python-occlum/bin/pip install .
 
 RUN occlum new /occlum-instance
 RUN rm -rf /occlum-instance/image
