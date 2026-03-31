@@ -1,58 +1,0 @@
-2026-02-20 18:36:59.296106: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
-2026-02-20 18:37:01.788999: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
-Node 1 starting. Dataset: MNIST. Model: BATCHED MLP (784-128-10)
-Loaded 512 training samples
-Node 1 server started on port 9701
-[SUCCESS] Node 1 connected to node 2 at localhost:9702
-DEBUG: Node 1 spawned handle_client thread: Thread-2 (_handle_client)DEBUG: Node 1 accepted connection from ('127.0.0.1', 61353)
-
-DEBUG: Node 1 received SYNC packet from 2
-DEBUG: Node 1 added sync from 2 for tag 'startup'. Current set: {2}
-DEBUG: Node 1 spawned handle_client thread: Thread-3 (_handle_client)DEBUG: Node 1 accepted connection from ('127.0.0.1', 61355)
-
-[SUCCESS] Node 1 connected to node 3 at localhost:9703
-
-======================================================================
-Connection Summary for Node 1:
-======================================================================
-[SUCCESS] Connected to 2 node(s): [2, 3]
-======================================================================
-
-Waiting for network barrier...
-DEBUG: Node 1 received SYNC packet from 3
-DEBUG: Node 1 added sync from 3 for tag 'startup'. Current set: {2, 3}
-DEBUG: Node 1 barrier 'startup' passed. Got: {2, 3}
-Network ready.
-
-Starting PRE-TRAIN Evaluation Check...
-Evaluating on 1 test samples (batched)...
-DEBUG Z1 PRE-RELU: [1.075, -0.225, 0.418, -0.425, 0.024, 0.139, -0.025, -0.254, 0.01, 0.415]
-DEBUG EVAL LOGITS: [0.69, -0.658, -0.671, -0.097, 0.484, -0.342, -0.159, 0.665, 0.641, -0.029]
-Pre-Train Test Accuracy: 0.00%
-Pre-Train Test Loss: 2.5761
-
-Starting BATCHED Training...
-Epoch 1 Batch 1 (32 samples)...DEBUG e0_b0_fwd_relu1: n_size=4096, Y1=[2857274152 1680201574  468367183], Y2=[3291710274 3599445380 2745379614], A=[1654663392   51905902 1535927467], B=[ 329060459  152905388 2783113688], C=[ 601509476 4186981461 3992080240], d=[4032341441 3540835870 4093168396], e=[1206887975 3462007771 1982831360], Res=[3743898369 3653507076 3641431191]
-DEBUG BATCH 1 IS_POS RECON: [1, 0, 1, 1, 1]
-DEBUG BATCH 1 A1: [0.897, 0.0, 0.136, 0.273, 0.599, 0.0, 0.451, 0.0, 0.0, 0.267]
-Epoch 1 Batch 1 completed in 6.15s
-Epoch 1 Batch 2 (32 samples)...Epoch 1 Batch 2 completed in 5.49s
-Epoch 1 Batch 3 (32 samples)...Epoch 1 Batch 3 completed in 5.70s
-Epoch 1 Batch 4 (32 samples)...Epoch 1 Batch 4 completed in 5.41s
-Epoch 1 Batch 5 (32 samples)...Epoch 1 Batch 5 completed in 5.88s
-Epoch 1 Batch 6 (32 samples)...Epoch 1 Batch 6 completed in 5.60s
-Epoch 1 Batch 7 (32 samples)...Epoch 1 Batch 7 completed in 5.69s
-Epoch 1 Batch 8 (32 samples)...Epoch 1 Batch 8 completed in 5.44s
-Epoch 1 Batch 9 (32 samples)...Epoch 1 Batch 9 completed in 5.23s
-Epoch 1 Batch 10 (32 samples)...Epoch 1 Batch 10 completed in 5.53s
-Epoch 1 Batch 11 (32 samples)...Epoch 1 Batch 11 completed in 5.43s
-Epoch 1 Batch 12 (32 samples)...Epoch 1 Batch 12 completed in 5.73s
-Epoch 1 Batch 13 (32 samples)...Epoch 1 Batch 13 completed in 5.34s
-Epoch 1 Batch 14 (32 samples)...Epoch 1 Batch 14 completed in 5.55s
-Epoch 1 Batch 15 (32 samples)...Epoch 1 Batch 15 completed in 5.92s
-Epoch 1 Batch 16 (32 samples)...Epoch 1 Batch 16 completed in 5.26s
-Epoch 1 Complete.
-Evaluating on 100 test samples (batched)...
-DEBUG EVAL LOGITS: [-786186.59, 0.186, -0.997, 336403.705, 1.761, -0.333, -85475.683, 4.063, 1.553, -454510.335]
-Epoch 1 Test Accuracy: 11.00%
-Epoch 1 Test Loss: 3.6558

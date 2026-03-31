@@ -1,54 +1,0 @@
-2026-02-20 18:37:00.107932: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
-2026-02-20 18:37:02.731715: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
-Node 2 starting. Dataset: MNIST. Model: BATCHED MLP (784-128-10)
-Loaded 512 training samples
-Node 2 server started on port 9702
-DEBUG: Node 2 spawned handle_client thread: Thread-2 (_handle_client)DEBUG: Node 2 accepted connection from ('127.0.0.1', 59837)
-
-[SUCCESS] Node 2 connected to node 1 at localhost:9701
-[SUCCESS] Node 2 connected to node 3 at localhost:9703
-
-======================================================================
-Connection Summary for Node 2:
-======================================================================
-[SUCCESS] Connected to 2 node(s): [1, 3]
-======================================================================
-
-Waiting for network barrier...
-DEBUG: Node 2 spawned handle_client thread: Thread-3 (_handle_client)DEBUG: Node 2 accepted connection from ('127.0.0.1', 61356)
-
-DEBUG: Node 2 received SYNC packet from 1
-DEBUG: Node 2 added sync from 1 for tag 'startup'. Current set: {1}
-DEBUG: Node 2 received SYNC packet from 3
-DEBUG: Node 2 added sync from 3 for tag 'startup'. Current set: {1, 3}
-DEBUG: Node 2 barrier 'startup' passed. Got: {1, 3}
-Network ready.
-
-Starting PRE-TRAIN Evaluation Check...
-Evaluating on 1 test samples (batched)...
-DEBUG Z1 PRE-RELU: [1.075, -0.225, 0.418, -0.425, 0.024, 0.139, -0.025, -0.254, 0.01, 0.415]
-Pre-Train Test Accuracy: 0.00%
-Pre-Train Test Loss: 0.0000
-
-Starting BATCHED Training...
-Epoch 1 Batch 1 (32 samples)...DEBUG e0_b0_fwd_relu1: n_size=4096, Y1=[1419580116 3360403796  936734230], Y2=[2288453256 2903923469 1195791936], A=[3046700037 3644648322 2870055903], B=[1865008892 3767818547 3254091444], C=[2514953362 4169153343 4091101870], d=[4032341441 3540835870 4093168396], e=[1206887975 3462007771 1982831360], Res=[3192828550 3012046861 2987894955]
-DEBUG BATCH 1 IS_POS RECON: [1, 0, 1, 1, 1]
-DEBUG BATCH 1 A1: [0.897, 0.0, 0.136, 0.273, 0.599, 0.0, 0.451, 0.0, 0.0, 0.267]
-Epoch 1 Batch 1 completed in 6.14s
-Epoch 1 Batch 2 (32 samples)...Epoch 1 Batch 2 completed in 5.50s
-Epoch 1 Batch 3 (32 samples)...Epoch 1 Batch 3 completed in 5.70s
-Epoch 1 Batch 4 (32 samples)...Epoch 1 Batch 4 completed in 5.42s
-Epoch 1 Batch 5 (32 samples)...Epoch 1 Batch 5 completed in 5.85s
-Epoch 1 Batch 6 (32 samples)...Epoch 1 Batch 6 completed in 5.59s
-Epoch 1 Batch 7 (32 samples)...Epoch 1 Batch 7 completed in 5.70s
-Epoch 1 Batch 8 (32 samples)...Epoch 1 Batch 8 completed in 5.47s
-Epoch 1 Batch 9 (32 samples)...Epoch 1 Batch 9 completed in 5.24s
-Epoch 1 Batch 10 (32 samples)...Epoch 1 Batch 10 completed in 5.50s
-Epoch 1 Batch 11 (32 samples)...Epoch 1 Batch 11 completed in 5.42s
-Epoch 1 Batch 12 (32 samples)...Epoch 1 Batch 12 completed in 5.74s
-Epoch 1 Batch 13 (32 samples)...Epoch 1 Batch 13 completed in 5.32s
-Epoch 1 Batch 14 (32 samples)...Epoch 1 Batch 14 completed in 5.54s
-Epoch 1 Batch 15 (32 samples)...Epoch 1 Batch 15 completed in 5.91s
-Epoch 1 Batch 16 (32 samples)...Epoch 1 Batch 16 completed in 5.25s
-Epoch 1 Complete.
-Evaluating on 100 test samples (batched)...

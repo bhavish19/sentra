@@ -1,44 +1,0 @@
-Node 3 starting. Dataset: MNIST. Model: BATCHED MLP (784-128-10)
-Loaded 128 training samples
-Node 3 server started on port 12028
-DEBUG: Node 3 spawned handle_client thread: Thread-2 (_handle_client)DEBUG: Node 3 accepted connection from ('127.0.0.1', 63709)
-
-DEBUG: Node 3 received SYNC packet from 1
-DEBUG: Node 3 added sync from 1 for tag 'startup'. Current set: {1}
-DEBUG: Node 3 accepted connection from ('127.0.0.1', 63711)DEBUG: Node 3 spawned handle_client thread: Thread-3 (_handle_client)
-
-DEBUG: Node 3 received SYNC packet from 2
-DEBUG: Node 3 added sync from 2 for tag 'startup'. Current set: {1, 2}
-[SUCCESS] Node 3 connected to node 1 at localhost:12026
-[SUCCESS] Node 3 connected to node 2 at localhost:12027
-
-======================================================================
-Connection Summary for Node 3:
-======================================================================
-[SUCCESS] Connected to 2 node(s): [1, 2]
-======================================================================
-
-Waiting for network barrier...
-DEBUG: Node 3 barrier 'startup' passed. Got: {1, 2}
-Network ready.
-Node 3: Initializing Dealer Service...
-Node 3: Dealer Service Registered.
-
-Starting PRE-TRAIN Evaluation Check...
-Evaluating on 1 test samples (batched)...
-DEBUG Z1 PRE-RELU: [0.448, -0.051, 0.225, 0.826, 0.241, 0.215, 0.318, 0.005, -0.301, 0.423]
-Pre-Train Test Accuracy: 0.00%
-Pre-Train Test Loss: 0.0000
-
-Starting BATCHED Training...
-Epoch 1 Batch 1 (64 samples)...DEBUG e0_b0_fwd_relu1: n_size=8192, Y1=[1204926937 1177609109 1619048738], Y2=[1320817413 3895058415 2079772243], A=[4057288157  984818395 3805021695], B=[4250984580 2578758510 2289643563], C=[3398565914 2543127055 1273826086], d=[2659141759 3982278797  406211187], e=[2854243697 2085404470  179553875], Res=[3806778594 3329598487  671854430]
-DEBUG BATCH 1 IS_POS RECON: [1, 0, 1, 1, 0]
-DEBUG BATCH 1 A1: [0.896, 0.0, 0.58, 1.43, 0.0, 0.0, 0.426, 0.0, 0.0, 0.203]
-Epoch 1 Batch 1 completed in 8.15s
-Epoch 1 Batch 2 (64 samples)...Epoch 1 Batch 2 completed in 7.95s
-Epoch 1 Complete.
-Evaluating on 100 test samples (batched)...
-Epoch 2 Batch 1 (64 samples)...Epoch 2 Batch 1 completed in 6.46s
-Epoch 2 Batch 2 (64 samples)...Epoch 2 Batch 2 completed in 6.17s
-Epoch 2 Complete.
-Evaluating on 100 test samples (batched)...

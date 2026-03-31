@@ -1,67 +1,0 @@
-2026-02-20 18:39:16.969564: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
-2026-02-20 18:39:19.368945: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
-Node 1 starting. Dataset: MNIST. Model: BATCHED MLP (784-128-10)
-Loaded 512 training samples
-Node 1 server started on port 9801
-[SUCCESS] Node 1 connected to node 2 at localhost:9802
-DEBUG: Node 1 spawned handle_client thread: Thread-2 (_handle_client)DEBUG: Node 1 accepted connection from ('127.0.0.1', 52228)
-
-[SUCCESS] Node 1 connected to node 3 at localhost:9803
-
-======================================================================
-Connection Summary for Node 1:
-======================================================================
-[SUCCESS] Connected to 2 node(s): [2, 3]
-======================================================================
-
-Waiting for network barrier...
-DEBUG: Node 1 received SYNC packet from 2
-DEBUG: Node 1 added sync from 2 for tag 'startup'. Current set: {2}
-DEBUG: Node 1 barrier 'startup' waiting. Got: {2}, Expected: {2, 3}
-DEBUG: Node 1 barrier 'startup' waiting. Got: {2}, Expected: {2, 3}
-DEBUG: Node 1 barrier 'startup' waiting. Got: {2}, Expected: {2, 3}
-DEBUG: Node 1 barrier 'startup' waiting. Got: {2}, Expected: {2, 3}
-DEBUG: Node 1 barrier 'startup' waiting. Got: {2}, Expected: {2, 3}
-DEBUG: Node 1 barrier 'startup' waiting. Got: {2}, Expected: {2, 3}
-DEBUG: Node 1 barrier 'startup' waiting. Got: {2}, Expected: {2, 3}
-DEBUG: Node 1 accepted connection from ('127.0.0.1', 52231)DEBUG: Node 1 spawned handle_client thread: Thread-3 (_handle_client)
-
-DEBUG: Node 1 barrier 'startup' waiting. Got: {2}, Expected: {2, 3}
-DEBUG: Node 1 barrier 'startup' waiting. Got: {2}, Expected: {2, 3}
-DEBUG: Node 1 received SYNC packet from 3
-DEBUG: Node 1 added sync from 3 for tag 'startup'. Current set: {2, 3}
-DEBUG: Node 1 barrier 'startup' passed. Got: {2, 3}
-Network ready.
-
-Starting PRE-TRAIN Evaluation Check...
-Evaluating on 1 test samples (batched)...
-DEBUG Z1 PRE-RELU: [1.075, -0.225, 0.418, -0.425, 0.024, 0.139, -0.025, -0.254, 0.01, 0.415]
-DEBUG EVAL LOGITS: [0.69, -0.658, -0.671, -0.097, 0.484, -0.342, -0.159, 0.665, 0.641, -0.029]
-Pre-Train Test Accuracy: 0.00%
-Pre-Train Test Loss: 2.5761
-
-Starting BATCHED Training...
-Epoch 1 Batch 1 (32 samples)...DEBUG e0_b0_fwd_relu1: n_size=4096, Y1=[1589179796 2827201943  322929852], Y2=[3452093124  563811538  843573552], A=[2300174957 3581680788  903337288], B=[ 507890724 1855299228 3088482937], C=[ 678991048 2561394128 1875368780], d=[2474757432 1820744095 3620150787], e=[3884686872 2522152326 1625198333], Res=[2604860787 1679511298  141104531]
-DEBUG BATCH 1 IS_POS RECON: [1, 0, 1, 1, 1]
-DEBUG BATCH 1 A1: [0.897, 0.0, 0.136, 0.273, 0.599, 0.0, 0.451, 0.0, 0.0, 0.267]
-Epoch 1 Batch 1 completed in 6.00s
-Epoch 1 Batch 2 (32 samples)...Epoch 1 Batch 2 completed in 4.94s
-Epoch 1 Batch 3 (32 samples)...Epoch 1 Batch 3 completed in 5.26s
-Epoch 1 Batch 4 (32 samples)...Epoch 1 Batch 4 completed in 4.86s
-Epoch 1 Batch 5 (32 samples)...Epoch 1 Batch 5 completed in 5.37s
-Epoch 1 Batch 6 (32 samples)...Epoch 1 Batch 6 completed in 5.08s
-Epoch 1 Batch 7 (32 samples)...Epoch 1 Batch 7 completed in 5.39s
-Epoch 1 Batch 8 (32 samples)...Epoch 1 Batch 8 completed in 4.91s
-Epoch 1 Batch 9 (32 samples)...Epoch 1 Batch 9 completed in 5.32s
-Epoch 1 Batch 10 (32 samples)...Epoch 1 Batch 10 completed in 5.10s
-Epoch 1 Batch 11 (32 samples)...Epoch 1 Batch 11 completed in 5.23s
-Epoch 1 Batch 12 (32 samples)...Epoch 1 Batch 12 completed in 5.29s
-Epoch 1 Batch 13 (32 samples)...Epoch 1 Batch 13 completed in 5.55s
-Epoch 1 Batch 14 (32 samples)...Epoch 1 Batch 14 completed in 4.99s
-Epoch 1 Batch 15 (32 samples)...Epoch 1 Batch 15 completed in 4.99s
-Epoch 1 Batch 16 (32 samples)...Epoch 1 Batch 16 completed in 6.61s
-Epoch 1 Complete.
-Evaluating on 100 test samples (batched)...
-DEBUG EVAL LOGITS: [-1949049.484, -0.658, -0.671, -543595.202, 0.484, -0.342, -1544437.848, 0.665, 0.641, -1547635.346]
-Epoch 1 Test Accuracy: 13.00%
-Epoch 1 Test Loss: 2.6871
