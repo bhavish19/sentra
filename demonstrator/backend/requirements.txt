@@ -1,0 +1,10 @@
+dcap-qvl
+requests
+Flask
+grpcio==1.78.1
+grpcio-tools
+acme
+cryptography
+josepy
+PyYAML
+tensorflow==2.21

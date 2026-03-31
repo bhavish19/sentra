@@ -1,0 +1,45 @@
+includes:
+  - base.yaml
+targets:
+  - target: /bin
+    createlinks:
+      - src: /opt/python-occlum/bin/python
+        linkname: python3
+  # python packages
+  - target: /opt
+    copy:
+      - dirs:
+          - /python-occlum
+  # below are python code and data
+  - target: /bin
+    copy:
+      - dirs:
+          - /sentra
+
+  #Attester and run script
+  - target: /bin
+    copy:
+     - files:
+        - /sentra-node/rust/target/release/sentra_node
+        - /enclave_run_script.sh
+
+# Shell
+  - target: /bin
+    copy:
+     - files:
+        - /opt/occlum/toolchains/bash/glibc/bash
+        - /opt/occlum/toolchains/busybox/glibc/busybox
+
+#Pebble TLS root CA cert
+  - target: /etc
+    copy:
+     - files:
+        - /sentra-node/rust/pebble.cer
+        - /sentra/training_config.yaml
+        - /sentra/client_config.yaml
+
+ # copy lib
+#  - target: /opt/occlum/glibc/lib
+#    copy:
+ #     - files:
+ #       - /opt/occlum/toolchains/dcap_lib/glibc/libocclum_dcap.so.0.1.0

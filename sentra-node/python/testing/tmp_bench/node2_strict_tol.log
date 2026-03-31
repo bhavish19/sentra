@@ -1,0 +1,59 @@
+Node 2 starting. Dataset: MNIST. Model: BATCHED MLP (784-128-10)
+Membership epoch e=0 (MPC/barrier prefix m0_)
+Fixed-point scale: 1048576, softmax temperature: 1.0, grad clip: 2.0, logit clip: 8.0, grad mode: secure_approx
+Batch config: batch_size=64, accum_steps=1, effective_batch=64
+Node 2 server started on port 13368
+DEBUG: Node 2 spawned handle_client thread: Thread-2 (_handle_client)
+DEBUG: Node 2 accepted connection from ('127.0.0.1', 39178)
+[SUCCESS] Node 2 connected to node 1 at localhost:13367
+[SUCCESS] Node 2 connected to node 3 at localhost:13369
+
+======================================================================
+Connection Summary for Node 2:
+======================================================================
+[SUCCESS] Connected to 2 node(s): [1, 3]
+======================================================================
+
+Waiting for network barrier...
+DEBUG: Node 2 barrier 'm0_startup' waiting. Got: set(), Expected: {1, 3}
+DEBUG: Node 2 received SYNC packet from 1
+DEBUG: Node 2 added sync from 1 for tag 'm0_startup'. Current set: {1}
+DEBUG: Node 2 barrier 'm0_startup' waiting. Got: {1}, Expected: {1, 3}
+DEBUG: Node 2 barrier 'm0_startup' waiting. Got: {1}, Expected: {1, 3}
+DEBUG: Node 2 barrier 'm0_startup' waiting. Got: {1}, Expected: {1, 3}
+DEBUG: Node 2 barrier 'm0_startup' waiting. Got: {1}, Expected: {1, 3}
+DEBUG: Node 2 accepted connection from ('127.0.0.1', 39188)
+DEBUG: Node 2 spawned handle_client thread: Thread-3 (_handle_client)
+DEBUG: Node 2 barrier 'm0_startup' waiting. Got: {1}, Expected: {1, 3}
+DEBUG: Node 2 received SYNC packet from 3
+DEBUG: Node 2 added sync from 3 for tag 'm0_startup'. Current set: {1, 3}
+DEBUG: Node 2 barrier 'm0_startup' passed. Got: {1, 3}
+Network ready.
+PSS mode: enabled; packing factor=1
+Node 2: distributed dataset mode enabled; owner node is 1. Non-owner nodes will not load raw MNIST.
+Node 2: received train share sample 1/128
+Node 2: received test share sample 1/128
+DEBUG: Node 2 received SYNC packet from 1
+DEBUG: Node 2 added sync from 1 for tag 'm0_dataset_distributed_v1'. Current set: {1}
+DEBUG: Node 2 received SYNC packet from 3
+DEBUG: Node 2 added sync from 3 for tag 'm0_dataset_distributed_v1'. Current set: {1, 3}
+DEBUG: Node 2 barrier 'm0_dataset_distributed_v1' passed. Got: {1, 3}
+Node 2: dataset shares ready (train=128, test=128).
+Dataset Share Prep Time: 2.867077s
+Lazy PSS unpack cache enabled (train/test).
+
+Starting PRE-TRAIN Evaluation Check...
+Evaluating on 1 test samples (batched)...
+
+Starting BATCHED Training...
+Epoch 1 Batch 1 (64 samples)...Epoch 1 Batch 1 completed in 10.23s (MPC train step internal: 2.23s)
+Epoch 1 Batch 2 (64 samples)...Epoch 1 Batch 2 completed in 7.37s (MPC train step internal: 2.02s)
+Epoch 1 Complete.
+Evaluating on 100 test samples (batched)...
+Epoch 2 Batch 1 (64 samples)...Epoch 2 Batch 1 completed in 4.06s (MPC train step internal: 2.24s)
+Epoch 2 Batch 2 (64 samples)...Epoch 2 Batch 2 completed in 2.32s (MPC train step internal: 2.28s)
+Epoch 2 Complete.
+Evaluating on 100 test samples (batched)...
+Training Time: 70.899132s
+Prover Node: 3
+Prover Time: 0.000000s

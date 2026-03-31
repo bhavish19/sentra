@@ -1,0 +1,22 @@
+2026-03-28 15:20:20.919394: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-03-28 15:20:21.020868: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2026-03-28 15:20:22.094455: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+Traceback (most recent call last):
+  File "/mnt/c/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra2/sentra-node/python/run_mnist_batched_secure.py", line 1958, in <module>
+    main()
+  File "/mnt/c/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra2/sentra-node/python/run_mnist_batched_secure.py", line 1849, in main
+    prev_epoch_loss, instability_detected, should_abort = run_epoch_eval_and_stability_checks(
+  File "/mnt/c/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra2/sentra-node/python/ml_training/batched_runtime_helpers.py", line 138, in run_epoch_eval_and_stability_checks
+    acc, loss, diag = evaluate_fn(
+  File "/mnt/c/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra2/sentra-node/python/run_mnist_batched_secure.py", line 700, in evaluate_model
+    x_shares_cols = _get_or_unpack_cached_rows(
+  File "/mnt/c/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra2/sentra-node/python/run_mnist_batched_secure.py", line 274, in _get_or_unpack_cached_rows
+    unpacked = packed_ops.unpack_packed_rows_to_lane_rows(
+  File "/mnt/c/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra2/sentra-node/python/ml_training/packed_mpc_ops.py", line 261, in unpack_packed_rows_to_lane_rows
+    self.network.channel.send_vector(
+  File "/mnt/c/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra2/sentra-node/python/ml_training/secure_comm.py", line 359, in send_vector
+    self.send_message_with_binary(
+  File "/mnt/c/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra2/sentra-node/python/ml_training/secure_comm.py", line 270, in send_message_with_binary
+    sock.sendall(header_len + header_bytes + payload)
+ConnectionResetError: [Errno 104] Connection reset by peer

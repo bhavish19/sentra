@@ -1,0 +1,61 @@
+Node 3 starting. Dataset: MNIST. Model: BATCHED MLP (784-128-10)
+Membership epoch e=0 (MPC/barrier prefix m0_)
+Fixed-point scale: 65536, softmax temperature: 2.0, grad clip: 0.2, logit clip: 3.0, grad mode: opened_exact
+Batch config: batch_size=32, accum_steps=1, effective_batch=32
+Node 3 server started on port 16023
+DEBUG: Node 3 accepted connection from ('127.0.0.1', 45494)
+DEBUG: Node 3 spawned handle_client thread: Thread-2 (_handle_client)
+DEBUG: Node 3 accepted connection from ('127.0.0.1', 45506)
+DEBUG: Node 3 spawned handle_client thread: Thread-3 (_handle_client)
+[SUCCESS] Node 3 connected to node 1 at localhost:16021
+[SUCCESS] Node 3 connected to node 2 at localhost:16022
+[SUCCESS] Node 3 connected to node 4 at localhost:16024
+
+======================================================================
+Connection Summary for Node 3:
+======================================================================
+[SUCCESS] Connected to 3 node(s): [1, 2, 4]
+======================================================================
+
+Waiting for network barrier...
+DEBUG: Node 3 received SYNC packet from 2
+DEBUG: Node 3 added sync from 2 for tag 'm0_startup'. Current set: {2}
+DEBUG: Node 3 received SYNC packet from 1
+DEBUG: Node 3 added sync from 1 for tag 'm0_startup'. Current set: {1, 2}
+DEBUG: Node 3 accepted connection from ('127.0.0.1', 45512)
+DEBUG: Node 3 spawned handle_client thread: Thread-4 (_handle_client)
+DEBUG: Node 3 received SYNC packet from 4
+DEBUG: Node 3 added sync from 4 for tag 'm0_startup'. Current set: {1, 2, 4}
+DEBUG: Node 3 barrier 'm0_startup' passed. Got: {1, 2, 4}
+Network ready.
+Node 3: Started failure detection (interval=2.0s, timeout=6.0s)
+Node 3: Failure detection enabled (n_active from heartbeat).
+PSS mode: enabled; packing factor=1
+Node 3: distributed dataset mode enabled; owner node is 1. Non-owner nodes will not load raw MNIST.
+Node 3: received train share sample 1/128
+Node 3: received test share sample 1/128
+DEBUG: Node 3 received SYNC packet from 1
+DEBUG: Node 3 added sync from 1 for tag 'm0_dataset_distributed_v1'. Current set: {1}
+DEBUG: Node 3 received SYNC packet from 2
+DEBUG: Node 3 received SYNC packet from 4DEBUG: Node 3 added sync from 2 for tag 'm0_dataset_distributed_v1'. Current set: {1, 2}
+
+DEBUG: Node 3 added sync from 4 for tag 'm0_dataset_distributed_v1'. Current set: {1, 2, 4}
+DEBUG: Node 3 barrier 'm0_dataset_distributed_v1' passed. Got: {1, 2, 4}
+Node 3: dataset shares ready (train=128, test=128).
+Dataset Share Prep Time: 3.906889s
+Lazy PSS unpack cache enabled (train/test).
+
+Starting PRE-TRAIN Evaluation Check...
+Evaluating on 1 test samples (batched)...
+
+Starting BATCHED Training...
+Epoch 1 Batch 1 (32 samples)...Epoch 1 Batch 1 completed in 8.98s (MPC train step internal: 2.86s)
+Epoch 1 Batch 2 (32 samples)...Epoch 1 Batch 2 completed in 7.68s (MPC train step internal: 2.81s)
+Epoch 1 Batch 3 (32 samples)...Epoch 1 Batch 3 completed in 7.71s (MPC train step internal: 2.82s)
+Epoch 1 Batch 4 (32 samples)...Epoch 1 Batch 4 completed in 7.72s (MPC train step internal: 2.87s)
+Epoch 1 Complete.
+Evaluating on 100 test samples (batched)...
+DEBUG: Node 3 client disconnected (no length data).
+Error sending binary message to node 4: [Errno 104] Connection reset by peer
+Node 3: Detected 1 failed node(s): {4}
+Node 3: [STATE] TRAINING -> PAUSED_RESHARE (reason=node_failure)

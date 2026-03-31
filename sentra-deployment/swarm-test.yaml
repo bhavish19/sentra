@@ -1,0 +1,45 @@
+
+x-sentra-core: &x-sentra-core
+    build:
+      context: ../
+      dockerfile: ./sgx/SentraSGX.dockerfile
+    image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-sgx:latest
+    deploy:
+      mode: replicated-job
+      replicas: 1
+    ports:
+      - 3000:3000
+    privileged: true
+    volumes:
+#      # Mount SGX devices from host
+      - /dev/sgx_enclave:/dev/sgx_enclave
+      - /dev/sgx_provision:/dev/sgx_provision
+    cap_add:
+      - ALL
+
+
+services:
+  sentra-simple-training:
+    <<: *x-sentra-core
+    command: /bin/sentra/run_training.py
+    container_name: sentra-test
+
+  sentra-backend:
+    build:
+      context: ../
+      dockerfile: ./demonstrator/ci/docker/SentraBackend.dockerfile
+    image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest
+    deploy:
+      mode: replicated-job
+      replicas: 1
+    container_name: sentra-backend
+    ports:
+      - 8888:8888
+    privileged: true
+    volumes:
+#      # Mount SGX devices from host
+      - /dev/sgx_enclave:/dev/sgx_enclave
+      - /dev/sgx_provision:/dev/sgx_provision
+    cap_add:
+      - ALL
+

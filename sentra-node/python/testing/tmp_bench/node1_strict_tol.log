@@ -1,0 +1,88 @@
+Node 1 starting. Dataset: MNIST. Model: BATCHED MLP (784-128-10)
+Membership epoch e=0 (MPC/barrier prefix m0_)
+Fixed-point scale: 1048576, softmax temperature: 1.0, grad clip: 2.0, logit clip: 8.0, grad mode: secure_approx
+Batch config: batch_size=64, accum_steps=1, effective_batch=64
+[Packing safety] Capped packing factor 2 -> 1 (2*(t+s-1) < n_active=3)
+Node 1 server started on port 13367
+[SUCCESS] Node 1 connected to node 2 at localhost:13368
+DEBUG: Node 1 accepted connection from ('127.0.0.1', 36078)
+DEBUG: Node 1 spawned handle_client thread: Thread-2 (_handle_client)
+DEBUG: Node 1 received SYNC packet from 2
+DEBUG: Node 1 added sync from 2 for tag 'm0_startup'. Current set: {2}
+[SUCCESS] Node 1 connected to node 3 at localhost:13369
+
+======================================================================
+Connection Summary for Node 1:
+======================================================================
+[SUCCESS] Connected to 2 node(s): [2, 3]
+======================================================================
+
+Waiting for network barrier...
+DEBUG: Node 1 barrier 'm0_startup' waiting. Got: {2}, Expected: {2, 3}
+DEBUG: Node 1 barrier 'm0_startup' waiting. Got: {2}, Expected: {2, 3}
+DEBUG: Node 1 barrier 'm0_startup' waiting. Got: {2}, Expected: {2, 3}
+DEBUG: Node 1 accepted connection from ('127.0.0.1', 36080)
+DEBUG: Node 1 spawned handle_client thread: Thread-3 (_handle_client)
+DEBUG: Node 1 barrier 'm0_startup' waiting. Got: {2}, Expected: {2, 3}
+DEBUG: Node 1 barrier 'm0_startup' waiting. Got: {2}, Expected: {2, 3}
+DEBUG: Node 1 received SYNC packet from 3
+DEBUG: Node 1 added sync from 3 for tag 'm0_startup'. Current set: {2, 3}
+DEBUG: Node 1 barrier 'm0_startup' passed. Got: {2, 3}
+Network ready.
+PSS mode: enabled; packing factor=1
+Node 1: distributed dataset mode enabled; owner node is 1. Non-owner nodes will not load raw MNIST.
+Owner node 1: shared train sample 1/128
+Owner node 1: shared test sample 1/128
+DEBUG: Node 1 received SYNC packet from 3
+DEBUG: Node 1 added sync from 3 for tag 'm0_dataset_distributed_v1'. Current set: {3}
+DEBUG: Node 1 received SYNC packet from 2
+DEBUG: Node 1 added sync from 2 for tag 'm0_dataset_distributed_v1'. Current set: {2, 3}
+DEBUG: Node 1 barrier 'm0_dataset_distributed_v1' passed. Got: {2, 3}
+Node 1: dataset shares ready (train=128, test=128).
+Dataset Share Prep Time: 2.955652s
+Lazy PSS unpack cache enabled (train/test).
+
+Starting PRE-TRAIN Evaluation Check...
+Evaluating on 1 test samples (batched)...
+DEBUG EVAL LOGITS: [0.000690460205078125, 0.0006437301635742188, -0.0001430511474609375, 0.0001068115234375, -0.00022983551025390625, 0.00011157989501953125, -0.0012350082397460938, 0.0012197494506835938, -0.00047016143798828125, -0.00142669677734375]
+Pre-Train Test Accuracy: 0.00%
+Pre-Train Test Loss: 2.3027
+Pre-Train Diagnostics: mean|logit|=0.0006, max|logit|=0.0014
+
+Starting BATCHED Training...
+Epoch 1 Batch 1 (64 samples)...Epoch 1 Batch 1 completed in 10.18s (MPC train step internal: 2.24s)
+Epoch 1 Batch 2 (64 samples)...Epoch 1 Batch 2 completed in 7.40s (MPC train step internal: 2.01s)
+Epoch 1 Complete.
+Lazy PSS unpack stats (epoch 1): train_x[h=0,m=128,rows=128,batches=2,s=11.086] train_y[h=0,m=128,rows=128,batches=2,s=0.147]
+Epoch 1 Forward Kernel: baseline_forward (chunk=32768)
+Epoch 1 ReLU Backward: reuse_forward_mask
+Epoch 1 Batch Stage Timing (sampled): fwd=0.885s, dz2=0.180s, dw2=0.030s, da1_dz1=0.239s, dw1=0.481s, upd=0.421s, total=2.236s
+Epoch 1 Batch Stage Timing (avg over 2 batches): fwd=0.780s (36.7%), dz2=0.182s (8.6%), dw2=0.029s (1.4%), da1_dz1=0.239s (11.3%), dw1=0.590s (27.8%), upd=0.304s (14.3%), total=2.125s
+Evaluating on 100 test samples (batched)...
+DEBUG EVAL LOGITS: [0.00038909912109375, 0.0010004043579101562, -0.0006513595581054688, -6.198883056640625e-05, -3.719329833984375e-05, -0.0006809234619140625, -0.0016393661499023438, 0.0014581680297851562, -0.0011310577392578125, -0.0008106231689453125]
+Epoch 1 Test Accuracy: 14.00%
+Epoch 1 Test Loss: 2.3025
+Epoch 1 Diagnostics: mean|logit|=0.0008, max|logit|=0.0020, mean_entropy=2.3026
+Epoch 1 Estimated Grad Norm: 0.0041
+Epoch 1 Update Sample Stats: mean|upd|=0.000003, max|upd|=0.000089
+Lazy PSS eval unpack stats (epoch 1): eval_x[h=1,m=99,rows=99,batches=1,s=5.354]
+Epoch 2 Batch 1 (64 samples)...Epoch 2 Batch 1 completed in 4.05s (MPC train step internal: 2.23s)
+Epoch 2 Batch 2 (64 samples)...Epoch 2 Batch 2 completed in 2.32s (MPC train step internal: 2.28s)
+Epoch 2 Complete.
+Lazy PSS unpack stats (epoch 2): train_x[h=128,m=0,rows=0,batches=0,s=0.000] train_y[h=128,m=0,rows=0,batches=0,s=0.000]
+Epoch 2 Forward Kernel: baseline_forward (chunk=32768)
+Epoch 2 ReLU Backward: reuse_forward_mask
+Epoch 2 Batch Stage Timing (sampled): fwd=0.852s, dz2=0.192s, dw2=0.029s, da1_dz1=0.219s, dw1=0.510s, upd=0.432s, total=2.235s
+Epoch 2 Batch Stage Timing (avg over 2 batches): fwd=0.794s (35.2%), dz2=0.193s (8.6%), dw2=0.029s (1.3%), da1_dz1=0.235s (10.4%), dw1=0.514s (22.8%), upd=0.492s (21.8%), total=2.257s
+Evaluating on 100 test samples (batched)...
+DEBUG EVAL LOGITS: [0.0001621246337890625, 0.0016508102416992188, -0.0005970001220703125, -0.00046539306640625, 0.00024318695068359375, -0.0009412765502929688, 0.0016164779663085938, 0.0016736984252929688, -0.001880645751953125, -0.0008268356323242188]
+Epoch 2 Test Accuracy: 11.00%
+Epoch 2 Test Loss: 2.3026
+Epoch 2 Diagnostics: mean|logit|=0.0009, max|logit|=0.0022, mean_entropy=2.3026
+Epoch 2 Estimated Grad Norm: 0.0037
+Epoch 2 Update Sample Stats: mean|upd|=0.000003, max|upd|=0.000054
+Lazy PSS eval unpack stats (epoch 2): eval_x[h=100,m=0,rows=0,batches=0,s=0.000]
+Training Time: 70.841185s
+Prover Node: 3
+Prover Time: 0.000000s
+Lazy PSS unpack totals: train_x[h=128,m=128,rows=128,batches=2,s=11.086] train_y[h=128,m=128,rows=128,batches=2,s=0.147] eval_x[h=101,m=100,rows=100,batches=2,s=10.160] client_x[h=0,m=0,rows=0,batches=0,s=0.000]

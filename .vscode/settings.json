@@ -1,3 +1,5 @@
 {
-    "cmake.sourceDirectory": "C:/Users/BhavishMohee/Desktop/Master's Dissertation/Sentra/sentra/sentra_engine"
+    "rust-analyzer.linkedProjects": [
+        "./sentra-node/rust/Cargo.toml"
+    ]
 }
