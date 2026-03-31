@@ -18,14 +18,20 @@ def verify_training():
             
             cmd = [
                 sys.executable,
-                "run_mnist_secure.py",
+                "run_mnist_batched_secure.py",
                 "--node-id", str(i),
                 "--n-nodes", "3",
                 "--num-epochs", "1",
                 "--batch-size", "4",
                 "--mnist-samples", "16",
                 "--learning-rate", "0.05",
-                "--enable-network"
+                "--enable-network",
+                "--loss-mode", "softmax",
+                "--field-size", str(2**61 - 1),
+                "--scale-factor", "65536",
+                "--softmax-temperature", "2",
+                "--exp-approx", "pade22",
+                "--softmax-grad-mode", "opened_exact",
             ]
             
             p = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)

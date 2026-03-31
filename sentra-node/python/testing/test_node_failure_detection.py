@@ -6,19 +6,36 @@ Tests heartbeat monitoring and failure detection
 import time
 import sys
 import os
+import pytest
+import multiprocessing
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from ml_training.kvs import KVSCluster
-from ml_training.coordinator import TrainingCoordinator, SafetyBoundChecker
+from ml_training.coordinator import SafetyBoundChecker
 from ml_training.secure_comm import create_mpc_network
 from ml_training.node_failure_detector import NodeFailureDetector
-import numpy as np
+
+
+def _run_node_stub(node_id: int, node_configs, stop_event: multiprocessing.Event):
+    """Run a lightweight MPC network node that stays alive until stop_event is set."""
+    network = None
+    try:
+        network = create_mpc_network(node_id, node_configs, port=node_configs[node_id]["port"], use_tls=False)
+        while not stop_event.is_set():
+            time.sleep(0.2)
+    finally:
+        if network is not None:
+            try:
+                network.stop()
+            except Exception:
+                pass
 
 
 def test_failure_detection():
     """Test node failure detection with multiple nodes"""
+    if os.getenv("SENTRA_RUN_INTERACTIVE", "1") != "1":
+        pytest.skip("Disabled via SENTRA_RUN_INTERACTIVE=0.")
     print("=" * 70)
     print("Testing Node Failure Detection")
     print("=" * 70)
@@ -36,49 +53,74 @@ def test_failure_detection():
     
     print(f"\nNode configuration: {node_configs}")
     print(f"Threshold: {t}, Nodes: {n_nodes}")
-    print("\nNote: This test requires nodes to be running on ports 8001, 8002, 8003")
-    print("Start nodes using: python run_node.py --node-id 1 --n-nodes 3 (in separate terminals)")
-    print("\nPress Enter when nodes are running...")
-    input()
-    
-    # Test with node 1
-    node_id = 1
-    print(f"\nTesting from Node {node_id} perspective...")
-    
+    print("\nAuto-starting stub nodes on ports 8002, 8003...")
+    stop_event = multiprocessing.Event()
+    node_procs = []
+    network = None
+    detector = None
     try:
+        for node_id in (2, 3):
+            p = multiprocessing.Process(
+                target=_run_node_stub,
+                args=(node_id, node_configs, stop_event),
+                daemon=True,
+            )
+            p.start()
+            node_procs.append(p)
+        # Give nodes time to start and connect.
+        time.sleep(2.0)
+
+        # Test with node 1
+        node_id = 1
+        print(f"\nTesting from Node {node_id} perspective...")
+
         # Create network
         network = create_mpc_network(node_id, node_configs, port=8000 + node_id, use_tls=False)
         time.sleep(1)  # Wait for connections
-        
+
         # Create failure detector
         detector = NodeFailureDetector(network, heartbeat_interval=2.0, failure_timeout=6.0)
         detector.start_monitoring()
-        
+
         print(f"\nStarted failure detection on Node {node_id}")
         print(f"Initial active nodes: {detector.get_active_nodes()}")
         print(f"Initial n_active: {detector.get_n_active()}")
-        
+
         # Monitor for 30 seconds
         print("\nMonitoring for 30 seconds...")
         print("Try stopping one of the other nodes to test failure detection")
-        
+
         for i in range(30):
             active_nodes = detector.get_active_nodes()
             n_active = detector.get_n_active()
             print(f"[{i+1:2d}s] Active nodes: {sorted(active_nodes)}, n_active: {n_active}")
             time.sleep(1)
-        
+
         print("\nTest completed")
         print(f"Final active nodes: {detector.get_active_nodes()}")
         print(f"Final n_active: {detector.get_n_active()}")
-        
-        detector.stop_monitoring()
-        network.stop()
-        
+
     except Exception as e:
         print(f"Error during test: {e}")
         import traceback
         traceback.print_exc()
+    finally:
+        if detector is not None:
+            try:
+                detector.stop_monitoring()
+            except Exception:
+                pass
+        if network is not None:
+            try:
+                network.stop()
+            except Exception:
+                pass
+        stop_event.set()
+        for p in node_procs:
+            p.join(timeout=2.0)
+        for p in node_procs:
+            if p.is_alive():
+                p.terminate()
 
 
 def test_safety_bound_with_failures():
@@ -122,13 +164,9 @@ if __name__ == "__main__":
     # Test 2: Actual failure detection (requires running nodes)
     print("\n" + "=" * 70)
     print("To test actual failure detection:")
-    print("1. Start 3 nodes in separate terminals:")
-    print("   Terminal 1: python run_node.py --node-id 1 --n-nodes 3")
-    print("   Terminal 2: python run_node.py --node-id 2 --n-nodes 3")
-    print("   Terminal 3: python run_node.py --node-id 3 --n-nodes 3")
-    print("2. Wait for them to connect")
-    print("3. Run this test script")
-    print("4. Stop one node and observe failure detection")
+    print("1. Set SENTRA_RUN_INTERACTIVE=1 to enable the test")
+    print("2. Run this script or invoke pytest; the test will auto-start stub nodes")
+    print("3. Stop one stub process (if desired) to observe failure detection")
     print("=" * 70)
     
     # Uncomment to run actual failure detection test

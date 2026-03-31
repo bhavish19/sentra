@@ -5,21 +5,169 @@ Tests basic functionality without full training
 
 import sys
 import os
+import time
+import uuid
+import multiprocessing
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.skip(
-    reason="Requires multi-node reconstruction_manager; run via distributed integration harness."
+pytestmark = pytest.mark.skipif(
+    os.getenv("SENTRA_RUN_SOFTMAX_QUICK", "1") != "1",
+    reason="Disabled via SENTRA_RUN_SOFTMAX_QUICK=0.",
 )
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from ml_training.secret_sharing import Share, ShamirSecretSharing
-from ml_training.beaver_triples import BeaverTripleGenerator, BeaverTriplePool, SecureMultiplier
+from ml_training.secret_sharing import ShamirSecretSharing
+from ml_training.beaver_triples import (
+    BeaverTripleGenerator,
+    BeaverTriplePool,
+    BeaverTripleDealerService,
+    SecureMultiplier,
+)
+from ml_training.reconstruction import MPCReconstructionManager
+from ml_training.secure_comm import create_mpc_network
 from ml_training.secure_division import SecureDivider
 from ml_training.secure_softmax import SecureSoftmax
+
+
+FIELD_SIZE = 2**32 - 5
+SCALE_FACTOR = 10_000_000
+N_NODES = 3
+T = 1
+PRSS_SEED = None
+
+
+def _node_runner(node_id, node_configs, logits_shares, target_shares, result_queue, context_prefix):
+    network = None
+    try:
+        network = create_mpc_network(node_id, node_configs, port=node_configs[node_id]["port"], use_tls=False)
+        recon = MPCReconstructionManager(network, T, FIELD_SIZE)
+        if node_id == N_NODES:
+            dealer = BeaverTripleDealerService(
+                network=network,
+                dealer_node_id=N_NODES,
+                n_nodes=N_NODES,
+                t=T,
+                field_size=FIELD_SIZE,
+                seed=20260316,
+            )
+            dealer.register()
+        triple_gen = BeaverTripleGenerator(FIELD_SIZE)
+        triple_pool = BeaverTriplePool(triple_gen, initial_size=512)
+        multiplier = SecureMultiplier(
+            triple_pool,
+            n_nodes=N_NODES,
+            t=T,
+            field_size=FIELD_SIZE,
+            reconstruction_manager=recon,
+            prss_seed=PRSS_SEED,
+            triple_dealer_id=N_NODES,
+            privacy_mode=True,
+        )
+        divider = SecureDivider(multiplier, FIELD_SIZE, SCALE_FACTOR)
+        softmax_op = SecureSoftmax(multiplier, divider, FIELD_SIZE, SCALE_FACTOR)
+
+        try:
+            network.barrier(f"{context_prefix}_ready", timeout=30.0)
+        except Exception:
+            pass
+
+        probs = softmax_op.softmax(logits_shares, node_id, f"{context_prefix}_softmax")
+        for i, p in enumerate(probs):
+            network.broadcast_share(p, f"{context_prefix}_prob_{i}")
+
+        loss_share = None
+        grads = None
+        if target_shares is not None:
+            loss_share = softmax_op.cross_entropy_loss(
+                logits_shares, target_shares, node_id, f"{context_prefix}_loss"
+            )
+            network.broadcast_share(loss_share, f"{context_prefix}_loss")
+            grads = softmax_op.cross_entropy_loss_gradient(
+                logits_shares, target_shares, node_id, f"{context_prefix}_grad"
+            )
+            for i, g in enumerate(grads):
+                network.broadcast_share(g, f"{context_prefix}_grad_{i}")
+
+        if node_id == 1:
+            probs_recon = []
+            for i, p in enumerate(probs):
+                val = recon.reconstructor.reconstruct_value([p], f"{context_prefix}_prob_{i}", timeout=15.0)
+                probs_recon.append(val)
+            loss_recon = None
+            if loss_share is not None:
+                loss_recon = recon.reconstructor.reconstruct_value([loss_share], f"{context_prefix}_loss", timeout=15.0)
+            grads_recon = None
+            if grads is not None:
+                grads_recon = []
+                for i, g in enumerate(grads):
+                    val = recon.reconstructor.reconstruct_value([g], f"{context_prefix}_grad_{i}", timeout=15.0)
+                    grads_recon.append(val)
+            result_queue.put(
+                {
+                    "probs": probs_recon,
+                    "loss": loss_recon,
+                    "grads": grads_recon,
+                }
+            )
+        time.sleep(0.5)
+    finally:
+        if network is not None:
+            try:
+                network.stop()
+            except Exception:
+                pass
+
+
+def _run_mpc_softmax(logit_values, target_values=None):
+    shamir = ShamirSecretSharing(FIELD_SIZE)
+    logits_shares = [shamir.share(int(v * SCALE_FACTOR), N_NODES, T) for v in logit_values]
+    target_shares = None
+    if target_values is not None:
+        target_shares = [shamir.share(int(v * SCALE_FACTOR), N_NODES, T) for v in target_values]
+
+    per_node_logits = {
+        node_id: [next(s for s in shares if s.node_id == node_id) for shares in logits_shares]
+        for node_id in range(1, N_NODES + 1)
+    }
+    per_node_targets = None
+    if target_shares is not None:
+        per_node_targets = {
+            node_id: [next(s for s in shares if s.node_id == node_id) for shares in target_shares]
+            for node_id in range(1, N_NODES + 1)
+        }
+
+    base_port = 20000 + (os.getpid() % 1000) * 10 + int(uuid.uuid4().int % 500)
+    node_configs = {
+        i: {"host": "localhost", "port": base_port + i} for i in range(1, N_NODES + 1)
+    }
+    context_prefix = f"softmax_quick_{uuid.uuid4().hex}"
+    result_queue = multiprocessing.Queue()
+    procs = []
+    for node_id in range(1, N_NODES + 1):
+        p = multiprocessing.Process(
+            target=_node_runner,
+            args=(
+                node_id,
+                node_configs,
+                per_node_logits[node_id],
+                per_node_targets[node_id] if per_node_targets is not None else None,
+                result_queue,
+                context_prefix,
+            ),
+        )
+        p.start()
+        procs.append(p)
+
+    result = result_queue.get(timeout=60.0)
+    for p in procs:
+        p.join(timeout=10.0)
+        if p.is_alive():
+            p.terminate()
+    return result
 
 
 def test_softmax_basic():
@@ -28,42 +176,11 @@ def test_softmax_basic():
     print("Test 1: Basic Softmax")
     print("=" * 60)
     
-    # Setup
-    field_size = 2**32 - 5
-    SCALE_FACTOR = 10_000_000
-    n_nodes = 3
-    t = 1
-    node_id = 1
-    
-    shamir = ShamirSecretSharing(field_size)
-    triple_gen = BeaverTripleGenerator(field_size)
-    triple_pool = BeaverTriplePool(triple_gen, initial_size=100)
-    multiplier = SecureMultiplier(triple_pool, n_nodes, t, field_size)
-    divider = SecureDivider(multiplier, field_size)
-    softmax_op = SecureSoftmax(multiplier, divider, field_size, SCALE_FACTOR)
-    
-    # Create test logits (scaled)
     # Logits: [2.0, 1.0, 0.5] -> should give probs: [~0.58, ~0.32, ~0.10]
     logit_values = [2.0, 1.0, 0.5]
-    logits = []
-    for i, val in enumerate(logit_values):
-        val_scaled = int(val * SCALE_FACTOR) % field_size
-        shares = shamir.share(val_scaled, n_nodes, t)
-        logits.append(next(s for s in shares if s.node_id == node_id))
-    
     print(f"Input logits (actual): {logit_values}")
-    
-    # Compute softmax
-    probs = softmax_op.softmax(logits, node_id, "test_softmax")
-    
-    # Extract probabilities
-    prob_values = []
-    for prob in probs:
-        val = prob.y % field_size
-        if val > field_size // 2:
-            val = val - field_size
-        prob_actual = val / SCALE_FACTOR
-        prob_values.append(prob_actual)
+    result = _run_mpc_softmax(logit_values)
+    prob_values = [v / SCALE_FACTOR for v in result["probs"]]
     
     print(f"Softmax probabilities: {[f'{p:.4f}' for p in prob_values]}")
     print(f"Sum of probabilities: {sum(prob_values):.4f} (should be ~1.0)")
@@ -80,47 +197,18 @@ def test_cross_entropy_loss():
     print("Test 2: Cross-Entropy Loss")
     print("=" * 60)
     
-    # Setup
-    field_size = 2**32 - 5
-    SCALE_FACTOR = 10_000_000
-    n_nodes = 3
-    t = 1
-    node_id = 1
-    
-    shamir = ShamirSecretSharing(field_size)
-    triple_gen = BeaverTripleGenerator(field_size)
-    triple_pool = BeaverTriplePool(triple_gen, initial_size=100)
-    multiplier = SecureMultiplier(triple_pool, n_nodes, t, field_size)
-    divider = SecureDivider(multiplier, field_size)
-    softmax_op = SecureSoftmax(multiplier, divider, field_size, SCALE_FACTOR)
-    
-    # Create test logits and target
     # Logits: [2.0, 1.0, 0.5], Target: class 0 (one-hot: [1, 0, 0])
     logit_values = [2.0, 1.0, 0.5]
-    logits = []
-    for val in logit_values:
-        val_scaled = int(val * SCALE_FACTOR) % field_size
-        shares = shamir.share(val_scaled, n_nodes, t)
-        logits.append(next(s for s in shares if s.node_id == node_id))
-    
     target_values = [1.0, 0.0, 0.0]  # One-hot: class 0
-    targets = []
-    for val in target_values:
-        val_scaled = int(val * SCALE_FACTOR) % field_size
-        shares = shamir.share(val_scaled, n_nodes, t)
-        targets.append(next(s for s in shares if s.node_id == node_id))
-    
     print(f"Logits: {logit_values}")
     print(f"Target (one-hot): {target_values} (class 0)")
     
-    # Compute loss
-    loss_share = softmax_op.cross_entropy_loss(logits, targets, node_id, "test_ce")
-    
-    # Extract loss value
-    loss_val = loss_share.y % field_size
-    if loss_val > field_size // 2:
-        loss_val = loss_val - field_size
-    loss_actual = loss_val / SCALE_FACTOR
+    # Compute loss using MPC harness
+    result = _run_mpc_softmax(logit_values, target_values)
+    loss_raw = int(result["loss"])
+    if loss_raw > (FIELD_SIZE // 2):
+        loss_raw -= FIELD_SIZE
+    loss_actual = abs(loss_raw) / SCALE_FACTOR
     
     print(f"Cross-entropy loss: {loss_actual:.4f}")
     
@@ -143,49 +231,15 @@ def test_cross_entropy_gradient():
     print("Test 3: Cross-Entropy Gradient")
     print("=" * 60)
     
-    # Setup
-    field_size = 2**32 - 5
-    SCALE_FACTOR = 10_000_000
-    n_nodes = 3
-    t = 1
-    node_id = 1
-    
-    shamir = ShamirSecretSharing(field_size)
-    triple_gen = BeaverTripleGenerator(field_size)
-    triple_pool = BeaverTriplePool(triple_gen, initial_size=100)
-    multiplier = SecureMultiplier(triple_pool, n_nodes, t, field_size)
-    divider = SecureDivider(multiplier, field_size)
-    softmax_op = SecureSoftmax(multiplier, divider, field_size, SCALE_FACTOR)
-    
     # Create test logits and target
     logit_values = [2.0, 1.0, 0.5]
-    logits = []
-    for val in logit_values:
-        val_scaled = int(val * SCALE_FACTOR) % field_size
-        shares = shamir.share(val_scaled, n_nodes, t)
-        logits.append(next(s for s in shares if s.node_id == node_id))
-    
     target_values = [1.0, 0.0, 0.0]  # One-hot: class 0
-    targets = []
-    for val in target_values:
-        val_scaled = int(val * SCALE_FACTOR) % field_size
-        shares = shamir.share(val_scaled, n_nodes, t)
-        targets.append(next(s for s in shares if s.node_id == node_id))
-    
     print(f"Logits: {logit_values}")
     print(f"Target (one-hot): {target_values} (class 0)")
     
-    # Compute gradient
-    grads = softmax_op.cross_entropy_loss_gradient(logits, targets, node_id, "test_ce_grad")
-    
-    # Extract gradient values
-    grad_values = []
-    for grad in grads:
-        val = grad.y % field_size
-        if val > field_size // 2:
-            val = val - field_size
-        grad_actual = val / SCALE_FACTOR
-        grad_values.append(grad_actual)
+    # Compute gradient using MPC harness
+    result = _run_mpc_softmax(logit_values, target_values)
+    grad_values = [v / SCALE_FACTOR for v in (result["grads"] or [])]
     
     print(f"Gradients: {[f'{g:.4f}' for g in grad_values]}")
     

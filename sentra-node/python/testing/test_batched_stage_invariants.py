@@ -1,11 +1,15 @@
 import random
 import re
-import subprocess
-import sys
 import time
 from pathlib import Path
 
 import pytest
+from testing.integration_harness import (
+    read_node_err,
+    read_node_log,
+    start_node_processes,
+    terminate_processes,
+)
 
 
 @pytest.mark.integration
@@ -71,18 +75,15 @@ def test_batched_stage_invariants():
 
     procs = []
     try:
-        for node_id in (1, 2, 3):
-            out_path = log_dir / f"node{node_id}_stageinv.log"
-            err_path = log_dir / f"node{node_id}_stageinv.err"
-            with open(out_path, "w", encoding="utf-8") as out_f, open(err_path, "w", encoding="utf-8") as err_f:
-                p = subprocess.Popen(
-                    [sys.executable, *common_args, "--node-id", str(node_id)],
-                    cwd=str(root),
-                    stdout=out_f,
-                    stderr=err_f,
-                )
-                procs.append(p)
-            time.sleep(0.4)
+        proc_entries = start_node_processes(
+            root=root,
+            log_dir=log_dir,
+            common_args=common_args,
+            node_ids=(1, 2, 3),
+            log_prefix="stageinv",
+            startup_stagger_s=0.4,
+        )
+        procs = [p for _, p in proc_entries]
 
         deadline = time.time() + 420.0
         for p in procs:
@@ -90,8 +91,8 @@ def test_batched_stage_invariants():
         for p in procs:
             assert p.returncode == 0, f"Node process failed with code {p.returncode}"
 
-        node1_log = (log_dir / "node1_stageinv.log").read_text(encoding="utf-8", errors="ignore")
-        node1_err = (log_dir / "node1_stageinv.err").read_text(encoding="utf-8", errors="ignore")
+        node1_log = read_node_log(log_dir, node_id=1, log_prefix="stageinv")
+        node1_err = read_node_err(log_dir, node_id=1, log_prefix="stageinv")
         assert "Traceback" not in node1_log
         assert "Traceback" not in node1_err
 
@@ -120,13 +121,5 @@ def test_batched_stage_invariants():
         assert probs_max <= 1.05, f"probs_est max invalid: {probs_max:.6f}"
 
     finally:
-        for p in procs:
-            if p.poll() is None:
-                p.terminate()
-        for p in procs:
-            if p.poll() is None:
-                try:
-                    p.kill()
-                except Exception:
-                    pass
+        terminate_processes([(i + 1, p) for i, p in enumerate(procs)], terminate_timeout_s=2.0)
 

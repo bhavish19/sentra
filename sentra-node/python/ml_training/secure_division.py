@@ -64,6 +64,14 @@ class SecureDivider:
         """
         recon = getattr(self.multiplier, "reconstruction_manager", None)
         if recon is None:
+            # Single-node fallback (share holds the full secret).
+            if int(getattr(self.multiplier, "n_nodes", 1)) == 1 and int(getattr(self.multiplier, "t", 0)) == 0:
+                p = int(self.field_size)
+                denom = int(denominator.y) % p
+                if denom == 0:
+                    raise RuntimeError("secure_inverse_share failed: denominator was zero")
+                inv = pow(denom, p - 2, p)
+                return Share(x=denominator.x, y=inv, node_id=node_id)
             raise RuntimeError(
                 "secure_inverse_share requires multi-node reconstruction_manager; "
                 "run with --enable-network and a properly configured multiplier."
@@ -210,6 +218,29 @@ class SecureDivider:
         Returns:
             Share of quotient
         """
+        # Single-node fixed-point fallback:
+        # numerator and denominator are SCALE-scaled integers (mod p).
+        # We want output = round((numerator/denominator) * SCALE).
+        if (
+            getattr(self.multiplier, "reconstruction_manager", None) is None
+            and int(getattr(self.multiplier, "n_nodes", 1)) == 1
+            and int(getattr(self.multiplier, "t", 0)) == 0
+        ):
+            p = int(self.field_size)
+            num_open = int(numerator.y) % p
+            den_open = int(denominator.y) % p
+            if num_open > (p // 2):
+                num_open -= p
+            if den_open > (p // 2):
+                den_open -= p
+            if den_open == 0:
+                raise RuntimeError("secure_divide_shares failed: denominator was zero")
+            S = int(self.scale_factor)
+            numS = int(num_open) * S
+            adj = (abs(den_open) // 2) * (1 if numS >= 0 else -1)
+            q = (numS + adj) // int(den_open)
+            return Share(x=numerator.x, y=int(q % p), node_id=node_id)
+
         # Enclave/opened fixed-point division (Option A):
         # numerator and denominator are SCALE-scaled integers (mod p).
         # We want output = round((numerator/denominator) * SCALE) as an integer, then re-share.
@@ -332,6 +363,48 @@ class SecureDivider:
             
         p = int(self.field_size)
         x0 = numerators[0].x
+
+        # Single-node fixed-point fallback (batch).
+        if (
+            getattr(self.multiplier, "reconstruction_manager", None) is None
+            and int(getattr(self.multiplier, "n_nodes", 1)) == 1
+            and int(getattr(self.multiplier, "t", 0)) == 0
+        ):
+            out = []
+            S = int(self.scale_factor)
+            for n_sh, d_sh in zip(numerators, denominators):
+                num_open = int(n_sh.y) % p
+                den_open = int(d_sh.y) % p
+                if num_open > (p // 2):
+                    num_open -= p
+                if den_open > (p // 2):
+                    den_open -= p
+                if den_open == 0:
+                    raise RuntimeError("secure_divide_shares_batch failed: denominator was zero")
+                numS = int(num_open) * S
+                adj = (abs(den_open) // 2) * (1 if numS >= 0 else -1)
+                q = (numS + adj) // int(den_open)
+                out.append(int(q))
+
+            if enforce_probability_range:
+                q_arr = np.asarray(out, dtype=np.int64)
+                q_arr = np.clip(q_arr, 0, S)
+                g = int(probability_group_size) if probability_group_size else 0
+                if g > 0 and (len(q_arr) % g == 0):
+                    q2 = q_arr.reshape(-1, g)
+                    sums = np.sum(q2, axis=1, keepdims=True)
+                    sums[sums <= 0] = 1
+                    q2 = np.round((q2.astype(np.float64) * float(S)) / sums.astype(np.float64)).astype(np.int64)
+                    q2 = np.clip(q2, 0, S)
+                    row_sum = np.sum(q2, axis=1)
+                    residual = (S - row_sum).astype(np.int64)
+                    argm = np.argmax(q2, axis=1)
+                    for ridx in range(q2.shape[0]):
+                        q2[ridx, argm[ridx]] = np.clip(q2[ridx, argm[ridx]] + residual[ridx], 0, S)
+                    q_arr = q2.reshape(-1)
+                out = q_arr.tolist()
+
+            return [Share(x=x0, y=int(v) % p, node_id=node_id) for v in out]
         
         if self._opened_enabled():
             recon = getattr(self.multiplier, "reconstruction_manager", None)

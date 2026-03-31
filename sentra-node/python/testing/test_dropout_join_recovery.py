@@ -13,12 +13,17 @@ symlink or copy to avoid PowerShell quoting issues.
 
 import os
 import random
-import subprocess
-import sys
 import time
 from pathlib import Path
 
 import pytest
+from testing.integration_harness import (
+    get_first_failed_process,
+    read_node_err,
+    read_node_log,
+    start_node_processes,
+    terminate_processes,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 LOG_DIR = ROOT / "testing" / "tmp_bench"
@@ -90,20 +95,14 @@ def test_dropout_recovery_packing_unsafe():
 
     procs = []
     try:
-        for node_id in (1, 2, 3):
-            out_path = LOG_DIR / f"node{node_id}_dropout_unsafe.log"
-            err_path = LOG_DIR / f"node{node_id}_dropout_unsafe.err"
-            with open(out_path, "w", encoding="utf-8") as out_f, open(
-                err_path, "w", encoding="utf-8"
-            ) as err_f:
-                p = subprocess.Popen(
-                    [sys.executable, *common, "--node-id", str(node_id)],
-                    cwd=str(ROOT),
-                    stdout=out_f,
-                    stderr=err_f,
-                )
-                procs.append((node_id, p))
-            time.sleep(0.5)
+        procs = start_node_processes(
+            root=ROOT,
+            log_dir=LOG_DIR,
+            common_args=common,
+            node_ids=(1, 2, 3),
+            log_prefix="dropout_unsafe",
+            startup_stagger_s=0.5,
+        )
 
         time.sleep(25.0)
         _, p3 = procs[2]
@@ -119,12 +118,8 @@ def test_dropout_recovery_packing_unsafe():
                 p.terminate()
             p.wait(timeout=5.0)
 
-        node1_log = (LOG_DIR / "node1_dropout_unsafe.log").read_text(
-            encoding="utf-8", errors="ignore"
-        )
-        node2_log = (LOG_DIR / "node2_dropout_unsafe.log").read_text(
-            encoding="utf-8", errors="ignore"
-        )
+        node1_log = read_node_log(LOG_DIR, node_id=1, log_prefix="dropout_unsafe")
+        node2_log = read_node_log(LOG_DIR, node_id=2, log_prefix="dropout_unsafe")
         combined = node1_log + node2_log
 
         assert (
@@ -139,13 +134,7 @@ def test_dropout_recovery_packing_unsafe():
         )
 
     finally:
-        for _, p in procs:
-            if p.poll() is None:
-                try:
-                    p.terminate()
-                    p.wait(timeout=2.0)
-                except Exception:
-                    pass
+        terminate_processes(procs, terminate_timeout_s=2.0)
 
 
 @pytest.mark.integration
@@ -173,20 +162,14 @@ def test_dropout_recovery_packing_safe():
 
     procs = []
     try:
-        for node_id in (1, 2, 3, 4):
-            out_path = LOG_DIR / f"node{node_id}_dropout_safe.log"
-            err_path = LOG_DIR / f"node{node_id}_dropout_safe.err"
-            with open(out_path, "w", encoding="utf-8") as out_f, open(
-                err_path, "w", encoding="utf-8"
-            ) as err_f:
-                p = subprocess.Popen(
-                    [sys.executable, *common, "--node-id", str(node_id)],
-                    cwd=str(ROOT),
-                    stdout=out_f,
-                    stderr=err_f,
-                )
-                procs.append((node_id, p))
-            time.sleep(0.5)
+        procs = start_node_processes(
+            root=ROOT,
+            log_dir=LOG_DIR,
+            common_args=common,
+            node_ids=(1, 2, 3, 4),
+            log_prefix="dropout_safe",
+            startup_stagger_s=0.5,
+        )
 
         time.sleep(50.0)
         _, p4 = procs[3]
@@ -201,14 +184,10 @@ def test_dropout_recovery_packing_safe():
         for node_id, p in procs[:3]:
             p.wait(timeout=max(1.0, deadline - time.time()))
 
-        node1_log = (LOG_DIR / "node1_dropout_safe.log").read_text(
-            encoding="utf-8", errors="ignore"
-        )
+        node1_log = read_node_log(LOG_DIR, node_id=1, log_prefix="dropout_safe")
         combined = node1_log
         for node_id in (2, 3):
-            combined += (LOG_DIR / f"node{node_id}_dropout_safe.log").read_text(
-                encoding="utf-8", errors="ignore"
-            )
+            combined += read_node_log(LOG_DIR, node_id=node_id, log_prefix="dropout_safe")
 
         has_recovery = (
             "Dropout recovery" in combined
@@ -226,13 +205,7 @@ def test_dropout_recovery_packing_safe():
             )
 
     finally:
-        for _, p in procs:
-            if p.poll() is None:
-                try:
-                    p.terminate()
-                    p.wait(timeout=2.0)
-                except Exception:
-                    pass
+        terminate_processes(procs, terminate_timeout_s=2.0)
 
 
 @pytest.mark.integration
@@ -262,48 +235,35 @@ def test_join_recovery_smoke():
 
     procs = []
     try:
-        for node_id in (1, 2, 3):
-            out_path = LOG_DIR / f"node{node_id}_join_smoke.log"
-            err_path = LOG_DIR / f"node{node_id}_join_smoke.err"
-            with open(out_path, "w", encoding="utf-8") as out_f, open(
-                err_path, "w", encoding="utf-8"
-            ) as err_f:
-                p = subprocess.Popen(
-                    [sys.executable, *common, "--node-id", str(node_id)],
-                    cwd=str(ROOT),
-                    stdout=out_f,
-                    stderr=err_f,
-                )
-                procs.append((node_id, p))
-            time.sleep(0.5)
+        procs = start_node_processes(
+            root=ROOT,
+            log_dir=LOG_DIR,
+            common_args=common,
+            node_ids=(1, 2, 3),
+            log_prefix="join_smoke",
+            startup_stagger_s=0.5,
+        )
 
         time.sleep(25.0)
 
-        for _, p in procs:
-            if p.poll() is not None and p.returncode != 0:
-                err = (LOG_DIR / "node1_join_smoke.err").read_text(
-                    encoding="utf-8", errors="ignore"
-                )
-                raise AssertionError(f"Node exited with {p.returncode}. stderr: {err[:2000]}")
+        failed = get_first_failed_process(procs)
+        if failed is not None:
+            failed_node_id, failed_proc = failed
+            err = read_node_err(LOG_DIR, node_id=int(failed_node_id), log_prefix="join_smoke")
+            raise AssertionError(
+                f"Node {failed_node_id} exited with {failed_proc.returncode}. stderr: {err[:2000]}"
+            )
 
         combined = ""
         for node_id in (1, 2, 3):
-            combined += (LOG_DIR / f"node{node_id}_join_smoke.log").read_text(
-                encoding="utf-8", errors="ignore"
-            )
+            combined += read_node_log(LOG_DIR, node_id=node_id, log_prefix="join_smoke")
         assert "epoch" in combined.lower() or "batch" in combined.lower(), (
             "Expected training progress. Logs (last 1500 chars): "
             f"...{combined[-1500:]}"
         )
 
     finally:
-        for _, p in procs:
-            if p.poll() is None:
-                try:
-                    p.terminate()
-                    p.wait(timeout=2.0)
-                except Exception:
-                    pass
+        terminate_processes(procs, terminate_timeout_s=2.0)
 
 
 if __name__ == "__main__":
