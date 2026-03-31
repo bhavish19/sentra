@@ -81,6 +81,21 @@ One or more nodes exited early. Ensure all nodes run with identical arguments an
 
 Fixed-point path currently expects integer temperature. Use values like `1` or `2`.
 
+### Slow integration tests on WSL (/mnt/c)
+
+If integration tests are timing out on WSL, increase the subprocess wait budget:
+
+```bash
+export SENTRA_INTEGRATION_TIMEOUT_SEC=1200
+```
+
+Running from a Linux-native filesystem (e.g. `~/sentra2`) is typically faster than `/mnt/c/...`.
+
+### Packing safety bound (strict)
+
+Packed MPC enforces the strict bound \(2(t + s - 1) < n_{active}\). Equality is unsafe.
+If you see packing-safety failures, reduce `t`/`s`, or increase `n_active` (more live nodes).
+
 ## 5. Tests
 
 Quick sanity tests:

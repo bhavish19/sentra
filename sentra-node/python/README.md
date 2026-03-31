@@ -248,6 +248,23 @@ Stop existing processes before restarting with a fresh `--base-port`:
 
 Usually one node exited early. Check per-node logs and ensure all nodes use identical flags.
 
+### Slow integration tests on WSL (/mnt/c)
+
+On WSL, especially when running from `/mnt/c/...`, multi-node integration tests can be slow.
+You can raise the wall-clock budget with:
+
+```bash
+export SENTRA_INTEGRATION_TIMEOUT_SEC=1200
+```
+
+If possible, run from a Linux-native filesystem (e.g. `~/sentra2`) instead of `/mnt/c`.
+
+### Packing safety bound (strict)
+
+Packed MPC enforces the strict bound \(2(t + s - 1) < n_{active}\).
+In particular, equality is **unsafe**. Example: with `t=1`, `n_active=4`, `s=2` is invalid because \(2(1+2-1)=4\not<4\).
+The runner will cap `s` (packing factor) to a safe value automatically.
+
 ### Client-side sharing (recommended)
 
 For real deployments, do not load raw MNIST on any training node.

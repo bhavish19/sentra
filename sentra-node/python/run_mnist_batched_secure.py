@@ -1391,6 +1391,8 @@ def main():
             state_machine.request_pause("node_rejoin")
 
         failure_detector.register_recovery_callback(_on_recovery)
+        if network is not None and getattr(network, "channel", None) is not None:
+            network.channel.on_send_failure = failure_detector.mark_peer_failed_immediate
 
     packed_ops = None
     if network is not None:
@@ -1555,7 +1557,9 @@ def main():
     fixed_eval_indices = rng_eval.choice(test_len, size=eval_n, replace=False)
     fixed_pre_indices = fixed_eval_indices[:1]
 
-    if y_test_plain is not None:
+    # Pre-train eval with packed test shares requires every node to run evaluate_model (lazy unpack
+    # / MPC). Non-owners have y_test_plain is None but still must enter the same round as the owner.
+    if y_test_plain is not None or test_x_shares is not None:
         print("\nStarting PRE-TRAIN Evaluation Check...")
         acc_pre, loss_pre, diag_pre = evaluate_model(model, weights, x_test_plain, y_test_plain, args.node_id, 
                                                      args.n_nodes, args.t, shamir, FIELD_SIZE, SCALE, 
@@ -1568,9 +1572,9 @@ def main():
                                                      pss_packing_factor=pss_packing_factor,
                                                     x_test_lane_cache=test_x_lane_cache,
                                                     unpack_metrics=lazy_unpack_metrics)
-        print(f"Pre-Train Test Accuracy: {acc_pre*100:.2f}%")
-        print(f"Pre-Train Test Loss: {loss_pre:.4f}")
-        if args.node_id == 1:
+        if int(args.node_id) == 1:
+            print(f"Pre-Train Test Accuracy: {acc_pre*100:.2f}%")
+            print(f"Pre-Train Test Loss: {loss_pre:.4f}")
             print(
                 f"Pre-Train Diagnostics: mean|logit|={diag_pre['mean_abs_logit']:.4f}, "
                 f"max|logit|={diag_pre['max_abs_logit']:.4f}"
@@ -1606,119 +1610,160 @@ def main():
         rng.shuffle(indices)
         
         eff_batch_span = int(args.batch_size) * int(args.accum_steps)
-        n_active = int(failure_detector.get_n_active()) if failure_detector is not None else int(args.n_nodes)
         for start_idx in range(0, train_len, eff_batch_span):
-            if args.node_id == 1:
-                time.sleep(0.001)
+            if training_aborted:
+                break
+            batch_done = False
+            while not batch_done:
+                if args.node_id == 1:
+                    time.sleep(0.001)
 
-            if state_machine is not None and state_machine.is_paused():
-                weights, n_active, recovered_and_resume, aborted = handle_paused_training_recovery(
-                    weights=weights,
-                    state_machine=state_machine,
-                    args=args,
-                    join_recovered_nodes_holder=join_recovered_nodes_holder,
-                    network=network,
-                    failure_detector=failure_detector,
-                    shamir=shamir,
-                    me=me,
-                    field_size=FIELD_SIZE,
-                    pss_packing_factor=pss_packing_factor,
-                    model=model,
-                    join_recovery_seq=join_recovery_seq,
-                    dropout_recovery_seq=dropout_recovery_seq,
-                )
-                if recovered_and_resume:
-                    continue
-                if aborted:
-                    training_aborted = True
+                if state_machine is not None and state_machine.is_paused():
+                    weights, n_active, recovered_and_resume, aborted = handle_paused_training_recovery(
+                        weights=weights,
+                        state_machine=state_machine,
+                        args=args,
+                        join_recovered_nodes_holder=join_recovered_nodes_holder,
+                        network=network,
+                        failure_detector=failure_detector,
+                        shamir=shamir,
+                        me=me,
+                        field_size=FIELD_SIZE,
+                        pss_packing_factor=pss_packing_factor,
+                        model=model,
+                        join_recovery_seq=join_recovery_seq,
+                        dropout_recovery_seq=dropout_recovery_seq,
+                    )
+                    if recovered_and_resume:
+                        continue
+                    if aborted:
+                        training_aborted = True
+                        break
+
+                if training_aborted:
                     break
 
-            # Packing safety guard (step 5): 2*(t+s-1) < n_active
-            if use_pss_storage and not check_packing_safety(args.t, pss_packing_factor, n_active):
-                raise PackingSafetyError(args.t, pss_packing_factor, n_active)
+                n_active = int(failure_detector.get_n_active()) if failure_detector is not None else int(args.n_nodes)
+                # Packing safety guard (step 5): 2*(t+s-1) < n_active
+                if use_pss_storage and not check_packing_safety(args.t, pss_packing_factor, n_active):
+                    raise PackingSafetyError(args.t, pss_packing_factor, n_active)
 
-            batch_idx = indices[start_idx : start_idx + eff_batch_span]
-            # Wall-clock for the whole batch iteration (share prep / unpack + train). Previously only
-            # model.train_batch* was timed, which excluded e.g. PSS lane sharing from plaintext rows.
-            start_time = time.time()
-            x_shares_cols, y_shares_cols, packed_batch_payload = _prepare_training_batch_inputs(
-                batch_idx=batch_idx,
-                args=args,
-                epoch=epoch,
-                start_idx=start_idx,
-                me=me,
-                use_distributed_dataset=use_distributed_dataset,
-                dataset_meta=dataset_meta,
-                train_x_shares=train_x_shares,
-                train_y_shares=train_y_shares,
-                use_kvs_dataset=use_kvs_dataset,
-                local_kvs=local_kvs,
-                packed_ops=packed_ops,
-                train_x_lane_cache=train_x_lane_cache,
-                train_y_lane_cache=train_y_lane_cache,
-                lazy_unpack_metrics=lazy_unpack_metrics,
-                x_train=(x_train if not use_distributed_dataset else None),
-                y_train=(y_train if not use_distributed_dataset else None),
-                use_pss_storage=use_pss_storage,
-                pss=pss,
-                pss_packing_factor=pss_packing_factor,
-                field_size=FIELD_SIZE,
-                scale=SCALE,
-                shamir=shamir,
-            )
+                batch_idx = indices[start_idx : start_idx + eff_batch_span]
+                # Wall-clock for the whole batch iteration (share prep / unpack + train). Previously only
+                # model.train_batch* was timed, which excluded e.g. PSS lane sharing from plaintext rows.
+                start_time = time.time()
+                try:
+                    x_shares_cols, y_shares_cols, packed_batch_payload = _prepare_training_batch_inputs(
+                        batch_idx=batch_idx,
+                        args=args,
+                        epoch=epoch,
+                        start_idx=start_idx,
+                        me=me,
+                        use_distributed_dataset=use_distributed_dataset,
+                        dataset_meta=dataset_meta,
+                        train_x_shares=train_x_shares,
+                        train_y_shares=train_y_shares,
+                        use_kvs_dataset=use_kvs_dataset,
+                        local_kvs=local_kvs,
+                        packed_ops=packed_ops,
+                        train_x_lane_cache=train_x_lane_cache,
+                        train_y_lane_cache=train_y_lane_cache,
+                        lazy_unpack_metrics=lazy_unpack_metrics,
+                        x_train=(x_train if not use_distributed_dataset else None),
+                        y_train=(y_train if not use_distributed_dataset else None),
+                        use_pss_storage=use_pss_storage,
+                        pss=pss,
+                        pss_packing_factor=pss_packing_factor,
+                        field_size=FIELD_SIZE,
+                        scale=SCALE,
+                        shamir=shamir,
+                    )
 
-            print(f"Epoch {epoch+1} Batch {n_batches+1} ({len(batch_idx)} samples)...", end='\r')
-            
-            lr = args.learning_rate * (0.95 ** epoch)
-            weights, batch_diag = execute_training_batch(
-                weights=weights,
-                model=model,
-                packed_batch_payload=packed_batch_payload,
-                batch_idx=batch_idx,
-                args=args,
-                me=me,
-                epoch=epoch,
-                start_idx=start_idx,
-                train_x_lane_cache=train_x_lane_cache,
-                train_y_lane_cache=train_y_lane_cache,
-                train_x_shares=train_x_shares,
-                train_y_shares=train_y_shares,
-                packed_ops=packed_ops,
-                lazy_unpack_metrics=lazy_unpack_metrics,
-                softmax=softmax,
-                lr=lr,
-                reconstruction=reconstruction,
-                x_shares_cols=x_shares_cols,
-                y_shares_cols=y_shares_cols,
-                get_or_unpack_cached_rows_fn=_get_or_unpack_cached_rows,
-            )
-            end_time = time.time()
-            if "grad_norm_estimate" in batch_diag and epoch_grad_norm_estimate is None:
-                epoch_grad_norm_estimate = float(batch_diag["grad_norm_estimate"])
-            for k, v in batch_diag.items():
-                if k not in epoch_diag:
-                    epoch_diag[k] = v
-            if "t_train_batch_total_s" in batch_diag:
-                for sk in epoch_stage_sums.keys():
-                    epoch_stage_sums[sk] += float(batch_diag.get(sk, 0.0))
-                epoch_stage_samples += 1
-            if "relu_backward_mode" in batch_diag and "relu_backward_mode" not in epoch_diag:
-                epoch_diag["relu_backward_mode"] = str(batch_diag.get("relu_backward_mode"))
-            if "packed_end2end_mode" in batch_diag and "packed_end2end_mode" not in epoch_diag:
-                epoch_diag["packed_end2end_mode"] = str(batch_diag.get("packed_end2end_mode"))
-            
-            wall_s = end_time - start_time
-            train_internal = batch_diag.get("t_train_batch_total_s")
-            if train_internal is not None:
-                print(
-                    f"Epoch {epoch+1} Batch {n_batches+1} completed in {wall_s:.2f}s "
-                    f"(MPC train step internal: {float(train_internal):.2f}s)",
-                    end="\n",
-                )
-            else:
-                print(f"Epoch {epoch+1} Batch {n_batches+1} completed in {wall_s:.2f}s", end="\n")
-            
-            n_batches += 1
+                    print(f"Epoch {epoch+1} Batch {n_batches+1} ({len(batch_idx)} samples)...", end='\r')
+
+                    lr = args.learning_rate * (0.95 ** epoch)
+                    weights, batch_diag = execute_training_batch(
+                        weights=weights,
+                        model=model,
+                        packed_batch_payload=packed_batch_payload,
+                        batch_idx=batch_idx,
+                        args=args,
+                        me=me,
+                        epoch=epoch,
+                        start_idx=start_idx,
+                        train_x_lane_cache=train_x_lane_cache,
+                        train_y_lane_cache=train_y_lane_cache,
+                        train_x_shares=train_x_shares,
+                        train_y_shares=train_y_shares,
+                        packed_ops=packed_ops,
+                        lazy_unpack_metrics=lazy_unpack_metrics,
+                        softmax=softmax,
+                        lr=lr,
+                        reconstruction=reconstruction,
+                        x_shares_cols=x_shares_cols,
+                        y_shares_cols=y_shares_cols,
+                        get_or_unpack_cached_rows_fn=_get_or_unpack_cached_rows,
+                    )
+                except Exception as exc:
+                    if (
+                        failure_detector is not None
+                        and state_machine is not None
+                        and state_machine.is_paused()
+                    ):
+                        print(
+                            f"Node {args.node_id}: MPC batch interrupted for failure handling "
+                            f"({type(exc).__name__}: {exc})"
+                        )
+                        continue
+                    raise
+
+                end_time = time.time()
+                if "grad_norm_estimate" in batch_diag and epoch_grad_norm_estimate is None:
+                    epoch_grad_norm_estimate = float(batch_diag["grad_norm_estimate"])
+                for k, v in batch_diag.items():
+                    if k not in epoch_diag:
+                        epoch_diag[k] = v
+                if "t_train_batch_total_s" in batch_diag:
+                    for sk in epoch_stage_sums.keys():
+                        epoch_stage_sums[sk] += float(batch_diag.get(sk, 0.0))
+                    epoch_stage_samples += 1
+                if "relu_backward_mode" in batch_diag and "relu_backward_mode" not in epoch_diag:
+                    epoch_diag["relu_backward_mode"] = str(batch_diag.get("relu_backward_mode"))
+                if "packed_end2end_mode" in batch_diag and "packed_end2end_mode" not in epoch_diag:
+                    epoch_diag["packed_end2end_mode"] = str(batch_diag.get("packed_end2end_mode"))
+
+                # Stage probes (integration tests / numerics): computed in mnist_mlp_batched on first _b0 batch only.
+                if (
+                    bool(args.debug_numerics)
+                    and int(args.node_id) == 1
+                    and batch_diag.get("logit_probe") is not None
+                ):
+                    _lp = batch_diag["logit_probe"]
+                    _dz = batch_diag["dz2_probe"]
+                    print(f"Epoch {epoch + 1} Probe logits[0][:10]: {_lp}")
+                    print(f"Epoch {epoch + 1} Probe dz2[0][:10]: {_dz}")
+                    print(
+                        f"Epoch {epoch + 1} Probe probs_est stats: "
+                        f"sum={batch_diag['probs_est_sum']}, min={batch_diag['probs_est_min']}, "
+                        f"max={batch_diag['probs_est_max']}, target_sum={batch_diag['target_sum']}"
+                    )
+
+                wall_s = end_time - start_time
+                train_internal = batch_diag.get("t_train_batch_total_s")
+                if train_internal is not None:
+                    print(
+                        f"Epoch {epoch+1} Batch {n_batches+1} completed in {wall_s:.2f}s "
+                        f"(MPC train step internal: {float(train_internal):.2f}s)",
+                        end="\n",
+                    )
+                else:
+                    print(f"Epoch {epoch+1} Batch {n_batches+1} completed in {wall_s:.2f}s", end="\n")
+
+                n_batches += 1
+                batch_done = True
+
+            if training_aborted:
+                break
 
         if training_aborted:
             break
