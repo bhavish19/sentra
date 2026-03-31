@@ -18,7 +18,7 @@ class SentraNode:
     m_sendQueue: asyncio.Queue[object]
     m_nodeGenerator:SentraNodeAttributeGenerator
     m_strInterNodeCommunicationGRPC_URL:str
-    m_tcpProxy: TcpProxy
+#    m_tcpProxy: TcpProxy
 
     def __init__(self,nodeGenerator:SentraNodeAttributeGenerator,nodeID:str,trustscore:float,cpu:int,host:int,operator:int):
         self.m_iOperator=operator

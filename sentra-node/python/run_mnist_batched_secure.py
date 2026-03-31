@@ -43,7 +43,6 @@ from ml_training.sentra_kvs import put as kvs_put, get_batch as kvs_get_batch, k
 from ml_training.weight_versioning import put_weights_versioned
 from ml_training.kvs import KVSCluster
 from tensorflow import keras
-from tensorflow import keras
 def load_mnist_data(max_samples=None):
     (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
     x_train = x_train.reshape(-1, 784).astype("float32") / 255.0
@@ -53,7 +52,7 @@ def load_mnist_data(max_samples=None):
         y_train = y_train[:max_samples]
         x_test = x_test[:max_samples]
         y_test = y_test[:max_samples]
-
+        
     y_train_oh = keras.utils.to_categorical(y_train, 10)
     y_test_oh = keras.utils.to_categorical(y_test, 10)
     return (x_train, y_train_oh), (x_test, y_test_oh)
@@ -309,6 +308,233 @@ def _lazy_metrics_delta(metrics: Optional[dict], key: str, before: dict) -> dict
         "rows_unpacked": int(after["rows_unpacked"] - int(before.get("rows_unpacked", 0))),
         "unpack_s": float(after["unpack_s"] - float(before.get("unpack_s", 0.0))),
     }
+
+def _share_vector_for_all_nodes_pss(values, n_nodes, t, field_size, pss, scale, packing_factor):
+    secrets = [int(v * scale) % field_size for v in values]
+    chunks = pss.share_vector(secrets, n_nodes, t, packing_factor=int(packing_factor))
+    per_node = [[] for _ in range(n_nodes)]
+    for chunk in chunks:
+        for s in chunk:
+            per_node[int(s.node_id) - 1].append(int(s.y))
+    return per_node
+
+
+def _row_to_share_list(row_vals, node_id: int):
+    return [Share(x=node_id, y=int(v), node_id=node_id) for v in row_vals]
+
+
+def _packed_row_to_share_list(
+    row_vals,
+    *,
+    node_id: int,
+    original_len: int,
+    packing_factor: int,
+    packed_ops: PackedMPCOps,
+    context_prefix: str,
+    timeout_s: float = 120.0,
+):
+    if packed_ops is None:
+        raise ValueError("packed_ops is required to unpack packed PSS rows")
+    out = []
+    remaining = int(original_len)
+    for chunk_idx, packed_y in enumerate(row_vals):
+        k_cur = min(int(packing_factor), max(0, remaining))
+        if k_cur <= 0:
+            break
+        packed_share = Share(x=int(node_id), y=int(packed_y), node_id=int(node_id))
+        lanes = packed_ops.unpack_packed_to_lane_shares(
+            packed_share=packed_share,
+            k=int(k_cur),
+            context=f"{context_prefix}_c{chunk_idx}",
+            timeout=float(timeout_s),
+        )
+        out.extend(lanes[:k_cur])
+        remaining -= k_cur
+    if len(out) != int(original_len):
+        raise ValueError(
+            f"Packed row unpack mismatch: expected {int(original_len)} shares, got {len(out)}"
+        )
+    return out
+
+
+def _plaintext_vector_to_pss_lane_shares(
+    values,
+    *,
+    node_id: int,
+    n_nodes: int,
+    t: int,
+    field_size: int,
+    scale: int,
+    pss: PackedShamirSecretSharing,
+    packing_factor: int,
+    packed_ops: PackedMPCOps,
+    context_prefix: str,
+    timeout_s: float = 120.0,
+):
+    per_node_packed = _share_vector_for_all_nodes_pss(
+        values, n_nodes, t, field_size, pss, scale, packing_factor
+    )
+    local_packed_row = per_node_packed[int(node_id) - 1]
+    return _packed_row_to_share_list(
+        local_packed_row,
+        node_id=int(node_id),
+        original_len=int(len(values)),
+        packing_factor=int(packing_factor),
+        packed_ops=packed_ops,
+        context_prefix=context_prefix,
+        timeout_s=float(timeout_s),
+    )
+
+
+def _build_lane_cache_from_packed_rows(
+    *,
+    packed_rows: np.ndarray,
+    node_id: int,
+    original_len: int,
+    packing_factor: int,
+    packed_ops: PackedMPCOps,
+    context_prefix: str,
+    timeout_s: float = 120.0,
+    progress_every: int = 256,
+) -> list:
+    """
+    Pre-unpack packed PSS rows into lane-share rows once, then reuse across epochs/evals.
+    """
+    cache = []
+    total = int(len(packed_rows))
+    for i in range(total):
+        cache.append(
+            _packed_row_to_share_list(
+                packed_rows[int(i)],
+                node_id=int(node_id),
+                original_len=int(original_len),
+                packing_factor=int(packing_factor),
+                packed_ops=packed_ops,
+                context_prefix=f"{context_prefix}_r{i}",
+                timeout_s=float(timeout_s),
+            )
+        )
+        if int(progress_every) > 0 and (i % int(progress_every) == 0):
+            print(f"{context_prefix}: pre-unpacked row {i + 1}/{total}")
+    return cache
+
+
+def _get_or_unpack_cached_row(
+    *,
+    cache: Optional[dict],
+    idx: int,
+    packed_rows: np.ndarray,
+    node_id: int,
+    original_len: int,
+    packing_factor: int,
+    packed_ops: PackedMPCOps,
+    context_prefix: str,
+    timeout_s: float = 120.0,
+) -> list:
+    """
+    Lazy packed-row unpack with memoization by sample index.
+    """
+    if cache is not None and int(idx) in cache:
+        return cache[int(idx)]
+    row = _packed_row_to_share_list(
+        packed_rows[int(idx)],
+        node_id=int(node_id),
+        original_len=int(original_len),
+        packing_factor=int(packing_factor),
+        packed_ops=packed_ops,
+        context_prefix=f"{context_prefix}_r{int(idx)}",
+        timeout_s=float(timeout_s),
+    )
+    if cache is not None:
+        cache[int(idx)] = row
+    return row
+
+
+def _get_or_unpack_cached_rows(
+    *,
+    cache: Optional[dict],
+    indices: list,
+    packed_rows: np.ndarray,
+    node_id: int,
+    original_len: int,
+    packing_factor: int,
+    packed_ops: PackedMPCOps,
+    context_prefix: str,
+    timeout_s: float = 120.0,
+    metrics: Optional[dict] = None,
+    metrics_key: str = "default",
+) -> List[List[Share]]:
+    """
+    Batch version of lazy unpack: unpack only cache misses, in one amortized call.
+    """
+    idx_list = [int(i) for i in indices]
+    out: List[Optional[List[Share]]] = [None] * len(idx_list)
+    misses: List[int] = []
+    miss_pos: List[int] = []
+    for pos, idx in enumerate(idx_list):
+        if cache is not None and idx in cache:
+            out[pos] = cache[idx]
+            if metrics is not None:
+                m = metrics.setdefault(
+                    metrics_key,
+                    {"hits": 0, "misses": 0, "batch_calls": 0, "rows_unpacked": 0, "unpack_s": 0.0},
+                )
+                m["hits"] = int(m.get("hits", 0)) + 1
+        else:
+            misses.append(idx)
+            miss_pos.append(pos)
+    if misses:
+        if metrics is not None:
+            m = metrics.setdefault(
+                metrics_key,
+                {"hits": 0, "misses": 0, "batch_calls": 0, "rows_unpacked": 0, "unpack_s": 0.0},
+            )
+            m["misses"] = int(m.get("misses", 0)) + int(len(misses))
+            m["batch_calls"] = int(m.get("batch_calls", 0)) + 1
+        _t_unpack0 = time.time()
+        miss_rows = [packed_rows[m] for m in misses]
+        unpacked = packed_ops.unpack_packed_rows_to_lane_rows(
+            packed_rows=miss_rows,
+            original_len=int(original_len),
+            packing_factor=int(packing_factor),
+            context=f"{context_prefix}_batch",
+            timeout=float(timeout_s),
+        )
+        if metrics is not None:
+            m = metrics[metrics_key]
+            m["rows_unpacked"] = int(m.get("rows_unpacked", 0)) + int(len(misses))
+            m["unpack_s"] = float(m.get("unpack_s", 0.0)) + float(time.time() - _t_unpack0)
+        for j, idx in enumerate(misses):
+            row = unpacked[j]
+            if cache is not None:
+                cache[idx] = row
+            out[miss_pos[j]] = row
+    if any(r is None for r in out):
+        raise ValueError("Batch lazy-unpack failed to populate all requested indices")
+    return out  # type: ignore[return-value]
+
+
+def _lazy_metrics_snapshot(metrics: Optional[dict], key: str) -> dict:
+    m = (metrics or {}).get(key, {})
+    return {
+        "hits": int(m.get("hits", 0)),
+        "misses": int(m.get("misses", 0)),
+        "batch_calls": int(m.get("batch_calls", 0)),
+        "rows_unpacked": int(m.get("rows_unpacked", 0)),
+        "unpack_s": float(m.get("unpack_s", 0.0)),
+    }
+
+
+def _lazy_metrics_delta(metrics: Optional[dict], key: str, before: dict) -> dict:
+    after = _lazy_metrics_snapshot(metrics, key)
+    return {
+        "hits": int(after["hits"] - int(before.get("hits", 0))),
+        "misses": int(after["misses"] - int(before.get("misses", 0))),
+        "batch_calls": int(after["batch_calls"] - int(before.get("batch_calls", 0))),
+        "rows_unpacked": int(after["rows_unpacked"] - int(before.get("rows_unpacked", 0))),
+        "unpack_s": float(after["unpack_s"] - float(before.get("unpack_s", 0.0))),
+    }
+
 
 def _wait_for_vector_from_sender(network, context: str, sender_id: int, timeout_s: float):
     start = time.time()
@@ -692,7 +918,7 @@ def evaluate_model(
         indices = np.arange(total_samples)
         np.random.shuffle(indices)
         indices = indices[:n_test_samples]
-
+    
     x_shares_cols = []
     if x_test_shared is not None:
         use_pss_storage = bool((dataset_meta or {}).get("use_pss_storage", False))
@@ -1765,6 +1991,9 @@ def main():
 
             if training_aborted:
                 break
+
+        if training_aborted:
+            break
 
         if training_aborted:
             break

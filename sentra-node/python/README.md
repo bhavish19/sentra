@@ -248,6 +248,7 @@ Stop existing processes before restarting with a fresh `--base-port`:
 
 Usually one node exited early. Check per-node logs and ensure all nodes use identical flags.
 
+<<<<<<< HEAD
 ### Slow integration tests on WSL (/mnt/c)
 
 On WSL, especially when running from `/mnt/c/...`, multi-node integration tests can be slow.
@@ -265,6 +266,8 @@ Packed MPC enforces the strict bound \(2(t + s - 1) < n_{active}\).
 In particular, equality is **unsafe**. Example: with `t=1`, `n_active=4`, `s=2` is invalid because \(2(1+2-1)=4\not<4\).
 The runner will cap `s` (packing factor) to a safe value automatically.
 
+=======
+>>>>>>> origin/main
 ### Client-side sharing (recommended)
 
 For real deployments, do not load raw MNIST on any training node.

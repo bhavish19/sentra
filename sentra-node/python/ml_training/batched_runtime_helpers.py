@@ -133,8 +133,12 @@ def run_epoch_eval_and_stability_checks(
             print("[WARN] Aborting training due to instability thresholds.")
             return prev_epoch_loss, instability_detected, True
 
+<<<<<<< HEAD
     # Shared test tensors: all nodes must run evaluate (packed unpack); only owner has y_test_plain.
     if epoch % 1 == 0 and (y_test_plain is not None or test_x_shares is not None):
+=======
+    if epoch % 1 == 0 and y_test_plain is not None:
+>>>>>>> origin/main
         acc, loss, diag = evaluate_fn(
             model,
             weights,

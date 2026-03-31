@@ -14,9 +14,18 @@ import re
 import subprocess
 import sys
 import time
+<<<<<<< HEAD
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+=======
+import os
+import json
+import datetime
+import re
+from pathlib import Path
+import math
+>>>>>>> origin/main
 from start_all_nodes_cli import parse_and_validate_args
 
 try:
@@ -27,6 +36,7 @@ except Exception:  # pragma: no cover
 ProcEntry = Tuple[int, subprocess.Popen]
 
 
+<<<<<<< HEAD
 def _build_node_command(args, node_id: int) -> List[str]:
     cmd: List[str] = [
         sys.executable,
@@ -147,6 +157,87 @@ def _build_node_command(args, node_id: int) -> List[str]:
     if bool(getattr(args, "use_weight_versioning", False)):
         cmd.append("--use-weight-versioning")
 
+=======
+def _build_node_command(args, node_id):
+    """Build command for a node process."""
+    cmd = [
+        sys.executable,
+        '-u',
+        'run_mnist_batched_secure.py',
+        '--node-id', str(node_id),
+        '--n-nodes', str(args.n_nodes),
+        '--base-port', str(args.base_port),
+        '--host', str(args.host),
+        '--batch-size', str(args.batch_size),
+        '--num-epochs', str(args.num_epochs),
+        '--learning-rate', str(args.learning_rate),
+        '--t', str(args.t),
+        '--seed', str(args.seed),
+        '--mnist-samples', str(args.mnist_samples),
+        '--enable-network',
+    ]
+    cmd.extend([
+        '--accum-steps', str(args.accum_steps),
+        '--loss-mode', str(args.loss_mode),
+        '--scale-factor', str(args.scale_factor),
+        '--field-size', str(args.field_size),
+        '--softmax-temperature', str(args.softmax_temperature),
+        '--grad-clip', str(args.grad_clip),
+        '--logit-clip', str(args.logit_clip),
+        '--exp-approx', str(args.exp_approx),
+        '--softmax-grad-mode', str(args.softmax_grad_mode),
+        '--explode-logit-threshold', str(args.explode_logit_threshold),
+        '--loss-growth-threshold', str(args.loss_growth_threshold),
+        '--grad-norm-threshold', str(args.grad_norm_threshold),
+    ])
+    if args.distribute_dataset_shares:
+        cmd.extend([
+            '--distribute-dataset-shares',
+            '--dataset-owner-node', str(args.dataset_owner_node),
+            '--dataset-distribution-timeout', str(args.dataset_distribution_timeout),
+        ])
+    if args.receive_dataset_shares_from_client:
+        cmd.extend([
+            '--receive-dataset-shares-from-client',
+            '--dataset-source-node-id', str(args.dataset_source_node_id),
+            '--dataset-distribution-timeout', str(args.dataset_distribution_timeout),
+        ])
+        if args.client_eval_after_training:
+            cmd.extend([
+                '--client-eval-after-training',
+                '--client-eval-samples', str(args.client_eval_samples),
+            ])
+    if args.export_reconstructed_model:
+        cmd.extend([
+            '--export-reconstructed-model', str(args.export_reconstructed_model),
+            '--export-timeout', str(args.export_timeout),
+        ])
+    if args.no_abort_on_instability:
+        cmd.append('--no-abort-on-instability')
+    if args.debug_numerics:
+        cmd.append('--debug-numerics')
+    if args.debug_division:
+        cmd.append('--debug-division')
+    if args.packed_forward_pilot:
+        cmd.append('--packed-forward-pilot')
+    if args.packed_forward_native:
+        cmd.append('--packed-forward-native')
+    if args.packed_end2end:
+        cmd.append('--packed-end2end')
+    if args.dpss_refresh_interval > 0:
+        cmd.extend(['--dpss-refresh-interval', str(args.dpss_refresh_interval)])
+    cmd.extend(['--membership-epoch', str(args.membership_epoch)])
+    if args.enable_failure_detection:
+        cmd.append('--enable-failure-detection')
+    if getattr(args, "enable_dropout_reshare_recovery", False):
+        cmd.append('--enable-dropout-reshare-recovery')
+    if getattr(args, "enable_join_recovery", False):
+        cmd.append('--enable-join-recovery')
+    if getattr(args, "use_kvs_dataset", False):
+        cmd.append('--use-kvs-dataset')
+    if getattr(args, "use_weight_versioning", False):
+        cmd.append('--use-weight-versioning')
+>>>>>>> origin/main
     return cmd
 
 
@@ -292,6 +383,7 @@ def _run_headless(args) -> None:
             "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
             "status": status,
             "duration_sec": duration,
+<<<<<<< HEAD
             "n_nodes": int(args.n_nodes),
             "dataset": str(args.dataset),
             "train_mode": "secure",
@@ -307,6 +399,44 @@ def _run_headless(args) -> None:
             "final_epoch_acc_pct": m1.get("final_epoch_acc_pct", ""),
             "final_epoch_loss": m1.get("final_epoch_loss", ""),
             "reconstructed_acc": client_acc if client_acc is not None else "",
+=======
+            "duration_min": round(duration / 60.0, 3),
+            "n_nodes": args.n_nodes,
+            "dataset": args.dataset,
+            "batched": bool(args.batched),
+            "train_mode": "secure",
+            "loss_mode": args.loss_mode,
+            "softmax_grad_mode": args.softmax_grad_mode,
+            "num_epochs": args.num_epochs,
+            "batch_size": args.batch_size,
+            "learning_rate": args.learning_rate,
+            "field_size": args.field_size,
+            "scale_factor": args.scale_factor,
+            "softmax_temperature": args.softmax_temperature,
+            "grad_clip": args.grad_clip,
+            "logit_clip": args.logit_clip,
+            "seed": args.seed,
+            "final_epoch_acc_pct": chosen.get("last_epoch_acc_pct", ""),
+            "final_epoch_loss": chosen.get("last_epoch_loss", ""),
+            "reconstructed_acc": reconstructed_acc if reconstructed_acc is not None else "",
+            "node_success_count": success_count,
+            "node_elapsed_sec": json.dumps(node_elapsed),
+            "prover_time_sec": prover_time_sec if prover_time_sec is not None else "",
+            "avg_batch_time_sec": avg_batch_time_sec if avg_batch_time_sec is not None else "",
+            "max_batch_time_sec": max_batch_time_sec if max_batch_time_sec is not None else "",
+            "dataset_share_prep_time_sec": dataset_share_prep_time_sec if dataset_share_prep_time_sec is not None else "",
+            "training_time_sec": training_time_sec if training_time_sec is not None else "",
+            "client_distribution_time_sec": client_metrics.get("client_distribution_time_sec", ""),
+            "client_eval_time_sec": client_metrics.get("client_eval_time_sec", ""),
+            "client_eval_upload_time_sec": client_eval_upload_time_sec if client_eval_upload_time_sec is not None else "",
+            "memory_baseline_mb": total_base_mb if total_base_mb is not None else "",
+            "memory_peak_mb": total_peak_mb if total_peak_mb is not None else "",
+            "memory_overhead_mb": total_overhead_mb if total_overhead_mb is not None else "",
+            "node_memory_baseline_mb": json.dumps({k: round(v / mb, 3) for k, v in node_mem_baseline.items()}),
+            "node_memory_peak_mb": json.dumps({k: round(v / mb, 3) for k, v in node_mem_peak.items()}),
+            "node_memory_overhead_mb": json.dumps({k: round(v / mb, 3) for k, v in node_mem_overhead.items()}),
+            "node_return_codes": json.dumps(return_codes),
+>>>>>>> origin/main
             "log_dir": str(run_dir),
             "command": " ".join(sys.argv),
         }
@@ -314,9 +444,45 @@ def _run_headless(args) -> None:
         print(f"  recorded_to_xlsx: {recorded}")
 
 
+<<<<<<< HEAD
 def main() -> None:
     args = parse_and_validate_args()
     if bool(getattr(args, "record_results_xlsx", "")) and not bool(getattr(args, "headless", False)):
+=======
+def main():
+    args = parse_and_validate_args()
+        
+    print("=" * 70)
+    print("Starting SENTRA Multi-Node Training")
+    print("=" * 70)
+    print(f"Total nodes: {args.n_nodes}")
+    print(f"Base port: {args.base_port}")
+    print(f"Host: {args.host}")
+    print(f"Training: epochs={args.num_epochs}, batch_size={args.batch_size}, lr={args.learning_rate}")
+    if args.batched:
+        print(f"Batched secure config: field={args.field_size}, scale={args.scale_factor}, temp={args.softmax_temperature}, grad_clip={args.grad_clip}, logit_clip={args.logit_clip}, exp={args.exp_approx}, grad_mode={args.softmax_grad_mode}, loss_mode={args.loss_mode}")
+        print(f"Batch config: batch_size={args.batch_size}, accum_steps={args.accum_steps}, effective_batch={args.batch_size * args.accum_steps}")
+        if args.distribute_dataset_shares:
+            print(f"Dataset sharing mode: owner-node (owner={args.dataset_owner_node})")
+        elif args.receive_dataset_shares_from_client:
+            print(f"Dataset sharing mode: external client sender (source_node_id={args.dataset_source_node_id})")
+        if args.client_eval_after_training:
+            print(f"Client-side eval after training: enabled ({args.client_eval_samples} samples)")
+        print(f"Membership epoch: e={args.membership_epoch} (prefix m{args.membership_epoch}_)")
+        print(f"Instability thresholds: logit={args.explode_logit_threshold}, loss_growth={args.loss_growth_threshold}, grad_norm={args.grad_norm_threshold}, abort={not args.no_abort_on_instability}")
+        print(
+            f"Debug flags: numerics={args.debug_numerics}, division={args.debug_division}, "
+            f"packed_forward_pilot={args.packed_forward_pilot}, "
+            f"packed_forward_native={args.packed_forward_native}, "
+            f"packed_end2end={args.packed_end2end}"
+        )
+    print(f"Thresholds: t={args.t}")
+    print(f"Dataset: {args.dataset}")
+    print("=" * 70)
+    print()
+
+    if args.record_results_xlsx and not args.headless:
+>>>>>>> origin/main
         print("Enabling --headless because --record-results-xlsx was provided.")
         args.headless = True
     if bool(getattr(args, "headless", False)):

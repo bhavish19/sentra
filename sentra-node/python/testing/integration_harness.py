@@ -1,14 +1,22 @@
+<<<<<<< HEAD
 import os
+=======
+>>>>>>> origin/main
 import subprocess
 import sys
 import time
 from pathlib import Path
+<<<<<<< HEAD
 from typing import Iterable, List, Optional, Sequence, Tuple
+=======
+from typing import Iterable, List, Sequence, Tuple
+>>>>>>> origin/main
 
 
 ProcEntry = Tuple[int, subprocess.Popen]
 
 
+<<<<<<< HEAD
 def integration_timeout_seconds() -> float:
     """
     Wall-clock budget for multi-node subprocess integration tests.
@@ -59,6 +67,8 @@ def wait_all_processes(
             time.sleep(float(poll_interval_s))
 
 
+=======
+>>>>>>> origin/main
 def _cleanup_legacy_backslash_tmp_bench_entries(log_dir: Path) -> None:
     """
     Remove legacy artifacts accidentally created as filenames containing backslashes,
