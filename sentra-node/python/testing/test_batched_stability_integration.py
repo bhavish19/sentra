@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from testing.integration_harness import integration_timeout_seconds, wait_all_processes
 
 
 @pytest.mark.integration
@@ -17,6 +18,8 @@ def test_batched_mnist_does_not_logit_explode():
     - launch 3 local nodes
     - run 2 epochs on a small subset
     - assert diagnostics remain bounded and no explosion warning appears
+
+    Uses owner-only MNIST load to reduce Keras dataset lock contention (WSL /mnt/c).
     """
     root = Path(__file__).resolve().parents[1]
     log_dir = root / "testing" / "tmp_bench"
@@ -32,6 +35,9 @@ def test_batched_mnist_does_not_logit_explode():
         "--t",
         "1",
         "--enable-network",
+        "--distribute-dataset-shares",
+        "--dataset-owner-node",
+        "1",
         "--base-port",
         str(base_port),
         "--host",
@@ -65,10 +71,7 @@ def test_batched_mnist_does_not_logit_explode():
                 procs.append(p)
             time.sleep(0.4)
 
-        deadline = time.time() + 420.0
-        for p in procs:
-            remaining = max(1.0, deadline - time.time())
-            p.wait(timeout=remaining)
+        wait_all_processes(procs, timeout_sec=integration_timeout_seconds())
 
         for p in procs:
             assert p.returncode == 0, f"Node process failed with code {p.returncode}"

@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from tensorflow.keras.datasets import mnist
+from testing.integration_harness import integration_timeout_seconds, wait_all_processes
 
 
 def _run_plaintext_reference(*, seed: int, epochs: int, batch_size: int, n_train: int, n_test: int, lr: float) -> float:
@@ -109,6 +110,9 @@ def test_batched_secure_accuracy_within_plaintext_tolerance():
         "--n-nodes", "3",
         "--t", "1",
         "--enable-network",
+        "--distribute-dataset-shares",
+        "--dataset-owner-node",
+        "1",
         "--base-port", str(base_port),
         "--host", "localhost",
         "--batch-size", str(batch_size),
@@ -136,9 +140,8 @@ def test_batched_secure_accuracy_within_plaintext_tolerance():
                 procs.append(p)
             time.sleep(0.4)
 
-        deadline = time.time() + 420.0
+        wait_all_processes(procs, timeout_sec=integration_timeout_seconds())
         for p in procs:
-            p.wait(timeout=max(1.0, deadline - time.time()))
             assert p.returncode == 0
 
         node1_log = (log_dir / "node1_strict_tol.log").read_text(encoding="utf-8", errors="ignore")
