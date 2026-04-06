@@ -12,6 +12,7 @@ service TCPProxyService {
 
 message RegisterRequest {
     string node_id = 1;
+    string node_grpc_url=2;
 }
 
 message RegisterResponse {
