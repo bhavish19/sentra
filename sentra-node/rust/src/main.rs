@@ -110,7 +110,7 @@ fn main()
                     String::from("Unknown")
                 }
         };
-    sentra_node.grpc_url="http://"+sentra_node.node_id+":50051";
+    sentra_node.grpc_url="http://".to_owned()+&sentra_node.node_id+":50051";
     CryptoProvider::install_default(aws_lc_rs::default_provider()).expect("Failed to install crypto provider");
     let mut grpc_cert:Option<String>=None;
     let mut _grpc_key:Option<String>=None;
