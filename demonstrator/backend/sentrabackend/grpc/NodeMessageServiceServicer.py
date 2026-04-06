@@ -148,7 +148,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                         else:
                             log(f"Node {node_id} failed verification")
                             break
-                    if node_message.HasField('python'):
+                    elif node_message.HasField('python_msg'):
                         log("received python message")
                         # pass to tcp proxy
                     else:

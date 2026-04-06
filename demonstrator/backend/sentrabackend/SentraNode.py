@@ -55,6 +55,9 @@ class SentraNode:
 
     def getSendQueue(self)-> asyncio.Queue[object]:
         return self.m_sendQueue
+    
+    def getGRPC_URL(self)->str:
+        return self.m_strInterNodeCommunicationGRPC_URL
 
     def getOperatorName(self)->str:
         return self.m_nodeGenerator.getOpertor(self.m_iOperator)
@@ -69,6 +72,7 @@ class SentraNode:
             return {
                 'node_id':self.m_strNodeID,
                 'host':self.getHostName(),
+                'grpc_url':self.getGRPC_URL(),
                 'operator':self.getOperatorName(),
                 'cpu':self.getCPUName(),
                 'attested':self.m_bVerified

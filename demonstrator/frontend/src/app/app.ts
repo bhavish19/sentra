@@ -12,7 +12,7 @@ import { RestService, SentraNode } from '../rest.service';
 export class App {
 
   // Define which columns to display
-  displayedColumns: string[] = ['node_id','host','cpu', 'operator','attested'];
+  displayedColumns: string[] = ['node_id','host','grpc_url','cpu', 'operator','attested'];
   dataSource = new MatTableDataSource<SentraNode>([]);
   protected readonly title = signal('frontend');
 

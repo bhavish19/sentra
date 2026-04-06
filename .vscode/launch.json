@@ -21,6 +21,20 @@
             "env": {
                     "PYTHONPATH": "${workspaceFolder}/sentra-node/python"
                 }
+        },
+        {
+            "name": "Backend (Pebble on Edge Cloud)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/demonstrator/backend/sentra-backend.py",
+            "args": ["--use-acme","--acme-host","10.80.1.54",
+            "--training-config","${workspaceFolder}/demonstrator/backend/config/client_config.yaml",
+        "--acme-server-certificate","${workspaceFolder}/demonstrator/ci/docker/config/pebble/pebble.cer",
+    "--fake-attestation"],
+            "console": "integratedTerminal",
+            "env": {
+                    "PYTHONPATH": "${workspaceFolder}/sentra-node/python"
+                }
         }
 
     ]
