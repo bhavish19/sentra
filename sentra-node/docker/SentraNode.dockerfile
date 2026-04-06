@@ -26,7 +26,7 @@ COPY ./sentra-node/python/ml_training /sentra/ml_training/
 COPY ./sentra-node/docker/node_config.yaml /sentra/
 COPY ./sentra-node/docker/training_config.yaml /sentra/
 COPY ./sentra-node/python/run_mnist_batched_secure.py /sentra/
-COPY ./demonstrator/backend/sentrabackend/client_config.yaml /sentra/
+COPY ./demonstrator/backend/config/client_config.yaml /sentra/
 
 #Build attester
 #Just update crates.io (and cache it...)
