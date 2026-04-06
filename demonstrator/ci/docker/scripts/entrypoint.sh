@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Parse command-line arguments
 PEBBLE_ONLY=false
 
@@ -7,7 +7,10 @@ while [[ $# -gt 0 ]]; do
         -pebble_only)
             PEBBLE_ONLY=true
             shift 1
-            ;;            
+            ;;
+        *)
+            shift 1
+            ;;
     esac
 done
 
