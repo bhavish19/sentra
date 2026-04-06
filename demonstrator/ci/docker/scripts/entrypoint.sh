@@ -1,6 +1,7 @@
 #!/bin/bash
 # Parse command-line arguments
 PEBBLE_ONLY=false
+args=("$@") # Save command line args
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -14,6 +15,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+set -- "${args[@]}" #Restore command line args
 
 export PEBBLE_CHAIN_LENGTH=1
 export PEBBLE_VA_ALWAYS_VALID=1
