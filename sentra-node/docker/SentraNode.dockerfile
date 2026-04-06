@@ -23,7 +23,6 @@ COPY ./sentra-node/docker/sentra-node-sbom.yaml /
 RUN mkdir /sentra
 RUN mkdir /sentra/ml_training
 COPY ./sentra-node/python/ml_training /sentra/ml_training/
-COPY ./sentra-node/python/pyproject.toml /sentra/
 COPY ./sentra-node/docker/node_config.yaml /sentra/
 COPY ./sentra-node/docker/training_config.yaml /sentra/
 COPY ./sentra-node/python/run_mnist_batched_secure.py /sentra/
@@ -55,26 +54,13 @@ COPY ./demonstrator/ci/docker/config/pebble/pebble.cer /sentra-node/rust/
 COPY ./sentra-node/docker/enclave_run_script.sh /
 
 WORKDIR /sentra
-#RUN /python-occlum/bin/pip install .
 
 RUN occlum new /occlum-instance
 RUN rm -rf /occlum-instance/image
 WORKDIR /occlum-instance
 
 RUN mkdir -p ./image
-
-# 1. Check python binary exists in conda env
-RUN ls -la /python-occlum/bin/python*
-
-# 2. Check your script exists before copy_bom
-RUN ls -la /sentra/run_mnist_batched_secure.py
-
-
 RUN copy_bom -f /sentra-node-sbom.yaml --root image --include-dir /opt/occlum/etc/template
-
-# 3. After copy_bom, check enclave image
-RUN find /occlum-instance/image -name "python*" | sort
-RUN find /occlum-instance/image -name "run_mnist*" | sort
 
 RUN new_json="$(jq '.metadata.debuggable=false \
     |.feature.enable_edmm=true \
@@ -89,8 +75,6 @@ RUN new_json="$(jq '.metadata.debuggable=false \
 RUN ENABLE_EDMM=Y occlum build
 RUN occlum package --debug occlum-instance.tar.gz
 
-#FROM mikefarah/yq:latest AS yq-source
-
 #---------------------------------------------------------------------
 # TARGET IMAGE
 #---------------------------------------------------------------------
@@ -98,19 +82,13 @@ FROM $BASE_IMAGE_RT AS sentra
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Berlin
 
-#COPY --from=yq-source /usr/bin/yq /usr/bin
-
-
 RUN echo 'deb [arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu jammy main' | tee /etc/apt/sources.list.d/intel-sgx.list
 
 RUN apt-get update && apt-get install -y \
 sgx-aesm-service=2.21.100.1-jammy1 wait-for-it
 
-
-#COPY --from=sentra-builder /opt/occlum/start_aesm.sh /opt/occlum/
 COPY ./sentra-node/docker/entrypoint.sh /
 COPY ./sentra-node/docker/sgx_sentra_qcnl.conf /etc/sgx_default_qcnl.conf
-#RUN mkdir -p /var/run/aesmd
 
 COPY --from=sentra-builder /occlum-instance/occlum-instance.tar.gz /
 
