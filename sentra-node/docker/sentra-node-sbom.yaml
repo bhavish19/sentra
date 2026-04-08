@@ -36,7 +36,6 @@ targets:
      - files:
         - /sentra-node/rust/pebble.cer
         - /sentra/training_config.yaml
-        - /sentra/client_config.yaml
 
  # copy lib
 #  - target: /opt/occlum/glibc/lib
