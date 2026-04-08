@@ -94,4 +94,4 @@ services:
     profiles:
       - test
       - mnist_batched_secure
-
+      - mnist_batched_secure-no-sgx
