@@ -41,6 +41,15 @@ impl Default for SentraNode {
 
 impl SentraNode
 {
+    fn startPythonCode(&self)
+    {
+        let child = Command::new("/bin/python3")
+        .arg("/bin/sentra/InterNodeCommunicationTest.py") 
+        .spawn() // Spawns the process without waiting for it to finish
+        .expect("Failed to start Python script");
+        println!("Python script is running in the background!");
+    }
+
     fn handle_join_committee_message(&self,committee:&Vec<TGrpcSentraNode>)
     {
         for node in committee
@@ -49,6 +58,7 @@ impl SentraNode
         }
         println!("{}",self.committee);
         self.committee.establish_connections();
+        self.startPythonCode();
     }
 
     fn handle_server_message(&self,server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>,fake_attestation:bool) {

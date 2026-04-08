@@ -30,7 +30,7 @@
                 }
         },
         {
-            "name": "Inter Sentra nNode Communication Test",
+            "name": "Inter Sentra Node Communication Test",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/sentra-node/python/communication_test/InterNodeCommunicationTest.py",
