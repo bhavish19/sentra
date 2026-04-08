@@ -89,3 +89,9 @@ Network Communication
 .. image:: figures/sentra_network_comm.svg
    :class: with-border
    :alt: Network Communication in Sentra
+
+The communication of the Python-based ML part of each Sentra node and the Sentra client happens through proxies. These proxies are part of the Backend code and the Rust-based Sentra Node client. 
+Thereby each Sentra node which is part of the committee gets a dedicate port on the proxy assigned.
+The port number is assigned starting from a configurable base port value. This value is incremented for every Sentra node which is part of the committee. 
+To make the port assignment deterministic on each Sentra node, the committee list is sorted in ascending order.
+Thereby the node_id is used a sorting criteria.
