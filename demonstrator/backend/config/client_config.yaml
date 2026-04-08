@@ -1,8 +1,0 @@
-n-nodes: 8
-t: 1
-base-port: 9600
-host: localhost
-mnist-samples: 10000
-client-test-samples: 100
-field-size: 2305843009213693951
-scale-factor: 65536
