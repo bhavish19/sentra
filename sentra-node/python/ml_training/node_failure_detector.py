@@ -188,6 +188,28 @@ class NodeFailureDetector:
     def register_failure_callback(self, callback: Callable[[List[int]], None]):
         """Register callback for node failure events"""
         self.failure_callbacks.append(callback)
+
+    def mark_peer_failed_immediate(self, peer_id: int) -> None:
+        """
+        Mark peer_id failed without waiting for heartbeat timeout (e.g. send() got connection reset).
+        Removes peer from active_nodes and invokes failure callbacks once.
+        """
+        if int(peer_id) == int(self.network.node_id):
+            return
+        failed: List[int] = []
+        with self.lock:
+            if int(peer_id) in self.active_nodes:
+                self.active_nodes.discard(int(peer_id))
+                failed.append(int(peer_id))
+        if not failed:
+            return
+        fs = set(failed)
+        print(f"Node {self.network.node_id}: Detected {len(fs)} failed node(s): {fs}")
+        for callback in self.failure_callbacks:
+            try:
+                callback(list(fs))
+            except Exception as e:
+                print(f"Error in failure callback: {e}")
     
     def register_recovery_callback(self, callback: Callable[[List[int]], None]):
         """Register callback for node recovery events"""

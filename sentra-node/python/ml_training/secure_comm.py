@@ -78,7 +78,9 @@ class SecureChannel:
         self.received_vectors: Dict[str, Dict[int, Dict[str, Any]]] = {}
         self.lock = threading.Lock()
         self.message_counter = 0
-    
+        # Optional callback(peer_id) when a send to peer_id fails (e.g. connection reset).
+        self.on_send_failure: Optional[Callable[[int], None]] = None
+
     def start_server(self):
         """Start listening server for incoming connections"""
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -225,6 +227,11 @@ class SecureChannel:
                 if stale is sock:
                     self.connections.pop(target_node_id, None)
             print(f"Error sending message to node {target_node_id}: {e}")
+            if self.on_send_failure is not None:
+                try:
+                    self.on_send_failure(int(target_node_id))
+                except Exception:
+                    pass
             raise
 
     def send_message_with_binary(
@@ -238,8 +245,10 @@ class SecureChannel:
         Send a message whose header is JSON (length-prefixed) followed by a raw binary payload.
         This avoids base64/JSON for large vectors.
         """
-        if target_node_id not in self.connections:
-            raise ValueError(f"No connection to node {target_node_id}")
+        with self.lock:
+            if target_node_id not in self.connections:
+                raise ValueError(f"No connection to node {target_node_id}")
+            sock = self.connections[target_node_id]
 
         self.message_counter += 1
         # Include payload length in the JSON header so receiver knows how many bytes to read.
@@ -255,13 +264,21 @@ class SecureChannel:
         )
 
         try:
-            sock = self.connections[target_node_id]
             message_json = json.dumps(asdict(message))
             header_bytes = message_json.encode("utf-8")
             header_len = struct.pack(">I", len(header_bytes))
             sock.sendall(header_len + header_bytes + payload)
         except Exception as e:
+            with self.lock:
+                stale = self.connections.get(target_node_id)
+                if stale is sock:
+                    self.connections.pop(target_node_id, None)
             print(f"Error sending binary message to node {target_node_id}: {e}")
+            if self.on_send_failure is not None:
+                try:
+                    self.on_send_failure(int(target_node_id))
+                except Exception:
+                    pass
             raise
     
     def send_share(self, target_node_id: int, share: Share, context: str = "default"):

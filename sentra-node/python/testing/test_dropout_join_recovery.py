@@ -141,8 +141,8 @@ def test_dropout_recovery_packing_unsafe():
 @pytest.mark.slow
 def test_dropout_recovery_packing_safe():
     """
-    With n=4, t=1, s=1: killing node 4 leaves n_active=3.
-    Packing safe (2*(1+1-1)=2 < 3). Recovery should run and resume.
+    With n=4, t=1: capped packing s satisfies 2*(t+s-1) < n (typically s=1 for n=4).
+    Killing node 4 leaves n_active=3; packing remains safe. Recovery should run and resume.
     """
     if os.getenv("SENTRA_RUN_DROPOUT_JOIN_TESTS", "1") != "1":
         pytest.skip("Set SENTRA_RUN_DROPOUT_JOIN_TESTS=1 to run dropout/join recovery tests.")

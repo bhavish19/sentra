@@ -25,8 +25,8 @@ def get_max_safe_packing_factor(t: int, n_active: int, cap: int = 16) -> int:
     """
     if not check_packing_safety(t, 1, n_active):
         return 1
-    # 2*(t+s-1) < n_active  =>  2s < n_active - 2t + 2  =>  s < (n_active - 2t + 2) / 2
-    max_s = (n_active - 2 * t + 2) // 2
+    # Strict: 2*(t+s-1) < n_active  =>  s < (n_active - 2t + 2) / 2  =>  max s = floor((n_active - 2t + 1) / 2)
+    max_s = (n_active - 2 * t + 1) // 2
     return max(1, min(cap, max_s))
 
 

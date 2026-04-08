@@ -1,5 +1,0 @@
-{
-    "rust-analyzer.linkedProjects": [
-        "./sentra-node/rust/Cargo.toml"
-    ]
-}

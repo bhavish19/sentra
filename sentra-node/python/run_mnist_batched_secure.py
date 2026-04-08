@@ -43,12 +43,10 @@ from ml_training.sentra_kvs import put as kvs_put, get_batch as kvs_get_batch, k
 from ml_training.weight_versioning import put_weights_versioned
 from ml_training.kvs import KVSCluster
 from tensorflow import keras
-
 def load_mnist_data(max_samples=None):
     (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
     x_train = x_train.reshape(-1, 784).astype("float32") / 255.0
     x_test = x_test.reshape(-1, 784).astype("float32") / 255.0
-    
     if max_samples:
         x_train = x_train[:max_samples]
         y_train = y_train[:max_samples]
@@ -57,7 +55,6 @@ def load_mnist_data(max_samples=None):
         
     y_train_oh = keras.utils.to_categorical(y_train, 10)
     y_test_oh = keras.utils.to_categorical(y_test, 10)
-    
     return (x_train, y_train_oh), (x_test, y_test_oh)
 
 def image_to_shares(image_flat, n_nodes, t, node_id, field_size, shamir, scale):
@@ -86,6 +83,231 @@ def _share_vector_for_all_nodes(values, n_nodes, t, field_size, shamir, scale):
             per_node[s.node_id - 1].append(int(s.y))
     return per_node
 
+def _share_vector_for_all_nodes_pss(values, n_nodes, t, field_size, pss, scale, packing_factor):
+    secrets = [int(v * scale) % field_size for v in values]
+    chunks = pss.share_vector(secrets, n_nodes, t, packing_factor=int(packing_factor))
+    per_node = [[] for _ in range(n_nodes)]
+    for chunk in chunks:
+        for s in chunk:
+            per_node[int(s.node_id) - 1].append(int(s.y))
+    return per_node
+
+
+def _row_to_share_list(row_vals, node_id: int):
+    return [Share(x=node_id, y=int(v), node_id=node_id) for v in row_vals]
+
+
+def _packed_row_to_share_list(
+    row_vals,
+    *,
+    node_id: int,
+    original_len: int,
+    packing_factor: int,
+    packed_ops: PackedMPCOps,
+    context_prefix: str,
+    timeout_s: float = 120.0,
+):
+    if packed_ops is None:
+        raise ValueError("packed_ops is required to unpack packed PSS rows")
+    out = []
+    remaining = int(original_len)
+    for chunk_idx, packed_y in enumerate(row_vals):
+        k_cur = min(int(packing_factor), max(0, remaining))
+        if k_cur <= 0:
+            break
+        packed_share = Share(x=int(node_id), y=int(packed_y), node_id=int(node_id))
+        lanes = packed_ops.unpack_packed_to_lane_shares(
+            packed_share=packed_share,
+            k=int(k_cur),
+            context=f"{context_prefix}_c{chunk_idx}",
+            timeout=float(timeout_s),
+        )
+        out.extend(lanes[:k_cur])
+        remaining -= k_cur
+    if len(out) != int(original_len):
+        raise ValueError(
+            f"Packed row unpack mismatch: expected {int(original_len)} shares, got {len(out)}"
+        )
+    return out
+
+
+def _plaintext_vector_to_pss_lane_shares(
+    values,
+    *,
+    node_id: int,
+    n_nodes: int,
+    t: int,
+    field_size: int,
+    scale: int,
+    pss: PackedShamirSecretSharing,
+    packing_factor: int,
+    packed_ops: PackedMPCOps,
+    context_prefix: str,
+    timeout_s: float = 120.0,
+):
+    per_node_packed = _share_vector_for_all_nodes_pss(
+        values, n_nodes, t, field_size, pss, scale, packing_factor
+    )
+    local_packed_row = per_node_packed[int(node_id) - 1]
+    return _packed_row_to_share_list(
+        local_packed_row,
+        node_id=int(node_id),
+        original_len=int(len(values)),
+        packing_factor=int(packing_factor),
+        packed_ops=packed_ops,
+        context_prefix=context_prefix,
+        timeout_s=float(timeout_s),
+    )
+
+
+def _build_lane_cache_from_packed_rows(
+    *,
+    packed_rows: np.ndarray,
+    node_id: int,
+    original_len: int,
+    packing_factor: int,
+    packed_ops: PackedMPCOps,
+    context_prefix: str,
+    timeout_s: float = 120.0,
+    progress_every: int = 256,
+) -> list:
+    """
+    Pre-unpack packed PSS rows into lane-share rows once, then reuse across epochs/evals.
+    """
+    cache = []
+    total = int(len(packed_rows))
+    for i in range(total):
+        cache.append(
+            _packed_row_to_share_list(
+                packed_rows[int(i)],
+                node_id=int(node_id),
+                original_len=int(original_len),
+                packing_factor=int(packing_factor),
+                packed_ops=packed_ops,
+                context_prefix=f"{context_prefix}_r{i}",
+                timeout_s=float(timeout_s),
+            )
+        )
+        if int(progress_every) > 0 and (i % int(progress_every) == 0):
+            print(f"{context_prefix}: pre-unpacked row {i + 1}/{total}")
+    return cache
+
+
+def _get_or_unpack_cached_row(
+    *,
+    cache: Optional[dict],
+    idx: int,
+    packed_rows: np.ndarray,
+    node_id: int,
+    original_len: int,
+    packing_factor: int,
+    packed_ops: PackedMPCOps,
+    context_prefix: str,
+    timeout_s: float = 120.0,
+) -> list:
+    """
+    Lazy packed-row unpack with memoization by sample index.
+    """
+    if cache is not None and int(idx) in cache:
+        return cache[int(idx)]
+    row = _packed_row_to_share_list(
+        packed_rows[int(idx)],
+        node_id=int(node_id),
+        original_len=int(original_len),
+        packing_factor=int(packing_factor),
+        packed_ops=packed_ops,
+        context_prefix=f"{context_prefix}_r{int(idx)}",
+        timeout_s=float(timeout_s),
+    )
+    if cache is not None:
+        cache[int(idx)] = row
+    return row
+
+
+def _get_or_unpack_cached_rows(
+    *,
+    cache: Optional[dict],
+    indices: list,
+    packed_rows: np.ndarray,
+    node_id: int,
+    original_len: int,
+    packing_factor: int,
+    packed_ops: PackedMPCOps,
+    context_prefix: str,
+    timeout_s: float = 120.0,
+    metrics: Optional[dict] = None,
+    metrics_key: str = "default",
+) -> List[List[Share]]:
+    """
+    Batch version of lazy unpack: unpack only cache misses, in one amortized call.
+    """
+    idx_list = [int(i) for i in indices]
+    out: List[Optional[List[Share]]] = [None] * len(idx_list)
+    misses: List[int] = []
+    miss_pos: List[int] = []
+    for pos, idx in enumerate(idx_list):
+        if cache is not None and idx in cache:
+            out[pos] = cache[idx]
+            if metrics is not None:
+                m = metrics.setdefault(
+                    metrics_key,
+                    {"hits": 0, "misses": 0, "batch_calls": 0, "rows_unpacked": 0, "unpack_s": 0.0},
+                )
+                m["hits"] = int(m.get("hits", 0)) + 1
+        else:
+            misses.append(idx)
+            miss_pos.append(pos)
+    if misses:
+        if metrics is not None:
+            m = metrics.setdefault(
+                metrics_key,
+                {"hits": 0, "misses": 0, "batch_calls": 0, "rows_unpacked": 0, "unpack_s": 0.0},
+            )
+            m["misses"] = int(m.get("misses", 0)) + int(len(misses))
+            m["batch_calls"] = int(m.get("batch_calls", 0)) + 1
+        _t_unpack0 = time.time()
+        miss_rows = [packed_rows[m] for m in misses]
+        unpacked = packed_ops.unpack_packed_rows_to_lane_rows(
+            packed_rows=miss_rows,
+            original_len=int(original_len),
+            packing_factor=int(packing_factor),
+            context=f"{context_prefix}_batch",
+            timeout=float(timeout_s),
+        )
+        if metrics is not None:
+            m = metrics[metrics_key]
+            m["rows_unpacked"] = int(m.get("rows_unpacked", 0)) + int(len(misses))
+            m["unpack_s"] = float(m.get("unpack_s", 0.0)) + float(time.time() - _t_unpack0)
+        for j, idx in enumerate(misses):
+            row = unpacked[j]
+            if cache is not None:
+                cache[idx] = row
+            out[miss_pos[j]] = row
+    if any(r is None for r in out):
+        raise ValueError("Batch lazy-unpack failed to populate all requested indices")
+    return out  # type: ignore[return-value]
+
+
+def _lazy_metrics_snapshot(metrics: Optional[dict], key: str) -> dict:
+    m = (metrics or {}).get(key, {})
+    return {
+        "hits": int(m.get("hits", 0)),
+        "misses": int(m.get("misses", 0)),
+        "batch_calls": int(m.get("batch_calls", 0)),
+        "rows_unpacked": int(m.get("rows_unpacked", 0)),
+        "unpack_s": float(m.get("unpack_s", 0.0)),
+    }
+
+
+def _lazy_metrics_delta(metrics: Optional[dict], key: str, before: dict) -> dict:
+    after = _lazy_metrics_snapshot(metrics, key)
+    return {
+        "hits": int(after["hits"] - int(before.get("hits", 0))),
+        "misses": int(after["misses"] - int(before.get("misses", 0))),
+        "batch_calls": int(after["batch_calls"] - int(before.get("batch_calls", 0))),
+        "rows_unpacked": int(after["rows_unpacked"] - int(before.get("rows_unpacked", 0))),
+        "unpack_s": float(after["unpack_s"] - float(before.get("unpack_s", 0.0))),
+    }
 
 def _share_vector_for_all_nodes_pss(values, n_nodes, t, field_size, pss, scale, packing_factor):
     secrets = [int(v * scale) % field_size for v in values]
@@ -355,7 +577,7 @@ def prepare_distributed_dataset_shares(
     Owner node loads MNIST, secret-shares it, and distributes each node's shares.
     Non-owner nodes receive only their local share tensors.
     Returns:
-        train_x_shares, train_y_shares, test_x_shares, test_y_shares, x_test_plain_or_none, y_test_plain_or_none
+        train_x_shares, train_y_shares, test_x_shares, test_y_shares, x_test_plain_or_none, y_test_plain_or_none, meta
     """
     meta_ctx = me.ctx("dataset/meta/v1")
     if int(node_id) == int(owner_node_id):
@@ -374,8 +596,16 @@ def prepare_distributed_dataset_shares(
         local_test_x = np.zeros((n_test, feat_stored), dtype=np.uint64)
         local_test_y = np.zeros((n_test, cls_stored), dtype=np.uint64)
 
-        meta_payload = [n_train, n_test, feat_dim, cls_dim, 1 if pss_enabled else 0, pss_k, feat_stored, cls_stored]
-
+        meta_payload = [
+            n_train,
+            n_test,
+            feat_dim,
+            cls_dim,
+            1 if pss_enabled else 0,
+            pss_k,
+            feat_stored,
+            cls_stored,
+        ]
         for target in range(1, n_nodes + 1):
             if target == node_id:
                 continue
@@ -459,7 +689,6 @@ def prepare_distributed_dataset_shares(
             y_vals = _wait_for_vector_from_sender(network, y_ctx, int(owner_node_id), timeout_s)
             x_dst[idx, :] = _to_uint64_array(x_vals, feat_len)
             y_dst[idx, :] = _to_uint64_array(y_vals, cls_len)
-
             if idx % 512 == 0:
                 print(f"Node {node_id}: received {split_name} share sample {idx + 1}/{n_split}")
 
@@ -676,7 +905,6 @@ def evaluate_model(
     unpack_metrics: Optional[dict] = None,
 ):
     print(f"Evaluating on {n_test_samples} test samples (batched)...")
-    
     if x_test_shared is not None:
         total_samples = int(len(x_test_shared))
     elif x_test is not None:
@@ -750,8 +978,14 @@ def evaluate_model(
                 x_shares_cols.append(image_to_shares(x_test[i], n_nodes, t, node_id, field_size, shamir, scale))
         
     # Forward Pass Batched
-    logits_cols, _ = model.forward_pass_batched(x_shares_cols, weights, node_id, context=context_prefix, open_relu=True, reconstruction_manager=reconstruction)
-    
+    logits_cols, _ = model.forward_pass_batched(
+        x_shares_cols,
+        weights,
+        node_id,
+        context=context_prefix,
+        open_relu=True,
+        reconstruction_manager=reconstruction,
+    )
     correct = 0
     loss_sum = 0.0
     max_abs_logit = 0.0
@@ -766,14 +1000,12 @@ def evaluate_model(
                 eval_ctx = f"{context_prefix}_logit_{i}_{j}"
                 val = reconstruction.get_reconstructed_value([share], eval_ctx, use_cache=False)
                 logits_val.append(val)
-            
             if node_id == 1:
                 logits_float = []
                 for v in logits_val:
                     if v > field_size / 2:
                         v = v - field_size
                     logits_float.append(v / scale)
-                
                 if i == 0:
                     print(f"DEBUG EVAL LOGITS: {logits_float}")
 
@@ -795,7 +1027,6 @@ def evaluate_model(
                 true_label = np.argmax(y_test[indices[i]])
                 if pred == true_label:
                     correct += 1
-                    
         if node_id == 1:
             denom = max(1, int(n_test_samples))
             diagnostics = {
@@ -882,8 +1113,6 @@ def _dpss_refresh_weights(
         barrier_fn=barrier_fn,
     )
     return _flat_ys_to_weights(new_ys, node_id, model.get_weight_shapes())
-
-
 def _shares_to_flat_mod_p(shares_like, p: int) -> np.ndarray:
     vals = []
     if isinstance(shares_like, list) and shares_like and isinstance(shares_like[0], list):
@@ -902,7 +1131,6 @@ def _mod_p_to_float(arr_u64: np.ndarray, p: int, scale: int) -> np.ndarray:
     signed = arr_u64.astype(np.int64, copy=False)
     signed = np.where(signed > (p // 2), signed - p, signed)
     return signed.astype(np.float64) / float(scale)
-
 
 def _prepare_training_batch_inputs(
     *,
@@ -1082,8 +1310,6 @@ def _prepare_training_batch_inputs(
                 )
 
     return x_shares_cols, y_shares_cols, packed_batch_payload
-
-
 def export_reconstructed_model(
     *,
     weights: list,
@@ -1275,6 +1501,7 @@ def main():
     parser.add_argument('--use-weight-versioning', action='store_true',
                         help='Store weight shares to local KVS with v_theta after each epoch.')
     args = parser.parse_args()
+    
 
     if bool(args.enable_dropout_reshare_recovery):
         if not bool(args.enable_failure_detection):
@@ -1391,6 +1618,8 @@ def main():
             state_machine.request_pause("node_rejoin")
 
         failure_detector.register_recovery_callback(_on_recovery)
+        if network is not None and getattr(network, "channel", None) is not None:
+            network.channel.on_send_failure = failure_detector.mark_peer_failed_immediate
 
     packed_ops = None
     if network is not None:
@@ -1555,7 +1784,9 @@ def main():
     fixed_eval_indices = rng_eval.choice(test_len, size=eval_n, replace=False)
     fixed_pre_indices = fixed_eval_indices[:1]
 
-    if y_test_plain is not None:
+    # Pre-train eval with packed test shares requires every node to run evaluate_model (lazy unpack
+    # / MPC). Non-owners have y_test_plain is None but still must enter the same round as the owner.
+    if y_test_plain is not None or test_x_shares is not None:
         print("\nStarting PRE-TRAIN Evaluation Check...")
         acc_pre, loss_pre, diag_pre = evaluate_model(model, weights, x_test_plain, y_test_plain, args.node_id, 
                                                      args.n_nodes, args.t, shamir, FIELD_SIZE, SCALE, 
@@ -1568,9 +1799,9 @@ def main():
                                                      pss_packing_factor=pss_packing_factor,
                                                     x_test_lane_cache=test_x_lane_cache,
                                                     unpack_metrics=lazy_unpack_metrics)
-        print(f"Pre-Train Test Accuracy: {acc_pre*100:.2f}%")
-        print(f"Pre-Train Test Loss: {loss_pre:.4f}")
-        if args.node_id == 1:
+        if int(args.node_id) == 1:
+            print(f"Pre-Train Test Accuracy: {acc_pre*100:.2f}%")
+            print(f"Pre-Train Test Loss: {loss_pre:.4f}")
             print(
                 f"Pre-Train Diagnostics: mean|logit|={diag_pre['mean_abs_logit']:.4f}, "
                 f"max|logit|={diag_pre['max_abs_logit']:.4f}"
@@ -1606,119 +1837,163 @@ def main():
         rng.shuffle(indices)
         
         eff_batch_span = int(args.batch_size) * int(args.accum_steps)
-        n_active = int(failure_detector.get_n_active()) if failure_detector is not None else int(args.n_nodes)
         for start_idx in range(0, train_len, eff_batch_span):
-            if args.node_id == 1:
-                time.sleep(0.001)
+            if training_aborted:
+                break
+            batch_done = False
+            while not batch_done:
+                if args.node_id == 1:
+                    time.sleep(0.001)
 
-            if state_machine is not None and state_machine.is_paused():
-                weights, n_active, recovered_and_resume, aborted = handle_paused_training_recovery(
-                    weights=weights,
-                    state_machine=state_machine,
-                    args=args,
-                    join_recovered_nodes_holder=join_recovered_nodes_holder,
-                    network=network,
-                    failure_detector=failure_detector,
-                    shamir=shamir,
-                    me=me,
-                    field_size=FIELD_SIZE,
-                    pss_packing_factor=pss_packing_factor,
-                    model=model,
-                    join_recovery_seq=join_recovery_seq,
-                    dropout_recovery_seq=dropout_recovery_seq,
-                )
-                if recovered_and_resume:
-                    continue
-                if aborted:
-                    training_aborted = True
+                if state_machine is not None and state_machine.is_paused():
+                    weights, n_active, recovered_and_resume, aborted = handle_paused_training_recovery(
+                        weights=weights,
+                        state_machine=state_machine,
+                        args=args,
+                        join_recovered_nodes_holder=join_recovered_nodes_holder,
+                        network=network,
+                        failure_detector=failure_detector,
+                        shamir=shamir,
+                        me=me,
+                        field_size=FIELD_SIZE,
+                        pss_packing_factor=pss_packing_factor,
+                        model=model,
+                        join_recovery_seq=join_recovery_seq,
+                        dropout_recovery_seq=dropout_recovery_seq,
+                    )
+                    if recovered_and_resume:
+                        continue
+                    if aborted:
+                        training_aborted = True
+                        break
+
+                if training_aborted:
                     break
 
-            # Packing safety guard (step 5): 2*(t+s-1) < n_active
-            if use_pss_storage and not check_packing_safety(args.t, pss_packing_factor, n_active):
-                raise PackingSafetyError(args.t, pss_packing_factor, n_active)
+                n_active = int(failure_detector.get_n_active()) if failure_detector is not None else int(args.n_nodes)
+                # Packing safety guard (step 5): 2*(t+s-1) < n_active
+                if use_pss_storage and not check_packing_safety(args.t, pss_packing_factor, n_active):
+                    raise PackingSafetyError(args.t, pss_packing_factor, n_active)
 
-            batch_idx = indices[start_idx : start_idx + eff_batch_span]
-            # Wall-clock for the whole batch iteration (share prep / unpack + train). Previously only
-            # model.train_batch* was timed, which excluded e.g. PSS lane sharing from plaintext rows.
-            start_time = time.time()
-            x_shares_cols, y_shares_cols, packed_batch_payload = _prepare_training_batch_inputs(
-                batch_idx=batch_idx,
-                args=args,
-                epoch=epoch,
-                start_idx=start_idx,
-                me=me,
-                use_distributed_dataset=use_distributed_dataset,
-                dataset_meta=dataset_meta,
-                train_x_shares=train_x_shares,
-                train_y_shares=train_y_shares,
-                use_kvs_dataset=use_kvs_dataset,
-                local_kvs=local_kvs,
-                packed_ops=packed_ops,
-                train_x_lane_cache=train_x_lane_cache,
-                train_y_lane_cache=train_y_lane_cache,
-                lazy_unpack_metrics=lazy_unpack_metrics,
-                x_train=(x_train if not use_distributed_dataset else None),
-                y_train=(y_train if not use_distributed_dataset else None),
-                use_pss_storage=use_pss_storage,
-                pss=pss,
-                pss_packing_factor=pss_packing_factor,
-                field_size=FIELD_SIZE,
-                scale=SCALE,
-                shamir=shamir,
-            )
+                batch_idx = indices[start_idx : start_idx + eff_batch_span]
+                # Wall-clock for the whole batch iteration (share prep / unpack + train). Previously only
+                # model.train_batch* was timed, which excluded e.g. PSS lane sharing from plaintext rows.
+                start_time = time.time()
+                try:
+                    x_shares_cols, y_shares_cols, packed_batch_payload = _prepare_training_batch_inputs(
+                        batch_idx=batch_idx,
+                        args=args,
+                        epoch=epoch,
+                        start_idx=start_idx,
+                        me=me,
+                        use_distributed_dataset=use_distributed_dataset,
+                        dataset_meta=dataset_meta,
+                        train_x_shares=train_x_shares,
+                        train_y_shares=train_y_shares,
+                        use_kvs_dataset=use_kvs_dataset,
+                        local_kvs=local_kvs,
+                        packed_ops=packed_ops,
+                        train_x_lane_cache=train_x_lane_cache,
+                        train_y_lane_cache=train_y_lane_cache,
+                        lazy_unpack_metrics=lazy_unpack_metrics,
+                        x_train=(x_train if not use_distributed_dataset else None),
+                        y_train=(y_train if not use_distributed_dataset else None),
+                        use_pss_storage=use_pss_storage,
+                        pss=pss,
+                        pss_packing_factor=pss_packing_factor,
+                        field_size=FIELD_SIZE,
+                        scale=SCALE,
+                        shamir=shamir,
+                    )
 
-            print(f"Epoch {epoch+1} Batch {n_batches+1} ({len(batch_idx)} samples)...", end='\r')
-            
-            lr = args.learning_rate * (0.95 ** epoch)
-            weights, batch_diag = execute_training_batch(
-                weights=weights,
-                model=model,
-                packed_batch_payload=packed_batch_payload,
-                batch_idx=batch_idx,
-                args=args,
-                me=me,
-                epoch=epoch,
-                start_idx=start_idx,
-                train_x_lane_cache=train_x_lane_cache,
-                train_y_lane_cache=train_y_lane_cache,
-                train_x_shares=train_x_shares,
-                train_y_shares=train_y_shares,
-                packed_ops=packed_ops,
-                lazy_unpack_metrics=lazy_unpack_metrics,
-                softmax=softmax,
-                lr=lr,
-                reconstruction=reconstruction,
-                x_shares_cols=x_shares_cols,
-                y_shares_cols=y_shares_cols,
-                get_or_unpack_cached_rows_fn=_get_or_unpack_cached_rows,
-            )
-            end_time = time.time()
-            if "grad_norm_estimate" in batch_diag and epoch_grad_norm_estimate is None:
-                epoch_grad_norm_estimate = float(batch_diag["grad_norm_estimate"])
-            for k, v in batch_diag.items():
-                if k not in epoch_diag:
-                    epoch_diag[k] = v
-            if "t_train_batch_total_s" in batch_diag:
-                for sk in epoch_stage_sums.keys():
-                    epoch_stage_sums[sk] += float(batch_diag.get(sk, 0.0))
-                epoch_stage_samples += 1
-            if "relu_backward_mode" in batch_diag and "relu_backward_mode" not in epoch_diag:
-                epoch_diag["relu_backward_mode"] = str(batch_diag.get("relu_backward_mode"))
-            if "packed_end2end_mode" in batch_diag and "packed_end2end_mode" not in epoch_diag:
-                epoch_diag["packed_end2end_mode"] = str(batch_diag.get("packed_end2end_mode"))
-            
-            wall_s = end_time - start_time
-            train_internal = batch_diag.get("t_train_batch_total_s")
-            if train_internal is not None:
-                print(
-                    f"Epoch {epoch+1} Batch {n_batches+1} completed in {wall_s:.2f}s "
-                    f"(MPC train step internal: {float(train_internal):.2f}s)",
-                    end="\n",
-                )
-            else:
-                print(f"Epoch {epoch+1} Batch {n_batches+1} completed in {wall_s:.2f}s", end="\n")
-            
-            n_batches += 1
+                    print(f"Epoch {epoch+1} Batch {n_batches+1} ({len(batch_idx)} samples)...", end='\r')
+
+                    lr = args.learning_rate * (0.95 ** epoch)
+                    weights, batch_diag = execute_training_batch(
+                        weights=weights,
+                        model=model,
+                        packed_batch_payload=packed_batch_payload,
+                        batch_idx=batch_idx,
+                        args=args,
+                        me=me,
+                        epoch=epoch,
+                        start_idx=start_idx,
+                        train_x_lane_cache=train_x_lane_cache,
+                        train_y_lane_cache=train_y_lane_cache,
+                        train_x_shares=train_x_shares,
+                        train_y_shares=train_y_shares,
+                        packed_ops=packed_ops,
+                        lazy_unpack_metrics=lazy_unpack_metrics,
+                        softmax=softmax,
+                        lr=lr,
+                        reconstruction=reconstruction,
+                        x_shares_cols=x_shares_cols,
+                        y_shares_cols=y_shares_cols,
+                        get_or_unpack_cached_rows_fn=_get_or_unpack_cached_rows,
+                    )
+                except Exception as exc:
+                    if (
+                        failure_detector is not None
+                        and state_machine is not None
+                        and state_machine.is_paused()
+                    ):
+                        print(
+                            f"Node {args.node_id}: MPC batch interrupted for failure handling "
+                            f"({type(exc).__name__}: {exc})"
+                        )
+                        continue
+                    raise
+
+                end_time = time.time()
+                if "grad_norm_estimate" in batch_diag and epoch_grad_norm_estimate is None:
+                    epoch_grad_norm_estimate = float(batch_diag["grad_norm_estimate"])
+                for k, v in batch_diag.items():
+                    if k not in epoch_diag:
+                        epoch_diag[k] = v
+                if "t_train_batch_total_s" in batch_diag:
+                    for sk in epoch_stage_sums.keys():
+                        epoch_stage_sums[sk] += float(batch_diag.get(sk, 0.0))
+                    epoch_stage_samples += 1
+                if "relu_backward_mode" in batch_diag and "relu_backward_mode" not in epoch_diag:
+                    epoch_diag["relu_backward_mode"] = str(batch_diag.get("relu_backward_mode"))
+                if "packed_end2end_mode" in batch_diag and "packed_end2end_mode" not in epoch_diag:
+                    epoch_diag["packed_end2end_mode"] = str(batch_diag.get("packed_end2end_mode"))
+
+                # Stage probes (integration tests / numerics): computed in mnist_mlp_batched on first _b0 batch only.
+                if (
+                    bool(args.debug_numerics)
+                    and int(args.node_id) == 1
+                    and batch_diag.get("logit_probe") is not None
+                ):
+                    _lp = batch_diag["logit_probe"]
+                    _dz = batch_diag["dz2_probe"]
+                    print(f"Epoch {epoch + 1} Probe logits[0][:10]: {_lp}")
+                    print(f"Epoch {epoch + 1} Probe dz2[0][:10]: {_dz}")
+                    print(
+                        f"Epoch {epoch + 1} Probe probs_est stats: "
+                        f"sum={batch_diag['probs_est_sum']}, min={batch_diag['probs_est_min']}, "
+                        f"max={batch_diag['probs_est_max']}, target_sum={batch_diag['target_sum']}"
+                    )
+
+                wall_s = end_time - start_time
+                train_internal = batch_diag.get("t_train_batch_total_s")
+                if train_internal is not None:
+                    print(
+                        f"Epoch {epoch+1} Batch {n_batches+1} completed in {wall_s:.2f}s "
+                        f"(MPC train step internal: {float(train_internal):.2f}s)",
+                        end="\n",
+                    )
+                else:
+                    print(f"Epoch {epoch+1} Batch {n_batches+1} completed in {wall_s:.2f}s", end="\n")
+
+                n_batches += 1
+                batch_done = True
+
+            if training_aborted:
+                break
+
+        if training_aborted:
+            break
 
         if training_aborted:
             break
@@ -1831,8 +2106,8 @@ def main():
             lazy_metrics_delta_fn=_lazy_metrics_delta,
         )
         if should_abort:
+            training_aborted = True
             break
-
     # Emit explicit prover timing summary for post-run parsers/exporters.
     print(f"Training Time: {time.time() - _t_train0:.6f}s")
     try:

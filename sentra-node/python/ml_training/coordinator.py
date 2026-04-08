@@ -45,12 +45,8 @@ class SafetyBoundChecker:
         if not self.check(n_active):
             return 1  # No packing if bound violated
         
-        # Find maximum s such that 2*(t+s-1) < n_active
-        # 2*(t+s-1) < n_active
-        # 2t + 2s - 2 < n_active
-        # 2s < n_active - 2t + 2
-        # s < (n_active - 2t + 2) / 2
-        max_s = (n_active - 2 * self.t + 2) // 2
+        # Strict inequality 2*(t+s-1) < n_active  =>  max s = (n_active - 2t + 1) // 2
+        max_s = (n_active - 2 * self.t + 1) // 2
         
         # Ensure at least 1, and cap at reasonable maximum (e.g., 4)
         return max(1, min(4, max_s))

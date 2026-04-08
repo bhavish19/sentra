@@ -1,14 +1,15 @@
 import random
 import re
-import time
 from pathlib import Path
 
 import pytest
 from testing.integration_harness import (
+    integration_timeout_seconds,
     read_node_err,
     read_node_log,
     start_node_processes,
     terminate_processes,
+    wait_all_processes,
 )
 
 
@@ -21,6 +22,8 @@ def test_batched_stage_invariants():
     - logits probe should stay bounded
     - dz2 probe should be O(1) for CE softmax gradients
     - probs_est probe should be finite, near simplex
+
+    Owner-only MNIST load avoids triple Keras cache contention (WSL /mnt/c).
     """
     root = Path(__file__).resolve().parents[1]
     log_dir = root / "testing" / "tmp_bench"
@@ -35,6 +38,9 @@ def test_batched_stage_invariants():
         "--t",
         "1",
         "--enable-network",
+        "--distribute-dataset-shares",
+        "--dataset-owner-node",
+        "1",
         "--base-port",
         str(base_port),
         "--host",
@@ -85,9 +91,7 @@ def test_batched_stage_invariants():
         )
         procs = [p for _, p in proc_entries]
 
-        deadline = time.time() + 420.0
-        for p in procs:
-            p.wait(timeout=max(1.0, deadline - time.time()))
+        wait_all_processes(procs, timeout_sec=integration_timeout_seconds())
         for p in procs:
             assert p.returncode == 0, f"Node process failed with code {p.returncode}"
 
