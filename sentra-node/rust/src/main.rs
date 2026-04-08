@@ -110,7 +110,7 @@ fn main()
                     String::from("Unknown")
                 }
         };
-
+    sentra_node.grpc_url="http://".to_owned()+&sentra_node.node_id+":50051";
     CryptoProvider::install_default(aws_lc_rs::default_provider()).expect("Failed to install crypto provider");
     let mut grpc_cert:Option<String>=None;
     let mut _grpc_key:Option<String>=None;
@@ -181,13 +181,15 @@ fn main()
             let tx_register: mpsc::Sender<NodeMessage>=tx.clone();
             println!("Spawn registration thread...");
             let node_id:String=sentra_node.node_id.clone();
+            let node_grpc_url:String=sentra_node.grpc_url.clone();
             tokio::spawn(async move
                 {
                     // Send registration message
                     println!("Sending registration...");
                     let register_msg: NodeMessage = NodeMessage {
                         message_type: Some(node_message::MessageType::Register(RegisterRequest {
-                            node_id: node_id
+                            node_id: node_id,
+                            node_grpc_url:node_grpc_url
                         }))
                     };
 

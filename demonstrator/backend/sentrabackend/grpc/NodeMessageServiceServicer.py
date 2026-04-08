@@ -38,6 +38,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
             return (None,None,None)
         register_message:object=message.register
         node_id:str|None = register_message.node_id
+        node_grpc_url:str|None=register_message.node_grpc_url
 
         if not node_id or not isinstance(node_id,str):
             return (SentraBackend_GRPC_Services_pb2.RegisterResponse(
@@ -45,6 +46,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                 message="Node ID cannot be empty"
             ),None,None)
         node:SentraNode=self.m_nodeGenerator.generateNode(node_id)
+        node.m_strInterNodeCommunicationGRPC_URL=node_grpc_url
         if(self.m_nodeList.add(node)):
             log(f"Node registered: {node_id} - Node list now has {self.m_nodeList.len()} entries")
             return (SentraBackend_GRPC_Services_pb2.RegisterResponse(
@@ -146,7 +148,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                         else:
                             log(f"Node {node_id} failed verification")
                             break
-                    if node_message.HasField('python'):
+                    elif node_message.HasField('python_msg'):
                         log("received python message")
                         # pass to tcp proxy
                     else:

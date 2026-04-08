@@ -25,7 +25,7 @@ impl inter_node_message_service_server::InterNodeMessageService for SentraInterN
 } 
 
 async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "127.0.0.1:50051".parse().unwrap();
+    let addr = "0.0.0.0:50051".parse().unwrap();
     let intern_node_grpc_service = SentraInterNodeMessageService::default();
 
     println!("Sentra inter node grpc service listening on {}", addr);

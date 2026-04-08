@@ -6,6 +6,7 @@ export class SentraNode
 {
   public node_id: string="";
   public host: string="";
+  public grpc_url: string="";
   public cpu: string="";
   public operator: string="";
   public attested:boolean=false;

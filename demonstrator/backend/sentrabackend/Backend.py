@@ -21,7 +21,7 @@ from .TcpProxy import TCPProxyServicer, TCPProxyBridge
 
 class Backend:
 
-    m_sStaticFolder="../frontend/dist/frontend/browser"
+    m_sStaticFolder="../../frontend/dist/frontend/browser"
     m_sIndexHtml=m_sStaticFolder+"/index.html"
     m_nodeGenerator:SentraNodeAttributeGenerator
     m_nodeList:SentraNodeList
