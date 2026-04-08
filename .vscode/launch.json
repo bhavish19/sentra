@@ -5,13 +5,6 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Attestation Verifier",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/attestation/verifier/python/verifier.py",
-            "console": "integratedTerminal"
-        },
-        {
             "name": "Backend Simulation",
             "type": "debugpy",
             "request": "launch",
@@ -35,7 +28,15 @@
             "env": {
                     "PYTHONPATH": "${workspaceFolder}/sentra-node/python"
                 }
-        }
+        },
+        {
+            "name": "Inter Sentra nNode Communication Test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sentra-node/python/communication_test/InterNodeCommunicationTest.py",
+            "console": "integratedTerminal"
+        },
+
 
     ]
 }
