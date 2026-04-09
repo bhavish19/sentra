@@ -158,5 +158,4 @@ impl Committee
             println!("Exiting....");
         });
     }
-    }
 }
