@@ -62,8 +62,9 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                 message=f"Node {node_id} registered successfully"
             ),node_id,node.getSendQueue())
         else:
+            log(f"Node already registered: {node_id} - Will not add this connection")
             return (SentraBackend_GRPC_Services_pb2.RegisterResponse(
-                success=True,
+                success=False,
                 message=f"Node {node_id} already registered"
             ),None,None)
 
