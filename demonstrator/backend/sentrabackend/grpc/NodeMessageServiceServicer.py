@@ -11,6 +11,7 @@ from ..ComitteeSelection import CommitteeSelection
 from ..Attestation import Attestation
 from ..CommandLineOptions import CommandLineOptions
 from ..Log import log as log
+from ..TcpProxy import NodeTCPProxy
 
 class NodeMessageServiceServicer(_NodeMessageServiceServicer):
 
@@ -24,6 +25,11 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
         self.m_nodeList=nodeList
         self.m_GRPC_Loop=asyncio.get_event_loop()
         self.m_commandLineOptions=commandlineOptions
+
+        self.m_tcpProxy = NodeTCPProxy(
+            base_port=commandlineOptions.getTcpProxyBasePort()
+        )
+        self._node_index: dict[str, int] = {}
 
     def sendMessageToNode(self,node_id:str,message:SentraBackend_GRPC_Services_pb2.ServerMessage)->None:
         sendQueue: asyncio.Queue[object]|None=self.m_nodeList.getSendQueue(node_id)
@@ -127,6 +133,8 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
             log("New Node not registered - closing connection")
             return
 
+        await self.m_tcpProxy.openPortForNode(node_id, node_index, send_queue)
+
         async def recv_messages():
             '''Internal function to receive GRPC messages from Sentra Nodes'''
             try:
@@ -149,8 +157,10 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                             log(f"Node {node_id} failed verification")
                             break
                     elif node_message.HasField('python_msg'):
-                        log("received python message")
-                        # pass to tcp proxy
+                        log(f"Received python_msg from node {node_id}, forwarding to TCP proxy")
+                        await self.m_tcpProxyServicer.forwardToTarget(
+                            node_id, node_message.python_msg.msg
+                        )
                     else:
                         log(f"Unexpected message type from node {node_id}")
                         break
@@ -158,6 +168,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                 log(f"Error processing messages from node {node_id}: {e}")
             finally:
                 self.m_nodeList.remove(node_id)
+                await self.m_tcpProxy.closePortForNode(node_id)
                 log(f"Leaving receive loop closing connection to node {node_id}...")
 
         recv_task:asyncio.Task[object]=asyncio.create_task(recv_messages())

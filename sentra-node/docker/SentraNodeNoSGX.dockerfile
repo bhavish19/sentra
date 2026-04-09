@@ -25,7 +25,6 @@ RUN mkdir /sentra
 RUN mkdir /sentra/ml_training
 COPY ./sentra-node/python/ml_training /sentra/ml_training/
 COPY ./sentra-node/python/pyproject.toml /sentra/
-COPY ./sentra-node/docker/node_config.yaml /sentra/
 COPY ./sentra-node/docker/training_config.yaml /sentra/
 COPY ./sentra-node/python/run_mnist_batched_secure.py /sentra/
 
