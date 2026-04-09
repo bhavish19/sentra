@@ -121,6 +121,7 @@ fn main()
                 }
         };
     sentra_node.grpc_url="http://".to_owned()+&sentra_node.node_id+":50051";
+    sentra_node.committee.this_node=sentra_node.node_id.clone();
     CryptoProvider::install_default(aws_lc_rs::default_provider()).expect("Failed to install crypto provider");
     let mut grpc_cert:Option<String>=None;
     let mut _grpc_key:Option<String>=None;

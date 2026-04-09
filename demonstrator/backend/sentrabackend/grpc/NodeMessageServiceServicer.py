@@ -18,12 +18,14 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
     m_nodeList:SentraNodeList
     m_GRPC_Loop:asyncio.AbstractEventLoop
     m_commandLineOptions:CommandLineOptions
+    m_bCommitteeSelected:bool
 
     def __init__(self,nodeGenerator:SentraNodeAttributeGenerator,nodeList:SentraNodeList,commandlineOptions:CommandLineOptions):
         self.m_nodeGenerator=nodeGenerator
         self.m_nodeList=nodeList
         self.m_GRPC_Loop=asyncio.get_event_loop()
         self.m_commandLineOptions=commandlineOptions
+        self.m_bCommitteeSelected=False
 
     def sendMessageToNode(self,node_id:str,message:SentraBackend_GRPC_Services_pb2.ServerMessage)->None:
         sendQueue: asyncio.Queue[object]|None=self.m_nodeList.getSendQueue(node_id)
@@ -81,7 +83,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
 
 
     async def generateComittee(self):
-        if(self.m_nodeList.len()>=self.m_commandLineOptions.getCommitteeSelectionTrigger()):
+        if(self.m_nodeList.len()>=self.m_commandLineOptions.getCommitteeSelectionTrigger()) and not self.m_bCommitteeSelected:
             committee_target_size = 5
             committee_min_trust = 2
             committee_max_attest_age = 100
@@ -98,6 +100,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                 log("found committee:")
                 log(str(committee))
                 await self.requestCommitteeJoin(committee)
+                self.m_bCommitteeSelected=True
             else:
                 log("no committee found!")
 

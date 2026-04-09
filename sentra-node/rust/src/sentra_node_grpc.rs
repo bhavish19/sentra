@@ -19,6 +19,31 @@ impl inter_node_message_service_server::InterNodeMessageService for SentraInterN
 
             // Create a channel to send messages back to the client
         let (tx, rx) = mpsc::channel(32);
+
+
+        // Spawn a task to handle incoming messages
+        tokio::spawn(async move {
+            while let Some(result) = incoming_stream.message().await {
+                match result {
+                    Ok(message) => {
+                        println!("Received message: {:?}", message);
+
+                        // Process the message (e.g., log it, transform it, etc.)
+                        // Here, we simply echo the message back to the client
+        //                if let Err(e) = tx.send(Ok(message)).await {
+          //                  eprintln!("Failed to send response: {}", e);
+            //                break;
+              //          }
+                    }
+                    Err(e) => {
+                        eprintln!("Error receiving message: {}", e);
+                        break;
+                    }
+                }
+            }
+            println!("Client disconnected or stream ended");
+        });
+
         // Return the receiver stream as the response
         Ok(Response::new(ReceiverStream::new(rx)))
 	}
