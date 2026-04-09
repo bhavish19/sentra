@@ -3,7 +3,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes && DE
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x -o /tmp/nodesource_setup.sh
 RUN bash /tmp/nodesource_setup.sh
 RUN DEBIAN_FRONTEND=noninteractive apt-get install --yes nodejs
-RUN npm install --no-audit --no-fund -g npm@11.10.1
+RUN npm install --no-audit --no-fund -g npm@11.12.1
 RUN pip install --upgrade pip
 
 RUN mkdir /pebble

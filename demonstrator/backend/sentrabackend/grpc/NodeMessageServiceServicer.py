@@ -137,7 +137,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
             log("New Node not registered - closing connection")
             return
 
-        await self.m_tcpProxy.openPortForNode(node_id, node_index, send_queue)
+#        await self.m_tcpProxy.openPortForNode(node_id, node_index, send_queue)
 
         async def recv_messages():
             '''Internal function to receive GRPC messages from Sentra Nodes'''

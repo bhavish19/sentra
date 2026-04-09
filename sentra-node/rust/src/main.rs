@@ -238,12 +238,12 @@ fn main()
                                 }
                             Err(status) =>
                                 {
-                                    eprintln!("Error receiving message: {}", status);
+                                    eprintln!("Error receiving GRPC message from backend: {}", status);
                                     break;
                                 }
                         }
                 }
-            println!("Exiting....");
+            println!("Exiting the GRPC message receive from backend loop...");
         });
     }
 
