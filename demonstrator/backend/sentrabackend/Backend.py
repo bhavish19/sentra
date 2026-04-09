@@ -16,8 +16,6 @@ from .Log import log as log
 from .grpc import add_NodeMessageServiceServicer_to_server
 from .grpc import add_TCPProxyServiceServicer_to_server
 from .ClientDistributor import ClientDistributor
-from .TcpProxy import TCPProxyServicer, TCPProxyBridge
-
 
 class Backend:
 
@@ -56,14 +54,6 @@ class Backend:
         await self.server.start()
         await self.server.wait_for_termination()
 
-    def addTcpServicer(self, port):
-        proxy_servicer = TCPProxyServicer(
-            target_host="127.0.0.1",   # wherever the real TCP service lives
-            target_port=9000,
-        )
-        pb2_grpc.add_TCPProxyServiceServicer_to_server(
-            proxy_servicer, self.server)
-
     def startGRPCServer(self):
         # Create a new event loop for this thread
         loop = asyncio.new_event_loop()
@@ -101,22 +91,10 @@ class Backend:
         self.createGRPCServer()
 
         if (not self.m_bAppSimulation):
+            log("distribute secret shares")
             self.m_clientDistributor = ClientDistributor(
-                cmdlineargs.getTrainingConfiguration())
+                cmdlineargs.training_args)
             for node in self.m_nodeList.m_arNodes:
-                if (not node.m_tcpProxy):
-
-                    port = self.m_clientDistributor.config.base_port \
-                        + node.m_strNodeID
-
-                    bridge = TCPProxyBridge(
-                        listen_host="0.0.0.0",
-                        listen_port=port,        # local TCP clients connects
-                        grpc_host="0.0.0.0",
-                        grpc_port=8000,          # existing gRPC server port
-                    )
-                    bridge.createBridge()        # returns immediately, runs in background thread
-
                 self.m_clientDistributor.distribute(node)
 
         return self.app

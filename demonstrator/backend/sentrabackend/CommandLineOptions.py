@@ -1,4 +1,22 @@
 import argparse
+import yaml
+from types import SimpleNamespace
+
+
+def dict_to_obj(d):
+    if isinstance(d, dict):
+        return SimpleNamespace(**{k.replace('-', '_'): dict_to_obj(v) for k, v in d.items()})
+    return d
+
+
+def read_training_config(configFile: str):
+    """Read client configuration from a yaml file"""
+    with open(configFile) as f:
+        raw = yaml.safe_load(f)
+
+    config = dict_to_obj(raw)
+
+    return config
 
 class CommandLineOptions:
 
@@ -19,7 +37,8 @@ class CommandLineOptions:
         self.m_Parser.add_argument("--fake-attestation",help="Accept faked attestation reports (for easy testing without SGX).",default=False,action="store_true")
         self.m_Parser.add_argument('--training-config', type=str, help="YAML training configuration file")
 
-        self.m_Args=self.m_Parser.parse_args()
+        self.m_Args = self.m_Parser.parse_args()
+        self.training_args = read_training_config(self.m_Args.training_config)
 
     def getPort(self)->int:
         return self.m_Args.port
@@ -50,3 +69,9 @@ class CommandLineOptions:
 
     def getTrainingConfiguration(self) -> str:
         return self.m_Args.training_config
+
+    def getTcpProxyTargetHost(self) -> str:
+        return self.m_Args.target_host
+
+    def getTcpProxyBasePort(self) -> str:
+        return self.training_args.base_port

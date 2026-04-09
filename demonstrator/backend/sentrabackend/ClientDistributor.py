@@ -11,9 +11,9 @@ based on: sentra-node/python/client_distributor.py
 
 import random
 import time
-from types import SimpleNamespace
 
-import yaml
+
+
 import numpy as np
 from .SentraNode import SentraNode
 from sentrabackend import log as log
@@ -24,28 +24,11 @@ from ml_training.secret_sharing import Share, ShamirSecretSharing
 from ml_training.secure_comm import create_mpc_network
 
 
-def dict_to_obj(d):
-    if isinstance(d, dict):
-        return SimpleNamespace(**{k.replace('-', '_'): dict_to_obj(v) for k, v in d.items()})
-    return d
-
-
-def read_client_config(configFile: str):
-    """Read client configuration from a yaml file"""
-    with open(configFile) as f:
-        raw = yaml.safe_load(f)
-
-    config = dict_to_obj(raw)
-
-    return config
-
-
 class ClientDistributor:
 
     def __init__(self, config):
 
-        self.config = read_client_config(config)
-        log("read configuration from training config")
+        self.config = config
 
     def load_mnist_data(self, train_samples=None, test_samples=None):
         (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
