@@ -1,5 +1,10 @@
-use std::{collections::HashMap, fmt, sync::{Arc, RwLock}};
-use tonic::transport::{Certificate};
+use std::{collections::HashMap, fmt, sync::{Arc, RwLock}, time::Duration};
+use tonic::transport::{Certificate,Channel};
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+tonic::include_proto!("sentra_inter_node_grpc_services");
+
+
 pub struct CommitteeMember
 {
     node_id:String,
@@ -15,7 +20,7 @@ impl fmt::Display for CommitteeMember {
 pub struct Committee
 {
     this_node: String, //Node ID of this Sentra node
-    ca_cert = Certificate, //the CA certificate for validating inter node TSL connections
+    ca_cert: Certificate, //the CA certificate for validating inter node TSL connections
     committee: Arc<RwLock<HashMap<String, CommitteeMember>>>
 }
 
@@ -25,7 +30,7 @@ impl Default for Committee {
         Committee
         {
             this_node:String::new(),
-            ca_cert:Certificate::new(),
+            ca_cert:Certificate::from_pem(""),
             committee:Arc::new(RwLock::new(HashMap::new()))
         }
       }
@@ -46,6 +51,11 @@ impl fmt::Display for Committee {
 
 impl Committee
 {
+    pub fn setThisNodeID(&mut self,node_id:&String)
+	{
+	    self.this_node=node_id.clone();
+	}
+
     pub fn add(&self,node_id:&String,grpc_url:&String)
     {
         let new_member:CommitteeMember=CommitteeMember
@@ -61,9 +71,11 @@ impl Committee
         let c: std::sync::RwLockReadGuard<'_, HashMap<String, CommitteeMember>>=self.committee.read().unwrap();
         for member in c.values()
         {
-            if(member.node_id==self.this_node)
-                break;
-            establish_outgoing_connection(member);
+            if member.node_id==self.this_node
+		{
+            	    break;
+		}
+            self.establish_outgoing_connection(member);
         }
         Ok(())
     }
@@ -71,19 +83,23 @@ impl Committee
     pub fn establish_outgoing_connection(&self,sentraNode:&CommitteeMember)
     {
         let rt: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
+        let ca_cert:Certificate=self.ca_cert.clone();
+        let peer_node_id:String=sentraNode.node_id.clone();
+        let grpc_url=sentraNode.grpc_url.clone();
+        let node_id:String=self.this_node.clone();
         rt.spawn(async
         {
             // Connect to the Sentra Node
-            println!("Try to connect to GRPC interface of Sentra node: {} at {}",sentraNode.node_id,sentraNode.grpc_url);
-            let mut client: node_message_service_client::NodeMessageServiceClient<tonic::transport::Channel>;
-            if !sentra_node.args.use_acme
+            println!("Try to connect to GRPC interface of Sentra node: {} at {}",peer_node_id,grpc_url);
+            let mut client: inter_node_message_service_client::InterNodeMessageServiceClient<tonic::transport::Channel>;
+            if false
             {
 
-                let endpoint = Channel::from_shared(sentraNode.grpc_url).expect("REASON-1")
+                let endpoint = Channel::from_shared(grpc_url).expect("REASON-1")
                     .tls_config(
                                 tonic::transport::ClientTlsConfig::new()
-                                .ca_certificate(self.ca_cert)
-                                .domain_name(sentraNode.node_id)
+                                .ca_certificate(ca_cert)
+                                .domain_name(peer_node_id)
                                 ).expect("REASON-2");
 
                 let channel: Channel = endpoint.connect().await.expect("REASON-3");
@@ -92,7 +108,7 @@ impl Committee
             else
             {
                 println!("Doing a default connection...");
-                client = inter_node_message_service_client::InterNodeMessageServiceClient::connect(sentraNode.grpc_url).await.expect("REASON");
+                client = inter_node_message_service_client::InterNodeMessageServiceClient::connect(grpc_url).await.expect("REASON");
             }
 
             // Create a channel for sending messages to the node
@@ -101,11 +117,10 @@ impl Committee
 
             // Create the stream from the receiver
             println!("Create outbound stream...");
-            let outbound: ReceiverStream<NodeMessage> = ReceiverStream::new(rx);
+            let outbound: ReceiverStream<InterNodeMessage> = ReceiverStream::new(rx);
 
-            let tx_register: mpsc::Sender<NodeMessage>=tx.clone();
+            let tx_register: mpsc::Sender<InterNodeMessage>=tx.clone();
             println!("Spawn sending hello message thread...");
-            let node_id:String=sentraNode.node_id.clone();
             tokio::spawn(async move
                 {
                     // Send registration message
@@ -127,7 +142,7 @@ impl Committee
             // Start the bidirectional stream
             println!("Start bidirectional stream...");
             let response_stream: Result<tonic::Response<tonic::Streaming<InterNodeMessage>>, tonic::Status>
-                 = client.node_stream(outbound).await;
+                 = client.inter_node_stream(outbound).await;
             println!("Wait for inbound...");
 
             let mut inbound: tonic::Streaming<InterNodeMessage> = response_stream.expect("REASON").into_inner();

@@ -23,7 +23,7 @@ impl inter_node_message_service_server::InterNodeMessageService for SentraInterN
 
         // Spawn a task to handle incoming messages
         tokio::spawn(async move {
-            while let Some(result) = incoming_stream.message().await {
+            while let result = incoming_stream.message().await {
                 match result {
                     Ok(message) => {
                         println!("Received message: {:?}", message);
