@@ -1,7 +1,7 @@
 mod sentra_attester;
 mod acme;
 
-use std::{error::Error, time::Duration,process::Command};
+use std::{error::Error, time::Duration,process::Command,net::ToSocketAddrs};
 
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -136,10 +136,10 @@ fn main()
                     String::from("Unknown")
                 }
         };
-    fqdn:String=match get_fqdn(sentra_node.node_id) {
+    let fqdn:String=match get_fqdn(&sentra_node.node_id) {
         Some(fqdn) => fqdn,
-        None => sentra_node.node_id),
-    }    
+        None => sentra_node.node_id.clone()
+    };
     sentra_node.grpc_url="http://".to_owned()+&fqdn+":50051";
     sentra_node.committee.setThisNodeID(&sentra_node.node_id);
     CryptoProvider::install_default(aws_lc_rs::default_provider()).expect("Failed to install crypto provider");
