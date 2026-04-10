@@ -130,7 +130,7 @@ impl Committee
                     println!("Sending hello message...");
                     let register_msg: InterNodeMessage = InterNodeMessage {
                         message_type: Some(inter_node_message::MessageType::Hello(HelloMessage {
-                            node_id: node_id
+                            node_id: node_id.clone()
                         }))
                     };
 
