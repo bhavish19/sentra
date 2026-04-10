@@ -59,7 +59,7 @@ impl SentraNode
         }
         println!("{}",self.committee);
         self.committee.establish_connections();
-        self.startPythonCode();
+        //self.startPythonCode();
     }
 
     fn handle_server_message(&self,server_msg: ServerMessage,tx:mpsc::Sender<NodeMessage>,fake_attestation:bool) {
