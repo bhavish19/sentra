@@ -83,13 +83,13 @@ impl Committee
 
     pub fn establish_outgoing_connection(&self,sentraNode:&CommitteeMember)
     {
-        let rt: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
+       // let rt: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
         let ca_cert:Certificate=self.ca_cert.clone();
         let peer_node_id:String=sentraNode.node_id.clone();
         let grpc_url=sentraNode.grpc_url.clone();
         let node_id:String=self.this_node.clone();
         println!("Spawn connection thread for connection to GRPC interface of Sentra node: {} at {}",peer_node_id,grpc_url);
-        rt.spawn(async
+        toki::spawn(async
         {
             // Connect to the Sentra Node
             println!("Try to connect to GRPC interface of Sentra node: {} at {}",peer_node_id,grpc_url);
