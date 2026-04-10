@@ -89,7 +89,7 @@ impl Committee
         let grpc_url=sentraNode.grpc_url.clone();
         let node_id:String=self.this_node.clone();
         println!("Spawn connection thread for connection to GRPC interface of Sentra node: {} at {}",peer_node_id,grpc_url);
-        toki::spawn(async
+        tokio::spawn(async
         {
             // Connect to the Sentra Node
             println!("Try to connect to GRPC interface of Sentra node: {} at {}",peer_node_id,grpc_url);

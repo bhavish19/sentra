@@ -41,12 +41,10 @@ COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /sentra-node/rust/
 
 WORKDIR /sentra-node/rust
 RUN echo 'fn main() {}' > ./src/main.rs
-#RUN cargo update -p socket2@0.6.2 --precise 0.5.10
 RUN cargo update -p getrandom@0.4.2 --precise 0.3.4
-#RUN occlum-cargo update -p prost-types@0.13.5 --precise 0.12.3
 RUN cargo build --release
 
-COPY ./sentra-node/rust /sentra-node/rust
+COPY ./sentra-node/rust/src /sentra-node/rust/src
 #RUN rm rust-toolchain.toml
 RUN rm SentraBackend-GRPC-Services.proto
 COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /sentra-node/rust/
