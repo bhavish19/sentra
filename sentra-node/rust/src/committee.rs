@@ -125,6 +125,7 @@ impl Committee
             println!("Spawn sending hello message thread...");
             tokio::spawn(async move
                 {
+                    loop{
                     // Send registration message
                     println!("Sending hello message...");
                     let register_msg: InterNodeMessage = InterNodeMessage {
@@ -137,6 +138,8 @@ impl Committee
                         eprintln!("Failed to send hello message");
                         return;
                     }
+                    tokio::time::sleep(Duration::from_millis(1000)).await;
+                }
                 });
 
             tokio::time::sleep(Duration::from_millis(100)).await;
