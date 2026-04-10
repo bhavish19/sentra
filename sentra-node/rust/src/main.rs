@@ -110,7 +110,7 @@ fn get_fqdn(hostname: &str) -> Option<String> {
     if let Ok(mut addrs) = addr.to_socket_addrs() {
         // If resolution succeeds, return the first resolved address as a string
         if let Some(resolved_addr) = addrs.next() {
-            return Some( lookup_addr(&adresolved_addrdr.ip()).ok());
+            return lookup_addr(&resolved_addr.ip()).ok();
         }
     }
     

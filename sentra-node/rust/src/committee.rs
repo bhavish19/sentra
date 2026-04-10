@@ -68,6 +68,7 @@ impl Committee
 
     pub fn establish_connections(&self)->Result<(),()>
     {
+        println!("Try to etsablish connections with all other members of the committee...");
         let c: std::sync::RwLockReadGuard<'_, HashMap<String, CommitteeMember>>=self.committee.read().unwrap();
         for member in c.values()
         {
@@ -87,6 +88,7 @@ impl Committee
         let peer_node_id:String=sentraNode.node_id.clone();
         let grpc_url=sentraNode.grpc_url.clone();
         let node_id:String=self.this_node.clone();
+        println!("Spawn connection thread for connection to GRPC interface of Sentra node: {} at {}",peer_node_id,grpc_url);
         rt.spawn(async
         {
             // Connect to the Sentra Node
