@@ -8,6 +8,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::transport::{Channel, Certificate};
 use hostname;
 use rustls::crypto::{aws_lc_rs, CryptoProvider};
+use dns_lookup::lookup_addr;
 use rustc_version_runtime;
 // Include the generated code from the proto file
 tonic::include_proto!("sentra_backend_grpc_services");
@@ -109,7 +110,7 @@ fn get_fqdn(hostname: &str) -> Option<String> {
     if let Ok(mut addrs) = addr.to_socket_addrs() {
         // If resolution succeeds, return the first resolved address as a string
         if let Some(resolved_addr) = addrs.next() {
-            return Some(resolved_addr.to_string());
+            return Some( lookup_addr(&adresolved_addrdr.ip()).ok());
         }
     }
     
