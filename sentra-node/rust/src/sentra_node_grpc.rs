@@ -25,7 +25,7 @@ impl inter_node_message_service_server::InterNodeMessageService for SentraInterN
         tokio::spawn(async move {
             while let result = incoming_stream.message().await {
                 match result {
-                    Ok(message) => {
+                    Ok(Some(message)) => {
                         println!("Received message: {:?}", message);
 
                         // Process the message (e.g., log it, transform it, etc.)
@@ -35,6 +35,12 @@ impl inter_node_message_service_server::InterNodeMessageService for SentraInterN
             //                break;
               //          }
                     }
+                     Ok(None) =>
+                                {
+                                    // Stream ended
+                                    println!("Stream closed by node");
+                                    break;
+                                }
                     Err(e) => {
                         eprintln!("Error receiving message: {}", e);
                         break;
