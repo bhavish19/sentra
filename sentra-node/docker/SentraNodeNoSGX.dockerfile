@@ -23,7 +23,6 @@ RUN /miniconda/bin/conda create --prefix /python-occlum -y  python=3.10.0 numpy=
 RUN mkdir /bin/sentra
 RUN mkdir /bin/sentra/ml_training
 COPY ./sentra-node/python/ml_training /bin/sentra/ml_training/
-COPY ./sentra-node/docker/training_config.yaml /bin/sentra/
 COPY ./sentra-node/python/run_mnist_batched_secure.py /bin/sentra/
 COPY ./sentra-node/python/communication_test/InterNodeCommunicationTest.py /bin/sentra/
 
@@ -50,7 +49,7 @@ RUN rm SentraBackend-GRPC-Services.proto
 COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /sentra-node/rust/
 
 RUN cargo build --release
-COPY ./demonstrator/ci/docker/config/pebble/pebble.cer /sentra-node/rust/
+COPY ./demonstrator/ci/docker/config/pebble/pebble.cer /etc/
 COPY ./sentra-node/docker/enclave_run_script.sh /bin/enclave_run_script.sh
 COPY ./sentra-node/docker/entrypoint.sh /
 RUN cp /sentra-node/rust/target/release/sentra_node /bin/sentra_node
