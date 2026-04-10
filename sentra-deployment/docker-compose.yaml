@@ -45,6 +45,13 @@ services:
     profiles:
       - test
 
+  sentra-simple-training-no-sgx:
+    <<: *x-sentra-core-no-sgx
+    command: ["--grpc-url", "https://sentra-backend:8001","--use-acme","--acme-url","https://sentra-backend:14000","--acme-cert","/etc/pebble.cer","---","/bin/sentra/run_training.py"]
+    container_name: sentra-test
+    profiles:
+      - test-no-sgx
+
   sentra-mnist-training-sgx:
     <<:
       - *x-sentra-core-sgx
@@ -93,5 +100,6 @@ services:
       - 8888:8888
     profiles:
       - test
+      - test-no-sgx
       - mnist_batched_secure
       - mnist_batched_secure-no-sgx
