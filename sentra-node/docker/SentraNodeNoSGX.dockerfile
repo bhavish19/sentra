@@ -20,12 +20,12 @@ RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.a
 RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 RUN /miniconda/bin/conda create --prefix /python-occlum -y  python=3.10.0 numpy==1.26.4 pyyaml==6.0.3 tensorflow==2.11.0
 
-RUN mkdir /sentra
-RUN mkdir /sentra/ml_training
-COPY ./sentra-node/python/ml_training /sentra/ml_training/
-COPY ./sentra-node/python/pyproject.toml /sentra/
-COPY ./sentra-node/docker/training_config.yaml /sentra/
-COPY ./sentra-node/python/run_mnist_batched_secure.py /sentra/
+RUN mkdir /bin/sentra
+RUN mkdir /bin/sentra/ml_training
+COPY ./sentra-node/python/ml_training /bin/sentra/ml_training/
+COPY ./sentra-node/docker/training_config.yaml /bin/sentra/
+COPY ./sentra-node/python/run_mnist_batched_secure.py /bin/sentra/
+COPY ./sentra-node/python/communication_test/InterNodeCommunicationTest.py /bin/sentra/
 
 COPY ./sentra-node/docker/training_config.yaml /etc/training_config.yaml
 RUN chmod 644 /etc/training_config.yaml
