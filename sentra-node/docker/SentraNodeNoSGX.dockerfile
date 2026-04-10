@@ -52,6 +52,6 @@ COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /sentra-node/rust/
 RUN cargo build --release
 COPY ./demonstrator/ci/docker/config/pebble/pebble.cer /sentra-node/rust/
 COPY ./sentra-node/docker/enclave_run_script.sh /bin/enclave_run_script.sh
-
+COPY ./sentra-node/docker/entrypoint.sh /
 WORKDIR /
 ENTRYPOINT ["/entrypoint.sh"]
