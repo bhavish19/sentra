@@ -19,13 +19,16 @@ class NodeTCPProxy:
             → written to the TCP client connected on that node's port
     """
 
+    m_iNextPort:int
+
     def __init__(self, base_port: int):
         self.base_port = base_port
+        self.m_iNextPort=base_port
 
         # node_id -> asyncio.StreamWriter for the currently connected TCP client
         self._tcp_writers: dict[str, asyncio.StreamWriter] = {}
 
-        # node_id -> asyncio.AbstractServer (the listening server for that port)
+        # node_id -> asyncio.AbstractServer (the listening server for that node)
         self._servers: dict[str, asyncio.AbstractServer] = {}
 
         # node_id -> send_queue (set at registration time)
@@ -37,9 +40,9 @@ class NodeTCPProxy:
 
     async def openPortForNode(
         self,
-        node_id: int,
+        node_id: str,
         send_queue: asyncio.Queue,
-    ) -> int:
+    ) ->None:
         """
         Open a TCP listener on base_port + node_index for the given node.
         Returns the port number that was opened.
@@ -47,9 +50,10 @@ class NodeTCPProxy:
         """
         if node_id in self._servers:
             logger.warning(f"[TCPProxy] Port already open for node {node_id}, skipping")
-            return self.base_port + node_id
+            return
 
-        port = self.base_port + node_id
+        port:int = self.m_iNextPort
+        self.m_iNextPort+=1
         self._send_queues[node_id] = send_queue
 
         server = await asyncio.start_server(
@@ -61,7 +65,6 @@ class NodeTCPProxy:
         asyncio.create_task(server.serve_forever())
 
         logger.info(f"[TCPProxy] Opened TCP port {port} for node {node_id}")
-        return port
 
     # ------------------------------------------------------------------
     # Called from NodeMessageServiceServicer when a node disconnects
