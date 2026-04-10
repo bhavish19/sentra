@@ -17,6 +17,6 @@ for arg in "$@"; do
 done
 
 echo "Run attester in background with options: ${rust_args[@]}"
-/bin/sentra_node "${rust_args[@]}" &
-echo "Run training"
-/bin/python3 "${python_args[@]}"
+/bin/sentra_node "${rust_args[@]}" 
+#echo "Run training"
+#/bin/python3 "${python_args[@]}"
