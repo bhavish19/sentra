@@ -3,6 +3,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from .Log import log as log
+from .grpc.generated import SentraBackend_GRPC_Services_pb2 as pb2
 
 class NodeTCPProxy:
     """
@@ -116,7 +118,7 @@ class NodeTCPProxy:
         writer: asyncio.StreamWriter,
     ) -> None:
         peer = writer.get_extra_info("peername")
-        logger.info(f"[TCPProxy] TCP client {peer} connected for node {node_id}")
+        log(f"[TCPProxy] TCP client {peer} connected for node {node_id}")
 
         # Only one TCP client per node at a time — close any previous one
         old_writer = self._tcp_writers.get(node_id)
@@ -144,7 +146,7 @@ class NodeTCPProxy:
                 # Wrap in ServerMessage/PythonMsg and place on the node's send_queue.
                 # NodeStream's send loop will pick this up and yield it to the node
                 # over the existing gRPC stream — no separate gRPC channel needed.
-                from .generated import SentraBackend_GRPC_Services_pb2 as pb2
+                
                 message = pb2.ServerMessage(
                     python_msg=pb2.PythonMsg(msg=data)
                 )
