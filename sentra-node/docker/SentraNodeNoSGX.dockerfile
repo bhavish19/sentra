@@ -53,5 +53,7 @@ RUN cargo build --release
 COPY ./demonstrator/ci/docker/config/pebble/pebble.cer /sentra-node/rust/
 COPY ./sentra-node/docker/enclave_run_script.sh /bin/enclave_run_script.sh
 COPY ./sentra-node/docker/entrypoint.sh /
+RUN cp /sentra-node/rust/target/release/sentra_node /bin/sentra_node
+RUN ln -s /python-occlum/bin/python /bin/python3
 WORKDIR /
 ENTRYPOINT ["/entrypoint.sh"]
