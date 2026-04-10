@@ -162,7 +162,7 @@ impl Committee
                             Ok(None) =>
                                 {
                                     // Stream ended
-                                    println!("Stream closed by server");
+                                    println!("Stream closed by peer node");
                                     break;
                                 }
                             Err(status) =>
@@ -172,7 +172,7 @@ impl Committee
                                 }
                         }
                 }
-            println!("Exiting....");
+            println!("Exiting the message receive loop of the outgoing inter node GRPC connection....");
         });
     }
 }
