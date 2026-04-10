@@ -1,21 +1,20 @@
 #!/bin/bash
 #/opt/occlum/start_aesm.sh
 NO_SGX=false
-args=("$@") # Save command line args
+args=()
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
+for arg in "$@"; do
+    case "$arg" in
         -no_sgx)
             NO_SGX=true
-            shift 1
             ;;
         *)
-            shift 1
+            args+=("$arg")
             ;;
     esac
 done
 
-set -- "${args[@]}" #Restore command line args
+set -- "${args[@]}" #Restore command line args but without -no_sgx
 
 wait-for-it -t 60 sentra-backend:8888
 
