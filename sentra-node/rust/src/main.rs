@@ -101,6 +101,22 @@ impl SentraNode
     }
 }
 
+fn get_fqdn(hostname: &str) -> Option<String> {
+    // Append a dummy port to the hostname for DNS resolution
+    let addr = (hostname, 0);
+    
+    // Resolve the hostname to socket addresses
+    if let Ok(mut addrs) = addr.to_socket_addrs() {
+        // If resolution succeeds, return the first resolved address as a string
+        if let Some(resolved_addr) = addrs.next() {
+            return Some(resolved_addr.to_string());
+        }
+    }
+    
+    // Return None if resolution fails
+    None
+}
+
 fn main()
 {
     println!("Starting Sentra Node version: {} [compiled using {:?}]",SENTRA_NODE_VERSION,rustc_version_runtime::version());
@@ -120,7 +136,11 @@ fn main()
                     String::from("Unknown")
                 }
         };
-    sentra_node.grpc_url="http://".to_owned()+&sentra_node.node_id+":50051";
+    fqdn:String=match get_fqdn(sentra_node.node_id) {
+        Some(fqdn) => fqdn,
+        None => sentra_node.node_id),
+    }    
+    sentra_node.grpc_url="http://".to_owned()+&fqdn+":50051";
     sentra_node.committee.setThisNodeID(&sentra_node.node_id);
     CryptoProvider::install_default(aws_lc_rs::default_provider()).expect("Failed to install crypto provider");
     let mut grpc_cert:Option<String>=None;
