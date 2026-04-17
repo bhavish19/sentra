@@ -55,7 +55,7 @@ class SentraNode:
 
     def getSendQueue(self)-> asyncio.Queue[object]:
         return self.m_sendQueue
-    
+
     def getGRPC_URL(self)->str:
         return self.m_strInterNodeCommunicationGRPC_URL
 
