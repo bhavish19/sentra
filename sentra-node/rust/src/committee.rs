@@ -70,10 +70,17 @@ impl Committee
     {
         match node_msg.message_type 
         {
-            Some(node_message::MessageType::Hello(hello)) => 
-        {
-            println!("Received Hello-Message from {} to {}...",self.this_node,hello.node_id);
-        }
+            Some(inter_node_message::MessageType::Hello(hello)) => 
+            {
+                println!("Received Hello-Message from {} to {}...",self.this_node,hello.node_id);
+	    },
+            Some(inter_node_message::MessageType::Heartbeat(heartbeat)) => 
+            {
+                println!("Received Heartbeat Message...");
+	    },
+	    None => {
+        	println!("Received empty inter node message");
+    	    }
         }
     }
 
@@ -81,18 +88,19 @@ impl Committee
     {
         println!("Try to etsablish connections with all other members of the committee...");
         let c: std::sync::RwLockReadGuard<'_, HashMap<String, CommitteeMember>>=self.committee.read().unwrap();
+	let self_arc=Arc::new(self);
         for member in c.values()
         {
             if member.node_id==self.this_node
 		{
             	    break;
 		}
-            self.establish_outgoing_connection(member);
+            self_arc.clone().establish_outgoing_connection(member);
         }
         Ok(())
     }
 
-    pub fn establish_outgoing_connection(&self,sentraNode:&CommitteeMember)
+    pub fn establish_outgoing_connection(self: Arc<&Committee>,sentraNode:&CommitteeMember)
     {
        // let rt: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
         let ca_cert:Certificate=self.ca_cert.clone();
@@ -100,8 +108,9 @@ impl Committee
         let grpc_url=sentraNode.grpc_url.clone();
         let node_id:String=self.this_node.clone();
         println!("Spawn connection thread for connection to GRPC interface of Sentra node: {} at {}",peer_node_id,grpc_url);
-        tokio::spawn(async
+        tokio::spawn(async move
         {
+	let self_clone = Arc::clone(&self);
             // Connect to the Sentra Node
             println!("Try to connect to GRPC interface of Sentra node: {} at {}",peer_node_id,grpc_url);
             let mut client: inter_node_message_service_client::InterNodeMessageServiceClient<tonic::transport::Channel>;
@@ -112,7 +121,7 @@ impl Committee
                     .tls_config(
                                 tonic::transport::ClientTlsConfig::new()
                                 .ca_certificate(ca_cert)
-                                .domain_name(peer_node_id)
+                                .domain_name(&peer_node_id)
                                 ).expect("REASON-2");
 
                 let channel: Channel = endpoint.connect().await.expect("REASON-3");
@@ -171,7 +180,7 @@ impl Committee
                         {
                             Ok(Some(node_msg)) =>
                                 {
-                                    self.handle_node_message(node_msg);
+                                    self_clone.handle_node_message(node_msg);
                                 }
                             Ok(None) =>
                                 {
