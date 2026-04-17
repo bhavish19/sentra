@@ -215,7 +215,7 @@ class CommitteeSelection:
                 return self.m_old_committee
 
         sorted_candidates = sorted(self.m_candidates.m_arNodes.values(),
-                                   key=self.score)
+                                   key=lambda node: node.m_fTrustScore)
 
         new_committee = self.greedy_select(sorted_candidates)
 
