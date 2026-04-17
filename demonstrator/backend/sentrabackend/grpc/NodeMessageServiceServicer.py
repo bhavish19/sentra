@@ -88,9 +88,10 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
             grpcNode.node_id=node.m_strNodeID
             grpcNode.grpc_url=node.m_strInterNodeCommunicationGRPC_URL
             req.committee.add().CopyFrom(grpcNode)
+        grpcMsg=SentraBackend_GRPC_Services_pb2.ServerMessage(join_committee_request=req)    
         for node in committee.getNodes():
             log(f"Send committee join to node: {node.m_strNodeID}")
-            self.putMessageInNodeSendQueue(node.m_sendQueue,SentraBackend_GRPC_Services_pb2.ServerMessage(join_committee_request=req))
+            self.putMessageInNodeSendQueue(node.m_sendQueue,grpcMsg)
 
 
     async def generateComittee(self):

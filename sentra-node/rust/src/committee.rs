@@ -93,9 +93,9 @@ impl Committee
         for member in c.values()
         {
             if member.node_id==self.this_node
-	{
-        	    break;
-	}
+            {
+                        break;
+            }
             self.establish_outgoing_connection(member);
         }
         Ok(())
@@ -109,6 +109,7 @@ impl Committee
         let grpc_url=sentraNode.grpc_url.clone();
         let node_id:String=self.this_node.clone();
         let node_id2:String=self.this_node.clone();
+    
         println!("Spawn connection thread for connection to GRPC interface of Sentra node: {} at {}",peer_node_id,grpc_url);
         tokio::spawn(async move
         {
