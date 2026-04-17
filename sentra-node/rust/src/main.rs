@@ -1,7 +1,7 @@
 mod sentra_attester;
 mod acme;
 
-use std::{error::Error, time::Duration,process::Command,net::ToSocketAddrs,sync::Arc};
+use std::{error::Error, time::Duration,process::Command,net::ToSocketAddrs};
 
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;

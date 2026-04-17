@@ -90,7 +90,7 @@ impl Committee
   pub fn establish_connections(&self)->Result<(),()>
     {
         println!("Try to etsablish connections with all other members of the committee...");
-        let c: std::sync::RwLockReadGuard<'_, HashMap<String, CommitteeMember>>=self.committee.read().unwrap();
+        let c: std::sync::RwLockReadGuard<'_, IndexMap<String, CommitteeMember>>=self.committee.read().unwrap();
         for member in c.values()
         {
             if member.node_id==self.this_node
