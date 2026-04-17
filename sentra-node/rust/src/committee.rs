@@ -5,6 +5,25 @@ use tokio_stream::wrappers::ReceiverStream;
 tonic::include_proto!("sentra_inter_node_grpc_services");
 
 
+pub fn handle_node_message(this_node:String,node_msg: InterNodeMessage)
+    {
+        match node_msg.message_type 
+        {
+            Some(inter_node_message::MessageType::Hello(hello)) => 
+            {
+                println!("Received Hello-Message from {} to {}...",this_node,hello.node_id);
+	    },
+            Some(inter_node_message::MessageType::Heartbeat(heartbeat)) => 
+            {
+                println!("Received Heartbeat Message...");
+	    },
+	    None => {
+        	println!("Received empty inter node message");
+    	    }
+        }
+    }
+
+
 pub struct CommitteeMember
 {
     node_id:String,
@@ -66,51 +85,33 @@ impl Committee
         self.committee.write().unwrap().insert(new_member.node_id.clone(),new_member);
     }
 
-    pub fn handle_node_message(&self,node_msg: InterNodeMessage)
-    {
-        match node_msg.message_type 
-        {
-            Some(inter_node_message::MessageType::Hello(hello)) => 
-            {
-                println!("Received Hello-Message from {} to {}...",self.this_node,hello.node_id);
-	    },
-            Some(inter_node_message::MessageType::Heartbeat(heartbeat)) => 
-            {
-                println!("Received Heartbeat Message...");
-	    },
-	    None => {
-        	println!("Received empty inter node message");
-    	    }
-        }
-    }
 
-    pub fn establish_connections(&self)->Result<(),()>
+  pub fn establish_connections(&self)->Result<(),()>
     {
         println!("Try to etsablish connections with all other members of the committee...");
         let c: std::sync::RwLockReadGuard<'_, HashMap<String, CommitteeMember>>=self.committee.read().unwrap();
-	let self_arc=Arc::new(self);
         for member in c.values()
         {
             if member.node_id==self.this_node
-		{
-            	    break;
-		}
-            self_arc.clone().establish_outgoing_connection(member);
+	{
+        	    break;
+	}
+            self.establish_outgoing_connection(member);
         }
         Ok(())
     }
 
-    pub fn establish_outgoing_connection(self: Arc<&Committee>,sentraNode:&CommitteeMember)
+    pub fn establish_outgoing_connection(&self,sentraNode:&CommitteeMember)
     {
        // let rt: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
         let ca_cert:Certificate=self.ca_cert.clone();
         let peer_node_id:String=sentraNode.node_id.clone();
         let grpc_url=sentraNode.grpc_url.clone();
         let node_id:String=self.this_node.clone();
+        let node_id2:String=self.this_node.clone();
         println!("Spawn connection thread for connection to GRPC interface of Sentra node: {} at {}",peer_node_id,grpc_url);
         tokio::spawn(async move
         {
-	let self_clone = Arc::clone(&self);
             // Connect to the Sentra Node
             println!("Try to connect to GRPC interface of Sentra node: {} at {}",peer_node_id,grpc_url);
             let mut client: inter_node_message_service_client::InterNodeMessageServiceClient<tonic::transport::Channel>;
@@ -180,7 +181,7 @@ impl Committee
                         {
                             Ok(Some(node_msg)) =>
                                 {
-                                    self_clone.handle_node_message(node_msg);
+                                    handle_node_message(node_id2.clone(),node_msg);
                                 }
                             Ok(None) =>
                                 {

@@ -1,7 +1,7 @@
 mod sentra_attester;
 mod acme;
 
-use std::{error::Error, time::Duration,process::Command,net::ToSocketAddrs};
+use std::{error::Error, time::Duration,process::Command,net::ToSocketAddrs,sync::Arc};
 
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -21,10 +21,10 @@ const SENTRA_NODE_VERSION: &str =env!("CARGO_PKG_VERSION");
 
 struct SentraNode
 {
-    node_id:String,
-    grpc_url:String,
-    args:command_line_options::CommandLineOptions,
-    committee:committee::Committee
+    node_id: String,
+    grpc_url: String,
+    args: command_line_options::CommandLineOptions,
+    committee: committee::Committee
 }
 
 impl Default for SentraNode {
@@ -32,10 +32,10 @@ impl Default for SentraNode {
       {
         SentraNode
         {
-            node_id:String::new(),
-            grpc_url:String::new(),
-            args:argh::from_env(),
-            committee:committee::Committee::default()
+            node_id: String::new(),
+            grpc_url: String::new(),
+            args: argh::from_env(),
+            committee: committee::Committee::default()
         }
       }
 }
