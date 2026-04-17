@@ -1,4 +1,5 @@
 use std::{collections::HashMap, fmt, sync::{Arc, RwLock}, time::Duration};
+use use indexmap::IndexMap;
 use tonic::transport::{Certificate,Channel};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -40,7 +41,7 @@ pub struct Committee
 {
     this_node: String, //Node ID of this Sentra node
     ca_cert: Certificate, //the CA certificate for validating inter node TSL connections
-    committee: Arc<RwLock<HashMap<String, CommitteeMember>>>
+    committee: Arc<RwLock<IndexMap<String, CommitteeMember>>>
 }
 
 impl Default for Committee {
@@ -50,7 +51,7 @@ impl Default for Committee {
         {
             this_node:String::new(),
             ca_cert:Certificate::from_pem(""),
-            committee:Arc::new(RwLock::new(HashMap::new()))
+            committee:Arc::new(RwLock::new(IndexMap::new()))
         }
       }
 }
@@ -58,7 +59,7 @@ impl Default for Committee {
 impl fmt::Display for Committee {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        let c: std::sync::RwLockReadGuard<'_, HashMap<String, CommitteeMember>>=self.committee.read().unwrap();
+        let c: std::sync::RwLockReadGuard<'_, IndexMap<String, CommitteeMember>>=self.committee.read().unwrap();
         writeln!(f, "Committee with {} members:", c.len());
         for member in c.values()
         {
