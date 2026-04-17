@@ -18,7 +18,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
     m_nodeGenerator:SentraNodeAttributeGenerator
     m_nodeList:SentraNodeList
     m_committee:SentraNodeList
-    m_sortedCommittee: list[SentraNode]
+    m_sortedCommittee: list[SentraNode]|None
     m_GRPC_Loop:asyncio.AbstractEventLoop
     m_commandLineOptions:CommandLineOptions
     m_bCommitteeSelected:bool
@@ -29,7 +29,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
         self.m_GRPC_Loop=asyncio.get_event_loop()
         self.m_commandLineOptions=commandlineOptions
         self.m_bCommitteeSelected=False
-        self.m_sortedCommittee = []
+        self.m_sortedCommittee = None
 
         self.m_tcpProxy = NodeTCPProxy(
             base_port=commandlineOptions.getTcpProxyBasePort()
@@ -110,7 +110,8 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
             if committee:
                 log("found committee:")
                 log(str(committee))
-                self.m_sortedCommittee = sorted(committee.m_arNodes.values(), key=self.score)
+                #FixMe!
+                #self.m_sortedCommittee = sorted(committee.m_arNodes.values(), key=self.score)
                 await self.requestCommitteeJoin(committee)
                 self.m_bCommitteeSelected=True
             else:
@@ -125,6 +126,8 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
         Open one TCP port for every node in the committee.
         Called after a new committee has been selected.
         """
+        if(self.m_sortedCommittee is None):
+            return
         for index, node in self.m_sortedCommittee.enumerate():
             await self.openPortForNode(index, node.m_sendQueue)
 
@@ -133,7 +136,8 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
         Close the TCP port for every node in the committee.
         Called before a new committee replaces the current one.
         """
-
+        if(self.m_sortedCommittee is None):
+            return
         for index, node in self.m_sortedCommittee.enumerate():
             self._send_queues[index]
             await self.closePortForNode(index)
