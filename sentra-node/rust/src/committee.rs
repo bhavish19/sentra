@@ -66,6 +66,17 @@ impl Committee
         self.committee.write().unwrap().insert(new_member.node_id.clone(),new_member);
     }
 
+    pub fn handle_node_message(&self,node_msg: InterNodeMessage)
+    {
+        match node_msg.message_type 
+        {
+            Some(node_message::MessageType::Hello(hello)) => 
+        {
+            println!("Received Hello-Message from {} to {}...",self.this_node,hello.node_id);
+        }
+        }
+    }
+
     pub fn establish_connections(&self)->Result<(),()>
     {
         println!("Try to etsablish connections with all other members of the committee...");
@@ -127,7 +138,7 @@ impl Committee
                 {
                     loop{
                     // Send registration message
-                    println!("Sending hello message...");
+                    println!("Sending hello message from node {} to node {}...",node_id,peer_node_id);
                     let register_msg: InterNodeMessage = InterNodeMessage {
                         message_type: Some(inter_node_message::MessageType::Hello(HelloMessage {
                             node_id: node_id.clone()
@@ -138,7 +149,7 @@ impl Committee
                         eprintln!("Failed to send hello message");
                         return;
                     }
-                    tokio::time::sleep(Duration::from_millis(1000)).await;
+                    tokio::time::sleep(Duration::from_millis(5000)).await;
                 }
                 });
 
@@ -160,7 +171,7 @@ impl Committee
                         {
                             Ok(Some(node_msg)) =>
                                 {
-//                                    sentra_node.handle_server_message(server_msg,tx.clone(),sentra_node.args.fake_attestation);
+                                    self.handle_node_message(node_msg);
                                 }
                             Ok(None) =>
                                 {
