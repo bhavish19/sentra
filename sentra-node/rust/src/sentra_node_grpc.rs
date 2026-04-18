@@ -62,7 +62,7 @@ pub fn handle_node_message(this_node:String,node_msg: InterNodeMessage)
         {
             Some(MessageType::Hello(hello)) => 
             {
-                println!("Received Hello-Message from {} to {}...",this_node,hello.node_id);
+                println!("Received Hello-Message from {} to {}...",hello.node_id,this_node);
 	    },
             Some(MessageType::Heartbeat(heartbeat)) => 
             {

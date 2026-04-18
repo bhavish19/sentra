@@ -10,8 +10,7 @@ use hostname;
 use rustls::crypto::{aws_lc_rs, CryptoProvider};
 use dns_lookup::lookup_addr;
 use rustc_version_runtime;
-// Include the generated code from the proto file
-tonic::include_proto!("sentra_backend_grpc_services");
+
 mod protos;
 mod command_line_options;
 mod committee;
