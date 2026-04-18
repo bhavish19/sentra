@@ -2,12 +2,16 @@ use tonic::{transport::Server,Request,Response,Status};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-tonic::include_proto!("sentra_inter_node_grpc_services");
-
-use main::SentraNode;
+use crate::protos::sentra_inter_node_grpc_services::InterNodeMessage;
+use crate::protos::sentra_inter_node_grpc_services::inter_node_message::MessageType;
+use crate::protos::sentra_inter_node_grpc_services::inter_node_message_service_server;
+use crate::SentraNode;
 
 #[derive(Default)]
-pub struct SentraInterNodeMessageService{}
+pub struct SentraInterNodeMessageService
+{
+   node_id:String
+}
 
 #[tonic::async_trait]
 impl inter_node_message_service_server::InterNodeMessageService for SentraInterNodeMessageService
@@ -24,12 +28,13 @@ impl inter_node_message_service_server::InterNodeMessageService for SentraInterN
 
 
         // Spawn a task to handle incoming messages
+        let node_id:String=self.node_id.clone();
         tokio::spawn(async move {
             while let result = incoming_stream.message().await {
                 match result {
                     Ok(Some(message)) => 
                     {
-                         handle_node_message("test",message)
+                         handle_node_message(node_id.clone(),message)
                     }
                      Ok(None) =>
                                 {
@@ -55,11 +60,11 @@ pub fn handle_node_message(this_node:String,node_msg: InterNodeMessage)
     {
         match node_msg.message_type 
         {
-            Some(inter_node_message::MessageType::Hello(hello)) => 
+            Some(MessageType::Hello(hello)) => 
             {
                 println!("Received Hello-Message from {} to {}...",this_node,hello.node_id);
 	    },
-            Some(inter_node_message::MessageType::Heartbeat(heartbeat)) => 
+            Some(MessageType::Heartbeat(heartbeat)) => 
             {
                 println!("Received Heartbeat Message...");
 	    },
@@ -69,14 +74,15 @@ pub fn handle_node_message(this_node:String,node_msg: InterNodeMessage)
         }
     }
 
-async fn run_server(sentra_node:&SentraNode) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_server(node_id:String) -> Result<(), Box<dyn std::error::Error>> {
     let addr = "0.0.0.0:50051".parse().unwrap();
-    let intern_node_grpc_service = SentraInterNodeMessageService::default();
+    let mut inter_node_grpc_service = SentraInterNodeMessageService::default();
+    inter_node_grpc_service.node_id=node_id;
 
     println!("Sentra inter node grpc service listening on {}", addr);
 
     Server::builder()
-        .add_service(inter_node_message_service_server::InterNodeMessageServiceServer::new(intern_node_grpc_service))
+        .add_service(inter_node_message_service_server::InterNodeMessageServiceServer::new(inter_node_grpc_service))
         .serve(addr)
         .await?;
 
@@ -85,10 +91,11 @@ async fn run_server(sentra_node:&SentraNode) -> Result<(), Box<dyn std::error::E
 
 pub fn startGRPCServer(sentra_node:&SentraNode)
 {
+    let node_id=sentra_node.node_id.clone();
     let server_thread = std::thread::spawn(|| {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         runtime.block_on(async {
-            if let Err(e) = run_server(sentra_node).await {
+            if let Err(e) = run_server(node_id).await {
                 eprintln!("Server error: {}", e);
             }
         });

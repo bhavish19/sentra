@@ -12,20 +12,15 @@ use dns_lookup::lookup_addr;
 use rustc_version_runtime;
 // Include the generated code from the proto file
 tonic::include_proto!("sentra_backend_grpc_services");
-
+mod protos;
 mod command_line_options;
-mod sentra_node_grpc;
 mod committee;
+mod sentra_node;
+mod sentra_node_grpc;
 
 const SENTRA_NODE_VERSION: &str =env!("CARGO_PKG_VERSION");
 
-pub struct SentraNode
-{
-    node_id: String,
-    grpc_url: String,
-    args: command_line_options::CommandLineOptions,
-    committee: committee::Committee
-}
+use sentra_node::SentraNode;
 
 impl Default for SentraNode {
     fn default()->Self

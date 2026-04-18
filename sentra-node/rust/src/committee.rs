@@ -1,11 +1,13 @@
-use std::{collections::HashMap, fmt, sync::{Arc, RwLock}, time::Duration};
+use std::{fmt, sync::{Arc, RwLock}, time::Duration};
 use indexmap::IndexMap;
 use tonic::transport::{Certificate,Channel};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-tonic::include_proto!("sentra_inter_node_grpc_services");
-
-use sentra_node_grpc::handle_node_message;
+use crate::protos::sentra_inter_node_grpc_services::InterNodeMessage;
+use crate::protos::sentra_inter_node_grpc_services::inter_node_message::MessageType;
+use crate::protos::sentra_inter_node_grpc_services::inter_node_message_service_client;
+use crate::protos::sentra_inter_node_grpc_services::HelloMessage;
+use crate::sentra_node_grpc::handle_node_message;
 
 pub struct CommitteeMember
 {
@@ -134,7 +136,7 @@ impl Committee
                     // Send registration message
                     println!("Sending hello message from node {} to node {}...",node_id,peer_node_id);
                     let register_msg: InterNodeMessage = InterNodeMessage {
-                        message_type: Some(inter_node_message::MessageType::Hello(HelloMessage {
+                        message_type: Some(MessageType::Hello(HelloMessage {
                             node_id: node_id.clone()
                         }))
                     };
