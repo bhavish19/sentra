@@ -5,25 +5,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 tonic::include_proto!("sentra_inter_node_grpc_services");
 
-
-pub fn handle_node_message(this_node:String,node_msg: InterNodeMessage)
-    {
-        match node_msg.message_type 
-        {
-            Some(inter_node_message::MessageType::Hello(hello)) => 
-            {
-                println!("Received Hello-Message from {} to {}...",this_node,hello.node_id);
-	    },
-            Some(inter_node_message::MessageType::Heartbeat(heartbeat)) => 
-            {
-                println!("Received Heartbeat Message...");
-	    },
-	    None => {
-        	println!("Received empty inter node message");
-    	    }
-        }
-    }
-
+use sentra_node_grpc::handle_node_message;
 
 pub struct CommitteeMember
 {

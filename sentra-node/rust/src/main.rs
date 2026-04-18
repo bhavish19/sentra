@@ -19,7 +19,7 @@ mod committee;
 
 const SENTRA_NODE_VERSION: &str =env!("CARGO_PKG_VERSION");
 
-struct SentraNode
+pub struct SentraNode
 {
     node_id: String,
     grpc_url: String,
@@ -171,7 +171,7 @@ fn main()
         };
     }
 
-    sentra_node_grpc::startGRPCServer();
+    sentra_node_grpc::startGRPCServer(&sentra_node);
 
     let grpc_server_url: String=sentra_node.args.grpc_url.clone();
 
