@@ -55,7 +55,7 @@ impl fmt::Display for Committee {
 
 impl Committee
 {
-    pub fn setThisNodeID(&mut self,node_id:&String)
+    pub fn set_this_node_id(&mut self,node_id:&String)
 	{
 	    self.this_node=node_id.clone();
 	}
@@ -86,12 +86,12 @@ impl Committee
         Ok(())
     }
 
-    pub fn establish_outgoing_connection(&self,sentraNode:&CommitteeMember)
+    pub fn establish_outgoing_connection(&self,sentra_node:&CommitteeMember)
     {
        // let rt: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
         let ca_cert:Certificate=self.ca_cert.clone();
-        let peer_node_id:String=sentraNode.node_id.clone();
-        let grpc_url=sentraNode.grpc_url.clone();
+        let peer_node_id:String=sentra_node.node_id.clone();
+        let grpc_url=sentra_node.grpc_url.clone();
         let node_id:String=self.this_node.clone();
         let node_id2:String=self.this_node.clone();
     
