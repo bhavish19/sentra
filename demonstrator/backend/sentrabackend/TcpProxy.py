@@ -84,47 +84,58 @@ class NodeTCPProxy:
     # ------------------------------------------------------------------
 
     async def _handle_tcp_client(
-        self,
-        committee_index: int,
-        reader: asyncio.StreamReader,
-        writer: asyncio.StreamWriter,
-    ) -> None:
-        peer = writer.get_extra_info("peername")
-        log(f"[TCPProxy] TCP client {peer} connected for committee member {committee_index} "
-            f"on port {self.base_port + committee_index}")
+            self,
+            committee_index: int,
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            peer = writer.get_extra_info("peername")
+            log(f"[TCPProxy] TCP client {peer} connected for committee member {committee_index} "
+                f"on port {self.base_port + committee_index}")
 
-        # Only one TCP client per node at a time — close any previous one
-        old_writer = self._tcp_writers.get(committee_index)
-        if old_writer:
-            logger.warning(f"[TCPProxy] Replacing existing TCP client for committee index {committee_index}")
-            old_writer.close()
+            # Only one TCP client per committee member at a time — close any previous one
+            old_writer = self._tcp_writers.get(committee_index)
+            if old_writer:
+                log(f"[TCPProxy] Replacing existing TCP client for committee index {committee_index}")
+                old_writer.close()
+                try:
+                    await old_writer.wait_closed()
+                except:
+                    pass
 
-        self._tcp_writers[committee_index] = writer
+            self._tcp_writers[committee_index] = writer
 
-        send_queue = self._send_queues.get(committee_index)
-        if send_queue is None:
-            logger.error(f"[TCPProxy] No send_queue for committee index {committee_index}, closing TCP client")
-            writer.close()
-            return
+            send_queue = self._send_queues.get(committee_index)
+            if send_queue is None:
+                log(f"[TCPProxy] No send_queue for committee index {committee_index}, closing TCP client")
+                writer.close()
+                await writer.wait_closed()
+                return
 
-        try:
-            while True:
-                data = await reader.read(4096)
-                if not data:
-                    break
-                logger.debug(f"[TCPProxy] TCP→node (committee {committee_index}): {len(data)} bytes")
+            try:
+                while True:
+                    data = await reader.read(4096)
+                    if not data:
+                        break
+                    log(f"[TCPProxy] TCP→node (committee {committee_index}): {len(data)} bytes")
 
-                # Wrap in ServerMessage/PythonMsg and place on the node's send_queue.
-                # NodeStream's send loop will pick this up and yield it to the node
-                # over the existing gRPC stream — no separate gRPC channel needed.
-                message = pb2.ServerMessage(
-                    python_msg=pb2.PythonMsg(msg=data)
-                )
-                await send_queue.put(message)
+                    # Wrap in ServerMessage/PythonMsg and place on the node's send_queue.
+                    # NodeStream's send loop will pick this up and yield it to the node
+                    # over the existing gRPC stream — no separate gRPC channel needed.
+                    message = pb2.ServerMessage(
+                        python_msg=pb2.PythonMsg(msg=data)
+                    )
+                    await send_queue.put(message)
 
-        except OSError as exc:
-            logger.warning(f"[TCPProxy] TCP read error for committee index {committee_index}: {exc}")
-        finally:
-            self._tcp_writers.pop(committee_index, None)
-            writer.close()
-            log(f"[TCPProxy] TCP client {peer} disconnected from committee member {committee_index}")
+            except OSError as exc:
+                log(f"[TCPProxy] TCP read error for committee index {committee_index}: {exc}")
+            except Exception as exc:
+                log(f"[TCPProxy] Unexpected error for committee index {committee_index}: {exc}")
+            finally:
+                self._tcp_writers.pop(committee_index, None)
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except:
+                    pass
+                log(f"[TCPProxy] TCP client {peer} disconnected from committee member {committee_index}")
