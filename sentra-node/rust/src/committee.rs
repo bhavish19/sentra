@@ -1,29 +1,13 @@
-use std::{collections::HashMap, fmt, sync::{Arc, RwLock}, time::Duration};
+use std::{fmt, sync::{Arc, RwLock}, time::Duration};
 use indexmap::IndexMap;
 use tonic::transport::{Certificate,Channel};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-tonic::include_proto!("sentra_inter_node_grpc_services");
-
-
-pub fn handle_node_message(this_node:String,node_msg: InterNodeMessage)
-    {
-        match node_msg.message_type 
-        {
-            Some(inter_node_message::MessageType::Hello(hello)) => 
-            {
-                println!("Received Hello-Message from {} to {}...",this_node,hello.node_id);
-	    },
-            Some(inter_node_message::MessageType::Heartbeat(heartbeat)) => 
-            {
-                println!("Received Heartbeat Message...");
-	    },
-	    None => {
-        	println!("Received empty inter node message");
-    	    }
-        }
-    }
-
+use crate::protos::sentra_inter_node_grpc_services::InterNodeMessage;
+use crate::protos::sentra_inter_node_grpc_services::inter_node_message::MessageType;
+use crate::protos::sentra_inter_node_grpc_services::inter_node_message_service_client;
+use crate::protos::sentra_inter_node_grpc_services::HelloMessage;
+use crate::sentra_node_grpc::handle_node_message;
 
 pub struct CommitteeMember
 {
@@ -71,7 +55,7 @@ impl fmt::Display for Committee {
 
 impl Committee
 {
-    pub fn setThisNodeID(&mut self,node_id:&String)
+    pub fn set_this_node_id(&mut self,node_id:&String)
 	{
 	    self.this_node=node_id.clone();
 	}
@@ -102,12 +86,12 @@ impl Committee
         Ok(())
     }
 
-    pub fn establish_outgoing_connection(&self,sentraNode:&CommitteeMember)
+    pub fn establish_outgoing_connection(&self,sentra_node:&CommitteeMember)
     {
        // let rt: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
         let ca_cert:Certificate=self.ca_cert.clone();
-        let peer_node_id:String=sentraNode.node_id.clone();
-        let grpc_url=sentraNode.grpc_url.clone();
+        let peer_node_id:String=sentra_node.node_id.clone();
+        let grpc_url=sentra_node.grpc_url.clone();
         let node_id:String=self.this_node.clone();
         let node_id2:String=self.this_node.clone();
     
@@ -152,7 +136,7 @@ impl Committee
                     // Send registration message
                     println!("Sending hello message from node {} to node {}...",node_id,peer_node_id);
                     let register_msg: InterNodeMessage = InterNodeMessage {
-                        message_type: Some(inter_node_message::MessageType::Hello(HelloMessage {
+                        message_type: Some(MessageType::Hello(HelloMessage {
                             node_id: node_id.clone()
                         }))
                     };

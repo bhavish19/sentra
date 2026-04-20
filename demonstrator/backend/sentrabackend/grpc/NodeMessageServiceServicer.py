@@ -30,11 +30,11 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
         self.m_commandLineOptions=commandlineOptions
         self.m_bCommitteeSelected=False
         self.m_sortedCommittee = None
+        self._servers: dict[int, asyncio.Server] = {}
+        self._send_queues: dict[int, asyncio.Queue] = {}
+        self.base_port = commandlineOptions.getTcpProxyBasePort()
 
-        self.m_tcpProxy = NodeTCPProxy(
-            base_port=commandlineOptions.getTcpProxyBasePort()
-        )
-        #self._node_index: dict[str, int] = {}
+        self.m_tcpProxy = NodeTCPProxy(self.base_port)
         self.m_currentCommittee: SentraNodeList | None = None
 
     def sendMessageToNode(self,node_id:str,message:SentraBackend_GRPC_Services_pb2.ServerMessage)->None:
@@ -88,7 +88,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
             grpcNode.node_id=node.m_strNodeID
             grpcNode.grpc_url=node.m_strInterNodeCommunicationGRPC_URL
             req.committee.add().CopyFrom(grpcNode)
-        grpcMsg=SentraBackend_GRPC_Services_pb2.ServerMessage(join_committee_request=req)    
+        grpcMsg=SentraBackend_GRPC_Services_pb2.ServerMessage(join_committee_request=req)
         for node in committee.getNodes():
             log(f"Send committee join to node: {node.m_strNodeID}")
             self.putMessageInNodeSendQueue(node.m_sendQueue,grpcMsg)
@@ -111,8 +111,10 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
             if committee:
                 log("found committee:")
                 log(str(committee))
-                #FixMe!
-                #self.m_sortedCommittee = sorted(committee.m_arNodes.values(), key=self.score)
+                await self.closeTcpProxies()
+                self.m_sortedCommittee = sorted(committee.m_arNodes.values(), key=lambda node: node.m_fTrustScore)
+                log("open TCP proxies")
+                await self.openTcpProxies()
                 await self.requestCommitteeJoin(committee)
                 self.m_bCommitteeSelected=True
             else:
@@ -122,15 +124,15 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
     # High-level: open/close all ports for an entire committee at once
     # ------------------------------------------------------------------
 
-    async def openTcpProxies(self, committee: SentraNodeList) -> None:
+    async def openTcpProxies(self) -> None:
         """
         Open one TCP port for every node in the committee.
         Called after a new committee has been selected.
         """
         if(self.m_sortedCommittee is None):
             return
-        for index, node in self.m_sortedCommittee.enumerate():
-            await self.openPortForNode(index, node.m_sendQueue)
+        for index, node in enumerate(self.m_sortedCommittee):
+            await self.m_tcpProxy.openPortForNode(index, node.m_sendQueue)
 
     async def closeTcpProxies(self) -> None:
         """
@@ -139,39 +141,8 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
         """
         if(self.m_sortedCommittee is None):
             return
-        for index, node in self.m_sortedCommittee.enumerate():
-            self._send_queues[index]
-            await self.closePortForNode(index)
-
-    # ------------------------------------------------------------------
-    # Called from NodeMessageServiceServicer when a node registers
-    # ------------------------------------------------------------------
-
-    async def openPortForNode(
-        self,
-        committee_index: int,
-        send_queue: asyncio.Queue,
-    ) -> None:
-        """
-        Open a TCP listener on base_port + committee_index for the given node.
-        Already called from within the gRPC event loop, so plain await is fine.
-        """
-        if committee_index in self._servers:
-            log(f"[TCPProxy] Port already open for committee index {committee_index}, skipping")
-            return
-
-        port = self.base_port + committee_index
-        self._send_queues[committee_index] = send_queue
-
-        server = await asyncio.start_server(
-            lambda r, w: self._handle_tcp_client(committee_index, r, w),
-            host="0.0.0.0",
-            port=port,
-        )
-        self._servers[committee_index] = server
-        asyncio.create_task(server.serve_forever())
-
-        log(f"[TCPProxy] Opened TCP port {port} for committee member {committee_index}")
+        for index in range(len(self.m_sortedCommittee)):
+            await self.m_tcpProxy.closePortForNode(index)
 
     async def NodeStream(self, request_iterator, context) -> None:
         node_id: str | None = None
@@ -216,11 +187,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                             attest_time = time.time()
                             self.m_nodeList.setVerified(node_id, attest_time)
                             log(f"Node {node_id} verified.")
-                            if self.m_sortedCommittee:
-                                await self.closeTcpProxies()
                             await self.generateComittee()
-                            if self.m_sortedCommittee:
-                                await self.openTcpProxies()
                         else:
                             log(f"Node {node_id} failed verification")
                             break

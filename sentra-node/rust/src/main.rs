@@ -10,22 +10,25 @@ use hostname;
 use rustls::crypto::{aws_lc_rs, CryptoProvider};
 use dns_lookup::lookup_addr;
 use rustc_version_runtime;
-// Include the generated code from the proto file
-tonic::include_proto!("sentra_backend_grpc_services");
+
+mod protos;
+use crate::protos::sentra_backend_grpc_services::ServerMessage;
+use crate::protos::sentra_backend_grpc_services::RegisterRequest;
+use crate::protos::sentra_backend_grpc_services::NodeMessage;
+use crate::protos::sentra_backend_grpc_services::node_message_service_client::NodeMessageServiceClient;
+use crate::protos::sentra_backend_grpc_services::TGrpcSentraNode;
+use crate::protos::sentra_backend_grpc_services::server_message;
+use crate::protos::sentra_backend_grpc_services::node_message;
+use crate::protos::sentra_backend_grpc_services::AttestationResponse;
 
 mod command_line_options;
-mod sentra_node_grpc;
 mod committee;
+mod sentra_node;
+mod sentra_node_grpc;
 
 const SENTRA_NODE_VERSION: &str =env!("CARGO_PKG_VERSION");
 
-struct SentraNode
-{
-    node_id: String,
-    grpc_url: String,
-    args: command_line_options::CommandLineOptions,
-    committee: committee::Committee
-}
+use sentra_node::SentraNode;
 
 impl Default for SentraNode {
     fn default()->Self
@@ -142,7 +145,7 @@ fn main()
         None => sentra_node.node_id.clone()
     };
     sentra_node.grpc_url="http://".to_owned()+&fqdn+":50051";
-    sentra_node.committee.setThisNodeID(&sentra_node.node_id);
+    sentra_node.committee.set_this_node_id(&sentra_node.node_id);
     CryptoProvider::install_default(aws_lc_rs::default_provider()).expect("Failed to install crypto provider");
     let mut grpc_cert:Option<String>=None;
     let mut _grpc_key:Option<String>=None;
@@ -171,7 +174,7 @@ fn main()
         };
     }
 
-    sentra_node_grpc::startGRPCServer();
+    sentra_node_grpc::startGRPCServer(&sentra_node);
 
     let grpc_server_url: String=sentra_node.args.grpc_url.clone();
 
@@ -180,7 +183,7 @@ fn main()
         {
             // Connect to the server
             println!("Try to connect to GRPC interface of Sentra backend: {}",grpc_server_url);
-            let mut client: node_message_service_client::NodeMessageServiceClient<tonic::transport::Channel>;
+            let mut client: NodeMessageServiceClient<tonic::transport::Channel>;
             if sentra_node.args.use_acme
             {
                 let ca_cert = Certificate::from_pem(grpc_cert.unwrap().as_bytes());
@@ -194,12 +197,12 @@ fn main()
                                 ).expect("REASON-2");
 
                 let channel: Channel = endpoint.connect().await.expect("REASON-3");
-                client = node_message_service_client::NodeMessageServiceClient::new(channel);
+                client = NodeMessageServiceClient::new(channel);
             }
             else
             {
                 println!("Doing a default connection...");
-                client = node_message_service_client::NodeMessageServiceClient::connect(grpc_server_url).await.expect("REASON");
+                client = NodeMessageServiceClient::connect(grpc_server_url).await.expect("REASON");
             }
 
             // Create a channel for sending messages to the server
