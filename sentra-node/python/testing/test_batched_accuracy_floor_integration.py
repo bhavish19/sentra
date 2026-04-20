@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 import pytest
+from testing.integration_harness import integration_timeout_seconds, wait_all_processes
 
 
 @pytest.mark.integration
@@ -15,6 +16,9 @@ def test_batched_mnist_accuracy_floor():
     Regression test for batched secure MNIST learning quality.
     Runs a fixed 3-node setup and asserts final reported accuracy
     on node 1 is above a conservative floor.
+
+    Uses owner-only MNIST load (--distribute-dataset-shares) to avoid three-way
+    contention on Keras cache under WSL or slow disks.
     """
     root = Path(__file__).resolve().parents[1]
     log_dir = root / "testing" / "tmp_bench"
@@ -29,6 +33,9 @@ def test_batched_mnist_accuracy_floor():
         "--t",
         "1",
         "--enable-network",
+        "--distribute-dataset-shares",
+        "--dataset-owner-node",
+        "1",
         "--base-port",
         str(base_port),
         "--host",
@@ -62,10 +69,7 @@ def test_batched_mnist_accuracy_floor():
                 procs.append(p)
             time.sleep(0.4)
 
-        deadline = time.time() + 420.0
-        for p in procs:
-            remaining = max(1.0, deadline - time.time())
-            p.wait(timeout=remaining)
+        wait_all_processes(procs, timeout_sec=integration_timeout_seconds())
 
         for p in procs:
             assert p.returncode == 0, f"Node process failed with code {p.returncode}"
