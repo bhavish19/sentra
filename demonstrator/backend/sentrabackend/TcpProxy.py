@@ -23,7 +23,6 @@ class NodeTCPProxy:
 
     def __init__(self, base_port: int):
         self.base_port = base_port
-        #self.m_iNextPort=base_port
 
         # node_id -> asyncio.StreamWriter for the currently connected TCP client
         self._tcp_writers: dict[str, asyncio.StreamWriter] = {}
@@ -34,25 +33,58 @@ class NodeTCPProxy:
         # node_id -> send_queue (set at registration time)
         self._send_queues: dict[str, asyncio.Queue] = {}
 
+   # ------------------------------------------------------------------
+    # Called from NodeMessageServiceServicer to open a port for a committee member
     # ------------------------------------------------------------------
-    # Called from NodeMessageServiceServicer when a node disconnects
+
+    async def openPortForNode(
+            self,
+            committee_index: int,
+            send_queue: asyncio.Queue,
+        ) -> None:
+            """
+            Open a TCP listener on base_port + committee_index for the given committee member.
+            Already called from within the gRPC event loop, so plain await is fine.
+            """
+            if committee_index in self._servers:
+                log(f"[TCPProxy] Port already open for committee index {committee_index}, skipping")
+                return
+
+            port = self.base_port + committee_index
+            self._send_queues[committee_index] = send_queue
+
+            server = await asyncio.start_server(
+                lambda r, w: self._handle_tcp_client(committee_index, r, w),
+                host="0.0.0.0",
+                port=port,
+            )
+            self._servers[committee_index] = server
+
+            # Start the server in the background
+            asyncio.create_task(server.serve_forever())
+
+            log(f"[TCPProxy] Opened TCP port {port} for committee member {committee_index}")
+
+    # ------------------------------------------------------------------
+    # Called from NodeMessageServiceServicer when a committee member disconnects
     # ------------------------------------------------------------------
 
     async def closePortForNode(self, committee_index: int) -> None:
-            """
-            Close the TCP listener and any active TCP client for this node.
-            """
-            server = self._servers.pop(committee_index, None)
-            if server:
-                server.close()
-                await server.wait_closed()
-                log(f"[TCPProxy] Closed TCP port {self.base_port + committee_index} for committee member {committee_index}")
+        """
+        Close the TCP listener and any active TCP client for this committee member.
+        """
+        server = self._servers.pop(committee_index, None)
+        if server:
+            server.close()
+            await server.wait_closed()
+            log(f"[TCPProxy] Closed TCP port {self.base_port + committee_index} for committee member {committee_index}")
 
-            writer = self._tcp_writers.pop(committee_index, None)
-            if writer:
-                writer.close()
+        writer = self._tcp_writers.pop(committee_index, None)
+        if writer:
+            writer.close()
+            await writer.drain()
 
-            self._send_queues.pop(committee_index, None)
+        self._send_queues.pop(committee_index, None)
 
     # ------------------------------------------------------------------
     # Called from NodeStream.recv_messages() when a python_msg arrives
