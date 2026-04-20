@@ -112,8 +112,10 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
             if committee:
                 log("found committee:")
                 log(str(committee))
-                #FixMe!
+                await self.closeTcpProxies()
                 self.m_sortedCommittee = sorted(committee.m_arNodes.values(), key=lambda node: node.m_fTrustScore)
+                log("open TCP proxies")
+                await self.openTcpProxies()
                 await self.requestCommitteeJoin(committee)
                 self.m_bCommitteeSelected=True
             else:
@@ -223,12 +225,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                             attest_time = time.time()
                             self.m_nodeList.setVerified(node_id, attest_time)
                             log(f"Node {node_id} verified.")
-                            if self.m_sortedCommittee:
-                                await self.closeTcpProxies()
                             await self.generateComittee()
-                            if self.m_sortedCommittee:
-                                log("open TCP proxies")
-                                await self.openTcpProxies()
                         else:
                             log(f"Node {node_id} failed verification")
                             break
