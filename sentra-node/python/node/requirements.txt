@@ -4,9 +4,11 @@
 # Core
 tensorflow>=2.10
 numpy>=1.21
+PyYAML>=6.0
 
 # Testing
 pytest>=7.0
+pytest-benchmark>=4.0
 
 # Excel export (--record-results-xlsx)
 openpyxl>=3.0

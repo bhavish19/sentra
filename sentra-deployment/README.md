@@ -27,16 +27,18 @@ Declarative configuration file which describes which files should be copied into
 
 Execute:
 
-``docker compose up --profile PROFLE``
+``docker compose up --profile <name>``
 
 This will automatically build the Docker image (if it does not exist) and execute it afterwards. You should see relevant output on the terminal. Note that you need to specify the profile you want to execute:
 
-- ``docker compose up --profile test``
-Runs: ``run_training.py``
-<br>
+- ``docker compose up --profile test``  
+  Runs: ``run_training.py`` (simple training path in the container).
 
-- ``docker compose up --profile dp-test``
-Runs: ``run_dp_training.py``
+- ``docker compose up --profile mnist_batched_secure``  
+  Runs: ``run_mnist_batched_secure.py`` (batched secure MNIST; SGX image).
 
-- ``docker compose up --profile multi-node``
-Runs a multi node scenario with 5 nodes.
+- ``docker compose up --profile mnist_batched_secure-no-sgx``  
+  Same MNIST runner on the no-SGX image.
+
+- ``docker compose up --profile multi-node``  
+  Multi-node scenario with five ``run_mnist_batched_secure.py`` workers.

@@ -2,10 +2,31 @@
 Pytest configuration and fixtures
 """
 
-import pytest
+import socket
+from typing import Any, Dict
+
 import numpy as np
-from ml_training.secret_sharing import Share, ShamirSecretSharing, PackedShamirSecretSharing
-from ml_training.beaver_triples import SecureMultiplier, BeaverTripleGenerator, BeaverTriplePool
+import pytest
+from ml_training.beaver_triples import BeaverTripleGenerator, BeaverTriplePool, SecureMultiplier
+from ml_training.secret_sharing import PackedShamirSecretSharing, ShamirSecretSharing
+
+
+def ephemeral_local_node_configs(count: int) -> Dict[int, Dict[str, Any]]:
+    """Unique loopback ports for this call (avoids EADDRINUSE across tests / leftover binds)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        base = int(s.getsockname()[1])
+    return {i: {"host": "127.0.0.1", "port": base + i} for i in range(1, int(count) + 1)}
+
+
+@pytest.fixture
+def local_node_configs(n_nodes):
+    return ephemeral_local_node_configs(n_nodes)
+
+
+@pytest.fixture
+def local_node_configs_pair():
+    return ephemeral_local_node_configs(2)
 
 
 @pytest.fixture

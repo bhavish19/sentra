@@ -22,10 +22,10 @@ RUN /miniconda/bin/conda create --prefix /python-occlum -y  python==3.10.0 numpy
 COPY ./sentra-node/docker/sentra-node-sbom.yaml /
 RUN mkdir /sentra
 RUN mkdir /sentra/ml_training
-COPY ./sentra-node/python/ml_training /sentra/ml_training/
+COPY ./sentra-node/python/node/ml_training /sentra/ml_training/
 COPY ./sentra-node/docker/training_config.yaml /sentra/
-COPY ./sentra-node/python/run_mnist_batched_secure.py /sentra/
-COPY ./sentra-node/python/communication_test/InterNodeCommunicationTest.py /sentra/
+COPY ./sentra-node/python/node/run_mnist_batched_secure.py /sentra/
+COPY ./sentra-node/python/node/communication_test/InterNodeCommunicationTest.py /sentra/
 
 #Build attester
 #Just update crates.io (and cache it...)

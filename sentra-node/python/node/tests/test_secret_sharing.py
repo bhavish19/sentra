@@ -110,90 +110,45 @@ class TestShamirSecretSharing:
 class TestPackedShamirSecretSharing:
     """Tests for Packed Shamir Secret Sharing"""
     
-    def test_share_secrets(self, packed_sharing, shamir_sharing, n_nodes, threshold):
-        """Test sharing multiple secrets in packed format"""
+    def test_share_secrets(self, packed_sharing, n_nodes, threshold):
+        """Test sharing multiple secrets in one packed polynomial."""
         secrets = [10, 20, 30]
-        s = len(secrets)  # packing factor
-        
-        # First share each secret individually
-        all_shares = []
-        for secret in secrets:
-            shares = shamir_sharing.share(secret, n_nodes, threshold)
-            all_shares.append(shares)
-        
-        # Then pack the shares
-        packed_shares = packed_sharing.pack_share(
-            [shares[0] for shares in all_shares], s
-        )
-        
-        assert len(packed_shares) > 0
+        packed_shares = packed_sharing.share_secrets(secrets, n_nodes, threshold)
+        assert len(packed_shares) == n_nodes
         assert all(isinstance(s, Share) for s in packed_shares)
     
-    def test_reconstruct_secrets(self, packed_sharing, shamir_sharing, n_nodes, threshold):
-        """Test reconstructing packed secrets"""
+    def test_reconstruct_secrets(self, packed_sharing, n_nodes, threshold):
+        """Test reconstructing packed secrets from party shares."""
         secrets = [10, 20, 30]
-        s = len(secrets)
-        
-        # Share and pack
-        all_shares = []
-        for secret in secrets:
-            shares = shamir_sharing.share(secret, n_nodes, threshold)
-            all_shares.append(shares)
-        
-        packed_shares = packed_sharing.pack_share(
-            [shares[0] for shares in all_shares], s
-        )
-        
-        # Unpack and reconstruct
-        unpacked = packed_sharing.unpack_share(packed_shares, s)
-        # Note: Full reconstruction would require all shares from all nodes
-        assert len(unpacked) > 0
+        k = len(secrets)
+        shares = packed_sharing.share_secrets(secrets, n_nodes, threshold)
+        need = threshold + k
+        rec = packed_sharing.reconstruct_secrets(shares[:need], k=k, t=threshold)
+        assert rec == secrets
     
-    def test_packed_addition(self, packed_sharing, shamir_sharing, n_nodes, threshold):
-        """Test homomorphic addition with packed shares"""
+    def test_packed_addition(self, packed_sharing, n_nodes, threshold):
+        """Homomorphic addition on packed party shares."""
         secrets1 = [10, 20]
         secrets2 = [5, 15]
-        s = len(secrets1)
-        
-        # Share each secret individually
-        all_shares1 = []
-        all_shares2 = []
-        for s1, s2 in zip(secrets1, secrets2):
-            shares1 = shamir_sharing.share(s1, n_nodes, threshold)
-            shares2 = shamir_sharing.share(s2, n_nodes, threshold)
-            all_shares1.append(shares1)
-            all_shares2.append(shares2)
-        
-        # Pack shares
-        packed1 = packed_sharing.pack_share([shares[0] for shares in all_shares1], s)
-        packed2 = packed_sharing.pack_share([shares[0] for shares in all_shares2], s)
-        
-        # Add shares pointwise
+        k = len(secrets1)
+        p = int(packed_sharing.field_size)
+        s1 = packed_sharing.share_secrets(secrets1, n_nodes, threshold)
+        s2 = packed_sharing.share_secrets(secrets2, n_nodes, threshold)
         sum_shares = [
-            Share(x=s1.x, y=(s1.y + s2.y) % packed_sharing.field_size, node_id=s1.node_id)
-            for s1, s2 in zip(packed1, packed2)
+            Share(x=a.x, y=(a.y + b.y) % p, node_id=a.node_id)
+            for a, b in zip(s1, s2)
         ]
-        
-        # Unpack and verify structure
-        unpacked = packed_sharing.unpack_share(sum_shares, s)
-        assert len(unpacked) > 0
+        need = threshold + k
+        rec = packed_sharing.reconstruct_secrets(sum_shares[:need], k=k, t=threshold)
+        expected = [(secrets1[i] + secrets2[i]) % p for i in range(k)]
+        assert rec == expected
     
-    def test_packed_multiplication_requires_beaver(self, packed_sharing, shamir_sharing, n_nodes, threshold):
-        """Test that multiplication requires Beaver triples (not direct)"""
-        # Packed shares don't support direct multiplication
-        # This is expected - multiplication requires Beaver triples
-        secrets = [10, 20]
-        s = len(secrets)
-        
-        # Share and pack
-        all_shares = []
-        for secret in secrets:
-            shares = shamir_sharing.share(secret, n_nodes, threshold)
-            all_shares.append(shares)
-        
-        packed = packed_sharing.pack_share([shares[0] for shares in all_shares], s)
-        
-        # Direct multiplication of shares doesn't work
-        # This is a property of secret sharing, not a bug
-        assert len(packed) > 0
+    def test_packed_share_vector_roundtrip(self, packed_sharing, n_nodes, threshold):
+        """Single-chunk share_vector / reconstruct_vector roundtrip."""
+        secrets = [1, 2, 3]
+        k = len(secrets)
+        chunks = packed_sharing.share_vector(secrets, n_nodes, threshold, packing_factor=k)
+        assert len(chunks) == 1
+        out = packed_sharing.reconstruct_vector(chunks, t=threshold, packing_factor=k)
+        assert out == secrets
 

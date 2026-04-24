@@ -3,6 +3,8 @@ Performance benchmarks for ML Training Pipeline
 """
 
 import pytest
+
+pytest.importorskip("pytest_benchmark")
 import time
 import numpy as np
 from ml_training.secret_sharing import ShamirSecretSharing, PackedShamirSecretSharing
@@ -41,23 +43,18 @@ class TestSecretSharingBenchmarks:
         result = benchmark(reconstruct)
         assert result == secret
     
-    def test_packed_sharing_benchmark(self, benchmark, shamir_sharing):
+    def test_packed_sharing_benchmark(self, benchmark):
         """Benchmark Packed Shamir secret sharing"""
         packed = PackedShamirSecretSharing()
         n_nodes = 5
         threshold = 1
         secrets = list(range(10))  # 10 secrets
-        
-        def share_secrets():
-            # Share each secret individually, then pack
-            all_shares = []
-            for secret in secrets:
-                shares = shamir_sharing.share(secret, n_nodes, threshold)
-                all_shares.append(shares)
-            # Pack first share from each
-            return packed.pack_share([shares[0] for shares in all_shares], len(secrets))
-        
-        result = benchmark(share_secrets)
+
+        def share_packed():
+            chunks = packed.share_vector(secrets, n_nodes, threshold)
+            return chunks
+
+        result = benchmark(share_packed)
         assert len(result) > 0
 
 

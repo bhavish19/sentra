@@ -29,6 +29,7 @@ from ml_training.secret_sharing import Share, ShamirSecretSharing, PackedShamirS
 from ml_training.packed_mpc_ops import PackedMPCOps
 from ml_training.secure_softmax import SecureSoftmax
 from ml_training.secure_comm import create_mpc_network
+from ml_training.topology import load_node_topology
 from ml_training.reconstruction import create_reconstruction_manager
 from ml_training.beaver_triples import BeaverTripleDealerService
 from ml_training.dpss_distributed import distributed_proactive_refresh_herzberg_vectorized
@@ -790,8 +791,8 @@ def send_inference_shares_to_client(
     node_id: int,
     client_node_id: int,
     network,
-    host: str,
-    base_port: int,
+    client_connect_host: str,
+    client_connect_port: int,
     n_samples: int,
     seed: int,
     context_prefix: str = "client_eval_final",
@@ -810,7 +811,7 @@ def send_inference_shares_to_client(
 
     if int(client_node_id) not in network.channel.connections:
         ok = network.channel.connect_to_node(
-            int(client_node_id), str(host), int(base_port) + int(client_node_id)
+            int(client_node_id), str(client_connect_host), int(client_connect_port)
         )
         if not ok:
             raise RuntimeError(f"Unable to connect to client node {client_node_id} for final eval upload")
@@ -1413,6 +1414,12 @@ def main():
     parser.add_argument('--t', type=int, default=1)
     parser.add_argument('--base-port', type=int, default=8000)
     parser.add_argument('--host', type=str, default='localhost')
+    parser.add_argument(
+        '--topology',
+        type=str,
+        default='',
+        help='YAML path: explicit hosts/ports for MPC parties and optional client endpoint (see ml_training.topology).',
+    )
     parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--accum-steps', type=int, default=1,
                         help='Gradient accumulation steps via effective batch grouping (default: 1). Effective batch = batch_size * accum_steps.')
@@ -1501,7 +1508,17 @@ def main():
     parser.add_argument('--use-weight-versioning', action='store_true',
                         help='Store weight shares to local KVS with v_theta after each epoch.')
     args = parser.parse_args()
-    
+
+    node_topology = None
+    _top_path = str(getattr(args, "topology", "")).strip()
+    if _top_path:
+        node_topology = load_node_topology(_top_path, int(args.node_id))
+        if int(args.n_nodes) != int(node_topology.n_nodes):
+            print(
+                f"[WARN] --n-nodes {args.n_nodes} does not match topology (n={node_topology.n_nodes}); "
+                "using topology."
+            )
+        args.n_nodes = int(node_topology.n_nodes)
 
     if bool(args.enable_dropout_reshare_recovery):
         if not bool(args.enable_failure_detection):
@@ -1569,9 +1586,14 @@ def main():
     failure_detector = None
     use_client_distributed_dataset = bool(args.receive_dataset_shares_from_client and args.enable_network and args.n_nodes > 1)
     if args.enable_network and args.n_nodes > 1:
-        node_configs = {i: {'host': args.host, 'port': args.base_port + i} for i in range(1, args.n_nodes + 1)}
+        if node_topology is not None:
+            node_configs = dict(node_topology.node_configs)
+            listen_bind_port = int(node_topology.listen_port)
+        else:
+            node_configs = {i: {'host': args.host, 'port': args.base_port + i} for i in range(1, args.n_nodes + 1)}
+            listen_bind_port = int(args.base_port + args.node_id)
         network = create_mpc_network(
-            args.node_id, node_configs, port=args.base_port + args.node_id,
+            args.node_id, node_configs, port=listen_bind_port,
             membership_epoch=int(me.e),
         )
         reconstruction = create_reconstruction_manager(network, args.t, FIELD_SIZE)
@@ -2149,6 +2171,16 @@ def main():
     ):
         _t_eval_upload0 = time.time()
         try:
+            if (
+                node_topology is not None
+                and node_topology.client_host is not None
+                and node_topology.client_port is not None
+            ):
+                _c_host = str(node_topology.client_host)
+                _c_port = int(node_topology.client_port)
+            else:
+                _c_host = str(args.host)
+                _c_port = int(args.base_port) + int(args.dataset_source_node_id)
             send_inference_shares_to_client(
                 model=model,
                 weights=weights,
@@ -2156,8 +2188,8 @@ def main():
                 node_id=args.node_id,
                 client_node_id=int(args.dataset_source_node_id),
                 network=network,
-                host=args.host,
-                base_port=args.base_port,
+                client_connect_host=_c_host,
+                client_connect_port=_c_port,
                 n_samples=int(args.client_eval_samples),
                 seed=int(args.seed),
                 context_prefix=me.ctx("client_eval_final"),

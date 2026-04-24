@@ -21,7 +21,7 @@
 - All nodes completed 10 epochs
 - All batches committed successfully
 - Version numbers synchronized
-- DP-SGD active on all nodes
+- Secure MPC training active on all nodes
 
 ### Security Status: ✅ VERIFIED
 - True multi-party mode active
@@ -48,7 +48,7 @@
 │  │  - Dataset ingestion                          │      │
 │  │  - Mini-batch selection                       │      │
 │  │  - Secure forward/backward pass               │      │
-│  │  - DP-SGD integration                         │      │
+│  │  - Mini-batch coordination                    │      │
 │  └──────────────────────────────────────────────┘      │
 │                                                          │
 │  ┌──────────────────────────────────────────────┐      │
@@ -83,7 +83,7 @@
 | Network Communication | ✅ | TLS-ready, plain sockets for testing |
 | Share Exchange | ✅ | Context-based, automatic |
 | Reconstruction | ✅ | Multi-node, threshold-based |
-| DP-SGD | ✅ | Gradient clipping & noise |
+| Batched secure MNIST | ✅ | `node/run_mnist_batched_secure.py` |
 | Versioned KVS | ✅ | Rollback protection |
 | Quorum Commits | ✅ | Majority consensus |
 | Safety Bound | ✅ | Enforced: `2*(t+s) < n_active` |
@@ -96,7 +96,7 @@
 ### ✅ Privacy
 - **Threshold**: t=1 (need 2 shares to reconstruct)
 - **Adversarial tolerance**: s=1 (can tolerate 1 corrupted node)
-- **Differential privacy**: DP-SGD with (ε, δ)-DP
+- **Secret-shared training**: gradients and activations remain shared across parties (MPC)
 
 ### ✅ Integrity
 - **Versioning**: All writes use monotonically increasing versions
@@ -123,26 +123,14 @@
 
 ### Quick Start
 ```powershell
-# Start all nodes
-.\start_all_nodes.bat use_dp_sgd
-
-# Or manually
-python run_node.py --node-id 1 --use-dp-sgd
-python run_node.py --node-id 2 --use-dp-sgd
-# ... etc
-```
-
-### Single-Node Mode
-```powershell
-python run_training.py        # Basic training
-python run_dp_training.py     # With DP-SGD
+cd sentra-node\python
+python node/start_all_nodes.py --headless --distribute-dataset-shares
 ```
 
 ### Testing
 ```powershell
-python -m pytest tests/ -v    # Run all tests
-python test_context_multi_node.py  # Test context
-python verify_context_working.py   # Verify share exchange
+cd sentra-node\python
+python -m pytest -v
 ```
 
 ---
@@ -165,7 +153,7 @@ All core features are implemented and verified:
 - ✅ Secure multi-party computation
 - ✅ Context-based share exchange
 - ✅ Network communication
-- ✅ DP-SGD integration
+- ✅ Batched secure training path (`node/start_all_nodes.py`)
 - ✅ Versioned storage
 - ✅ Multi-node training
 

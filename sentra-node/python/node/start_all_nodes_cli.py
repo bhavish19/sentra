@@ -58,7 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--receive-dataset-shares-from-client", action="store_true", help="Nodes receive only pre-shared dataset from external client distributor.")
     parser.add_argument("--dataset-source-node-id", type=int, default=0, help="External sender node_id for client distributor mode (default: 0).")
     parser.add_argument("--dataset-distribution-timeout", type=float, default=900.0, help="Timeout for dataset share distribution/reception barrier (seconds).")
-    parser.add_argument("--start-client-distributor", action="store_true", help="In headless mode, auto-start client_distributor.py after launching nodes.")
+    parser.add_argument(
+        "--start-client-distributor",
+        action="store_true",
+        help="In headless mode, auto-start the client module (python -m sentra_client) after launching nodes.",
+    )
     parser.add_argument("--client-eval-after-training", action="store_true", help="After training, nodes send final inference shares to client; client reconstructs accuracy.")
     parser.add_argument("--client-eval-samples", type=int, default=100, help="Sample count for client-side reconstructed final accuracy.")
     parser.add_argument("--client-test-samples", type=int, default=-1, help="Number of test shares to distribute from client (-1: auto; with client eval uses client-eval-samples).")

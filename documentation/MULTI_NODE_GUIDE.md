@@ -38,7 +38,7 @@ python run_node.py --node-id 5
 **On Machine 1 (Node 1):**
 ```python
 # node1.py
-from ml_training import SentraTrainingPipeline, DPSGDConfig
+from ml_training import SentraTrainingPipeline
 import numpy as np
 
 node_configs = {
@@ -116,7 +116,7 @@ node_configs = {
 
 ```python
 import argparse
-from ml_training import SentraTrainingPipeline, DPSGDConfig
+from ml_training import SentraTrainingPipeline
 import numpy as np
 
 def main():
@@ -124,7 +124,6 @@ def main():
     parser.add_argument('--node-id', type=int, required=True)
     parser.add_argument('--n-nodes', type=int, default=5)
     parser.add_argument('--base-port', type=int, default=8000)
-    parser.add_argument('--use-dp-sgd', action='store_true')
     args = parser.parse_args()
     
     # Create node configs
@@ -133,17 +132,12 @@ def main():
         for i in range(1, args.n_nodes + 1)
     }
     
-    # Create pipeline
-    dp_config = DPSGDConfig(clip_norm=1.0, noise_multiplier=1.0) if args.use_dp_sgd else None
-    
     pipeline = SentraTrainingPipeline(
         n_nodes=args.n_nodes,
         t=1, s=1,
         node_id=args.node_id,
         node_configs=node_configs,
         enable_network=True,
-        use_dp_sgd=args.use_dp_sgd,
-        dp_config=dp_config,
         batch_size=16,
         learning_rate=0.01,
         num_epochs=10
@@ -165,7 +159,7 @@ if __name__ == '__main__':
 
 **`node1.py`:**
 ```python
-from ml_training import SentraTrainingPipeline, DPSGDConfig
+from ml_training import SentraTrainingPipeline
 import numpy as np
 
 node_configs = {
@@ -235,13 +229,15 @@ python node4.py
 python node5.py
 ```
 
-### Method 3: With DP-SGD
+### Method 3: Batched secure MNIST launcher (recommended local path)
+
+From `sentra-node/python` (see `node/start_all_nodes_cli.py` for all flags):
 
 ```powershell
-python run_node.py --node-id 1 --use-dp-sgd
-python run_node.py --node-id 2 --use-dp-sgd
-# ... etc
+python node/start_all_nodes.py --headless --distribute-dataset-shares
 ```
+
+For dataset distribution from a separate client process, use `--receive-dataset-shares-from-client` (and optionally `--start-client-distributor`).
 
 ## Network Requirements
 

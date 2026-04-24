@@ -8,24 +8,25 @@ Open **5 separate terminals** and run:
 
 ```powershell
 # Terminal 1
-python run_node.py --node-id 1 --use-dp-sgd
+python run_node.py --node-id 1
 
 # Terminal 2
-python run_node.py --node-id 2 --use-dp-sgd
+python run_node.py --node-id 2
 
 # Terminal 3
-python run_node.py --node-id 3 --use-dp-sgd
+python run_node.py --node-id 3
 
 # Terminal 4
-python run_node.py --node-id 4 --use-dp-sgd
+python run_node.py --node-id 4
 
 # Terminal 5
-python run_node.py --node-id 5 --use-dp-sgd
+python run_node.py --node-id 5
 ```
 
-**Or use the batch script:**
+**Or use the launcher from `sentra-node/python`:**
 ```powershell
-.\start_all_nodes.bat use_dp_sgd
+cd sentra-node\python
+python node/start_all_nodes.py --headless --distribute-dataset-shares
 ```
 
 ### Step 2: Verify Connections
@@ -88,7 +89,7 @@ This will:
 Create a file `test_with_logging.py`:
 
 ```python
-from ml_training import SentraTrainingPipeline, DPSGDConfig
+from ml_training import SentraTrainingPipeline
 import numpy as np
 
 # Enable network
@@ -151,13 +152,13 @@ For faster testing with fewer nodes:
 
 ```powershell
 # Terminal 1
-python run_node.py --node-id 1 --n-nodes 3 --use-dp-sgd
+python run_node.py --node-id 1 --n-nodes 3
 
 # Terminal 2
-python run_node.py --node-id 2 --n-nodes 3 --use-dp-sgd
+python run_node.py --node-id 2 --n-nodes 3
 
 # Terminal 3
-python run_node.py --node-id 3 --n-nodes 3 --use-dp-sgd
+python run_node.py --node-id 3 --n-nodes 3
 ```
 
 ## Verification Checklist
