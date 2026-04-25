@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n!SentraBackend-GRPC-Services.proto\x12\x1csentra_backend_grpc_services\"9\n\x0fRegisterRequest\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x15\n\rnode_grpc_url\x18\x02 \x01(\t\"4\n\x10RegisterResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"#\n\x12\x41ttestationRequest\x12\r\n\x05nonce\x18\x01 \x01(\t\"%\n\x13\x41ttestationResponse\x12\x0e\n\x06report\x18\x01 \x01(\x0c\"6\n\x11t_grpc_SentraNode\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x10\n\x08grpc_url\x18\x02 \x01(\t\"Z\n\x14JoinCommitteeRequest\x12\x42\n\tcommittee\x18\x01 \x03(\x0b\x32/.sentra_backend_grpc_services.t_grpc_SentraNode\"\xd4\x01\n\x10\x43ommitteeJoinACK\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x45\n\x06status\x18\x02 \x01(\x0e\x32\x35.sentra_backend_grpc_services.CommitteeJoinACK.Status\"h\n\x06Status\x12\x0b\n\x07SUCCESS\x10\x00\x12\x14\n\x07UNKNOWN\x10\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\x12\x1a\n\rNO_CONNECTION\x10\xfe\xff\xff\xff\xff\xff\xff\xff\xff\x01\x12\x1f\n\x12\x41TTESTATION_FAILED\x10\xfd\xff\xff\xff\xff\xff\xff\xff\xff\x01\"\'\n\x15JoinCommitteeResponse\x12\x0e\n\x06report\x18\x01 \x01(\x0c\"\x18\n\tPythonMsg\x12\x0b\n\x03msg\x18\x01 \x01(\x0c\"\xbb\x02\n\x0bNodeMessage\x12\x41\n\x08register\x18\x01 \x01(\x0b\x32-.sentra_backend_grpc_services.RegisterRequestH\x00\x12\x42\n\x05quote\x18\x02 \x01(\x0b\x32\x31.sentra_backend_grpc_services.AttestationResponseH\x00\x12V\n\x17join_committee_response\x18\x03 \x01(\x0b\x32\x33.sentra_backend_grpc_services.JoinCommitteeResponseH\x00\x12=\n\npython_msg\x18\x04 \x01(\x0b\x32\'.sentra_backend_grpc_services.PythonMsgH\x00\x42\x0e\n\x0cmessage_type\"\xc1\x02\n\rServerMessage\x12\x42\n\x08response\x18\x01 \x01(\x0b\x32..sentra_backend_grpc_services.RegisterResponseH\x00\x12G\n\x0b\x61ttestation\x18\x02 \x01(\x0b\x32\x30.sentra_backend_grpc_services.AttestationRequestH\x00\x12T\n\x16join_committee_request\x18\x03 \x01(\x0b\x32\x32.sentra_backend_grpc_services.JoinCommitteeRequestH\x00\x12=\n\npython_msg\x18\x04 \x01(\x0b\x32\'.sentra_backend_grpc_services.PythonMsgH\x00\x42\x0e\n\x0cmessage_type2~\n\x12NodeMessageService\x12h\n\nNodeStream\x12).sentra_backend_grpc_services.NodeMessage\x1a+.sentra_backend_grpc_services.ServerMessage(\x01\x30\x01\x32w\n\x0fTCPProxyService\x12\x64\n\x06Stream\x12).sentra_backend_grpc_services.NodeMessage\x1a+.sentra_backend_grpc_services.ServerMessage(\x01\x30\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n!SentraBackend-GRPC-Services.proto\x12\x1csentra_backend_grpc_services\"9\n\x0fRegisterRequest\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x15\n\rnode_grpc_url\x18\x02 \x01(\t\"4\n\x10RegisterResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"#\n\x12\x41ttestationRequest\x12\r\n\x05nonce\x18\x01 \x01(\t\"%\n\x13\x41ttestationResponse\x12\x0e\n\x06report\x18\x01 \x01(\x0c\"6\n\x11t_grpc_SentraNode\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x10\n\x08grpc_url\x18\x02 \x01(\t\"Z\n\x14JoinCommitteeRequest\x12\x42\n\tcommittee\x18\x01 \x03(\x0b\x32/.sentra_backend_grpc_services.t_grpc_SentraNode\"\xd4\x01\n\x10\x43ommitteeJoinACK\x12\x0f\n\x07node_id\x18\x01 \x01(\t\x12\x45\n\x06status\x18\x02 \x01(\x0e\x32\x35.sentra_backend_grpc_services.CommitteeJoinACK.Status\"h\n\x06Status\x12\x0b\n\x07SUCCESS\x10\x00\x12\x14\n\x07UNKNOWN\x10\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\x12\x1a\n\rNO_CONNECTION\x10\xfe\xff\xff\xff\xff\xff\xff\xff\xff\x01\x12\x1f\n\x12\x41TTESTATION_FAILED\x10\xfd\xff\xff\xff\xff\xff\xff\xff\xff\x01\"\'\n\x15JoinCommitteeResponse\x12\x0e\n\x06report\x18\x01 \x01(\x0c\"\x18\n\tPythonMsg\x12\x0b\n\x03msg\x18\x01 \x01(\x0c\"\x8f\x01\n\x10PythonControlMsg\x12W\n\x13stream_control_flag\x18\x01 \x01(\x0e\x32:.sentra_backend_grpc_services.PythonControlMsg.StreamState\"\"\n\x0bStreamState\x12\x08\n\x04OPEN\x10\x00\x12\t\n\x05\x43LOSE\x10\x01\"\xbb\x02\n\x0bNodeMessage\x12\x41\n\x08register\x18\x01 \x01(\x0b\x32-.sentra_backend_grpc_services.RegisterRequestH\x00\x12\x42\n\x05quote\x18\x02 \x01(\x0b\x32\x31.sentra_backend_grpc_services.AttestationResponseH\x00\x12V\n\x17join_committee_response\x18\x03 \x01(\x0b\x32\x33.sentra_backend_grpc_services.JoinCommitteeResponseH\x00\x12=\n\npython_msg\x18\x04 \x01(\x0b\x32\'.sentra_backend_grpc_services.PythonMsgH\x00\x42\x0e\n\x0cmessage_type\"\xc1\x02\n\rServerMessage\x12\x42\n\x08response\x18\x01 \x01(\x0b\x32..sentra_backend_grpc_services.RegisterResponseH\x00\x12G\n\x0b\x61ttestation\x18\x02 \x01(\x0b\x32\x30.sentra_backend_grpc_services.AttestationRequestH\x00\x12T\n\x16join_committee_request\x18\x03 \x01(\x0b\x32\x32.sentra_backend_grpc_services.JoinCommitteeRequestH\x00\x12=\n\npython_msg\x18\x04 \x01(\x0b\x32\'.sentra_backend_grpc_services.PythonMsgH\x00\x42\x0e\n\x0cmessage_type2~\n\x12NodeMessageService\x12h\n\nNodeStream\x12).sentra_backend_grpc_services.NodeMessage\x1a+.sentra_backend_grpc_services.ServerMessage(\x01\x30\x01\x32w\n\x0fTCPProxyService\x12\x64\n\x06Stream\x12).sentra_backend_grpc_services.NodeMessage\x1a+.sentra_backend_grpc_services.ServerMessage(\x01\x30\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -51,12 +51,16 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_JOINCOMMITTEERESPONSE']._serialized_end=658
   _globals['_PYTHONMSG']._serialized_start=660
   _globals['_PYTHONMSG']._serialized_end=684
-  _globals['_NODEMESSAGE']._serialized_start=687
-  _globals['_NODEMESSAGE']._serialized_end=1002
-  _globals['_SERVERMESSAGE']._serialized_start=1005
-  _globals['_SERVERMESSAGE']._serialized_end=1326
-  _globals['_NODEMESSAGESERVICE']._serialized_start=1328
-  _globals['_NODEMESSAGESERVICE']._serialized_end=1454
-  _globals['_TCPPROXYSERVICE']._serialized_start=1456
-  _globals['_TCPPROXYSERVICE']._serialized_end=1575
+  _globals['_PYTHONCONTROLMSG']._serialized_start=687
+  _globals['_PYTHONCONTROLMSG']._serialized_end=830
+  _globals['_PYTHONCONTROLMSG_STREAMSTATE']._serialized_start=796
+  _globals['_PYTHONCONTROLMSG_STREAMSTATE']._serialized_end=830
+  _globals['_NODEMESSAGE']._serialized_start=833
+  _globals['_NODEMESSAGE']._serialized_end=1148
+  _globals['_SERVERMESSAGE']._serialized_start=1151
+  _globals['_SERVERMESSAGE']._serialized_end=1472
+  _globals['_NODEMESSAGESERVICE']._serialized_start=1474
+  _globals['_NODEMESSAGESERVICE']._serialized_end=1600
+  _globals['_TCPPROXYSERVICE']._serialized_start=1602
+  _globals['_TCPPROXYSERVICE']._serialized_end=1721
 # @@protoc_insertion_point(module_scope)
