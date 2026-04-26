@@ -17,6 +17,10 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+_THIS_DIR = Path(__file__).resolve().parent
+if str(_THIS_DIR) not in sys.path:
+    sys.path.insert(0, str(_THIS_DIR))
+
 from start_all_nodes_cli import parse_and_validate_args
 
 ProcEntry = Tuple[int, subprocess.Popen]
