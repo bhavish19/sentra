@@ -1,0 +1,18 @@
+<mat-grid-list cols="2" rowHeight="100%"> 
+<mat-grid-tile>
+    <app-image-selector/>
+</mat-grid-tile>
+<mat-grid-tile>
+    <prediction-result-display style="width: 100%;" [predictionProbabilities]=predictionProbabilities
+  [predictedDigit]=predictionResult/>
+</mat-grid-tile>
+</mat-grid-list>
+    <div>
+        <button mat-raised-button color="primary" (click)="onDoInference()">
+        Do Inference
+      </button>    
+        <button mat-raised-button color="primary" (click)="onDoResetSentra()">
+        Reset SENTRA
+      </button>    
+    
+    </div>

@@ -38,7 +38,8 @@ class CommandLineOptions:
         self.m_Parser.add_argument('--training-config', type=str, help="YAML training configuration file")
 
         self.m_Args = self.m_Parser.parse_args()
-        self.training_args = read_training_config(self.m_Args.training_config)
+        if(not self.getRunInSimulationMode()):
+            self.training_args = read_training_config(self.m_Args.training_config)
 
     def getPort(self)->int:
         return self.m_Args.port

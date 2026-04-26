@@ -5,14 +5,6 @@ BACKEND_VERSION="00.04.019"
 import sentrabackend
 from sentrabackend import log as log
 
-class Comittee:
-    m_Comittee:set[str]
-    def __init__(self):
-     self.m_Comittee=set()
-
-    def addComitteeMember(self,node_id:str):
-        self.m_Comittee.add(node_id)
-
 backend:sentrabackend.Backend
 
 if __name__ == '__main__':

@@ -83,7 +83,6 @@ class CommitteeSelection:
         curr_time = time.time()
         candidates:SentraNodeList=SentraNodeList()
 
-        # have to create a copy for deleting while iterating
         for node in list(nodes.m_arNodes.values()):
             if not node.m_bVerified:
                 log(f"removing node {node.m_strNodeID} from candidate set, \
@@ -101,7 +100,7 @@ class CommitteeSelection:
                 continue
             candidates.add(node)
 
-        return nodes
+        return candidates
 
     def check_reuse(self):
         """

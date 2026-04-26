@@ -9,7 +9,7 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/demonstrator/backend/sentra-backend.py",
-            "args": ["-s"],
+            "args": ["-s","-c"],
             "console": "integratedTerminal",
             "env": {
                     "PYTHONPATH": "${workspaceFolder}/sentra-node/python"

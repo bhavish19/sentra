@@ -16,13 +16,17 @@ from .Log import log as log
 from .grpc import add_NodeMessageServiceServicer_to_server
 from .grpc import add_TCPProxyServiceServicer_to_server
 from .ClientDistributor import ClientDistributor
+from .SentraML import InferenceResult
 
 class Backend:
+    theBackend=None
 
     m_sStaticFolder="../../frontend/dist/frontend/browser"
     m_sIndexHtml=m_sStaticFolder+"/index.html"
+
     m_nodeGenerator:SentraNodeAttributeGenerator
     m_nodeList:SentraNodeList
+    m_Committee:SentraNodeList|None
     m_bAppSimulation:bool=False
     m_appSimulator:AppSimulator|None=None
     m_NodeMessageServiceServicer:NodeMessageServiceServicer
@@ -32,10 +36,16 @@ class Backend:
     m_clientDistributor: ClientDistributor
 
     def __init__(self):
+        self.__class__.theBackend=self
         self.m_bAppSimulation=False
         self.m_appSimulator=None
         self.m_grpcCertsPEM=None
         self.m_grpcKeyPEM=None
+        self.m_Committee=None
+
+    @classmethod
+    def getBackend(cls) -> "Backend":
+        return cls.theBackend
 
     async def runGRPCServer(self):
         self.server = grpc_aio.server()
@@ -77,7 +87,12 @@ class Backend:
         self.m_committee_selection=cmdlineargs.getRunCommitteeSelection()
         self.app:Flask = Flask(__name__,static_url_path='',static_folder=self.m_sStaticFolder)
         self.app.add_url_rule("/",view_func=self.getIndex)
+        self.app.add_url_rule("/sentra-nodes-table",view_func=self.getIndex)
+        self.app.add_url_rule("/sentra-nodes",view_func=self.getIndex)
         self.app.add_url_rule("/api/v1/getNodes",view_func=self.getNodes)
+        self.app.add_url_rule("/api/v1/getCommittee",view_func=self.getCommittee)
+        self.app.add_url_rule("/api/v1/getPrediction/<int:id>",view_func=self.getPrediction)
+        self.app.add_url_rule("/api/v1/postReset",view_func=self.postReset,methods=['POST'])
         self.app.json = CustomJSONProvider(self.app)
 
         self.m_nodeGenerator=SentraNodeAttributeGenerator(1.0,10.0)
@@ -99,12 +114,41 @@ class Backend:
 
         return self.app
 
+    def doReset(self):
+        if(self.m_bAppSimulation):
+            #Reset is currently only supported for the simulation
+            self.m_Committee=None
+            self.m_appSimulator.restart()
+
     def sendMessageToNode(self,node_id:str,message:object)->None:
         self.m_NodeMessageServiceServicer.sendMessageToNode(node_id, message)
+
+    def setCommittee(self,comittee:SentraNodeList):
+        self.m_Committee=comittee
 
     def getIndex(self):
         return send_file(self.m_sIndexHtml)
 
     #@app.route('/api/v1/getNodes', methods=['GET'])
     def getNodes(self):
-        return jsonify(self.m_nodeList.toJSONObject())
+        return jsonify(self.m_nodeList)
+    
+        #@app.route('/api/v1/getCommittee', methods=['GET'])
+    def getCommittee(self):
+        if(self.m_Committee is None):
+            return "{}"
+        else:
+            return jsonify(self.m_Committee)
+        
+    #@app.route('/api/v1/postReset', methods=['POST'])
+    def postReset(self):
+        self.doReset()
+        return ""
+    
+    #@app.route('/api/v1/getPrediction/<int:id>', methods=['GET'])    
+    def getPrediction(self,id:int):
+        if(self.m_bAppSimulation and self.m_appSimulator):
+            return jsonify(self.m_appSimulator.doInference(id))
+        return jsonify({})
+
+    

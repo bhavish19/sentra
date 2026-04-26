@@ -32,9 +32,10 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
         self.m_sortedCommittee = None
         self._servers: dict[int, asyncio.Server] = {}
         self._send_queues: dict[int, asyncio.Queue] = {}
-        self.base_port = commandlineOptions.getTcpProxyBasePort()
+        if(not self.m_commandLineOptions.getRunInSimulationMode()):
+            self.base_port = commandlineOptions.getTcpProxyBasePort()
+            self.m_tcpProxy = NodeTCPProxy(self.base_port)
 
-        self.m_tcpProxy = NodeTCPProxy(self.base_port)
         self.m_currentCommittee: SentraNodeList | None = None
 
     def sendMessageToNode(self,node_id:str,message:SentraBackend_GRPC_Services_pb2.ServerMessage)->None:
@@ -57,7 +58,7 @@ class NodeMessageServiceServicer(_NodeMessageServiceServicer):
                 success=False,
                 message="Node ID cannot be empty"
             ),None,None)
-        node:SentraNode=self.m_nodeGenerator.generateNode(node_id)
+        node:SentraNode=self.m_nodeGenerator.generateNode(node_id,node_id)
         node.m_strInterNodeCommunicationGRPC_URL=node_grpc_url
         if(self.m_nodeList.add(node)):
             log(f"Node registered: {node_id} - Node list now has {self.m_nodeList.len()} entries")
