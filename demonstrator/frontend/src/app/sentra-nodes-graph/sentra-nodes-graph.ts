@@ -50,11 +50,11 @@ export class SentraNodeGraph implements AfterViewInit, OnDestroy {
   private existingServers = new Set<string>();
   private processCounter = 0;
 
-  private static CLOUD_ICON="/images/icons/cloud.svg";
+  private static CLOUD_ICON="/images/icons/cloud.png";
   private static  SERVER_ARM_ICON="/images/icons/cloud.svg";
   private static  SERVER_INTEL_ICON="/images/icons/cloud.svg";
   private static  SERVER_AMD_ICON="/images/icons/cloud.svg";
-  private static  PROCESS_ICON="/images/icons/sentra.svg";
+  private static  PROCESS_ICON="/images/icons/sentra.png";
   private static layoutOptionsClouds={
           name: 'grid',
           avoidOverlap: true,
@@ -346,13 +346,13 @@ private static layoutOptions={
           'background-color': '#e3f2fd',
           'border-width': 4,
           'border-color': '#1976d2',
-/*          'background-image': SentraNodeGraph.CLOUD_ICON,
+          'background-image': SentraNodeGraph.CLOUD_ICON,
           'background-fit': 'contain',
           'background-position-x': '50%',
           'background-position-y': '50%',
           'background-width': '100%',
           'background-height': '100%',
- */         'label': 'data(label)',
+          'label': 'data(label)',
           'font-size': 20,
           'font-weight': 'bold',
           'text-valign': 'bottom',

@@ -17,6 +17,7 @@ from .grpc import add_NodeMessageServiceServicer_to_server
 from .grpc import add_TCPProxyServiceServicer_to_server
 from .ClientDistributor import ClientDistributor
 from .SentraML import InferenceResult
+from .MNIST import MNIST
 
 class Backend:
     theBackend=None
@@ -34,6 +35,7 @@ class Backend:
     m_grpcKeyPEM:bytes|None
     m_commandLineOptions:CommandLineOptions
     m_clientDistributor: ClientDistributor
+    m_MNIST:MNIST
 
     def __init__(self):
         self.__class__.theBackend=self
@@ -42,6 +44,7 @@ class Backend:
         self.m_grpcCertsPEM=None
         self.m_grpcKeyPEM=None
         self.m_Committee=None
+        self.m_MNIST=MNIST()
 
     @classmethod
     def getBackend(cls) -> "Backend":
@@ -93,6 +96,8 @@ class Backend:
         self.app.add_url_rule("/api/v1/getCommittee",view_func=self.getCommittee)
         self.app.add_url_rule("/api/v1/getPrediction/<int:id>",view_func=self.getPrediction)
         self.app.add_url_rule("/api/v1/postReset",view_func=self.postReset,methods=['POST'])
+        self.app.add_url_rule("/api/v1/mnist/getTestImagesForDigit/<int:digit>",view_func=self.getMNISTTestImagesForDigit)
+        self.app.add_url_rule("/api/v1/mnist/getTestImageForIndex/<int:index>",view_func=self.getMNISTTestImageForIndex)
         self.app.json = CustomJSONProvider(self.app)
 
         self.m_nodeGenerator=SentraNodeAttributeGenerator(1.0,10.0)
@@ -150,5 +155,14 @@ class Backend:
         if(self.m_bAppSimulation and self.m_appSimulator):
             return jsonify(self.m_appSimulator.doInference(id))
         return jsonify({})
+    
+    #@app.route("/api/v1/mnist/getTestImagesForDigit/<int:digit>")
+    def getMNISTTestImagesForDigit(self,digit:int):
+        return jsonify(self.m_MNIST.getJSONObjectForDigit(digit))
+
+    #@app.route("/api/v1/mnist/getTestImageForIndex/<int:index>")
+    def getMNISTTestImageForIndex(self,index:int):
+        return jsonify(self.m_MNIST.getJSONObjectForTestImage(index))
+
 
     

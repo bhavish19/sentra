@@ -33,6 +33,18 @@ export class InferenceResult
   public classificationResults:ClassificationResult[]=[];
 }
 
+
+export interface MnistImage {
+  index: number;
+  image_b64: string;
+}
+
+export interface MnistImageDetail {
+  index: number;
+  label: number;
+  image_b64: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -62,6 +74,16 @@ export class RestService {
     return this.m_HttpClient.get<InferenceResult>('/api/v1/getPrediction/'+index);
 
    }
+
+   /** Returns all test-set images for the given digit. */
+  getTestImagesForDigit(digit: number): Observable<MnistImage[]> {
+    return this.m_HttpClient.get<MnistImage[]>('/api/v1/mnist/getTestImagesForDigit/'+digit);
+  }
+
+  /** Returns a single image by its index in the MNIST test set. */
+  getTestImageForIndex(index: number): Observable<MnistImageDetail> {
+    return this.m_HttpClient.get<MnistImageDetail>('/api/v1/mnist/getTestImageForIndex/'+index);
+  }
 
 
 }

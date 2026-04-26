@@ -4,10 +4,11 @@ import {MatGridListModule} from '@angular/material/grid-list';
 import { MatButtonModule } from '@angular/material/button';
 import { ClassificationResult, RestService } from '../../rest.service';
 import { PredictionResultDisplay } from '../prediction-result-display/prediction-result-display';
+import { MnistNumberSelector } from "../mnistnumber-selector/mnistnumber-selector";
 
 @Component({
   selector: 'app-sentra-client-dashboard',
-  imports: [ImageSelector,MatGridListModule,MatButtonModule,PredictionResultDisplay],
+  imports: [MnistNumberSelector,ImageSelector, MatGridListModule, MatButtonModule, PredictionResultDisplay, MnistNumberSelector],
   templateUrl: './sentra-client-dashboard.html',
   styleUrl: './sentra-client-dashboard.css',
 })

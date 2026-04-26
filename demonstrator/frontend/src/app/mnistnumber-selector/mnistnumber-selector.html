@@ -1,0 +1,32 @@
+<!-- Digit Selection View -->
+<div *ngIf="view === 'digit'" class="digit-grid">
+  <mat-grid-list cols="5" rowHeight="60px" gutterSize="12px">
+    <mat-grid-tile *ngFor="let digit of digits">
+      <button mat-raised-button color="primary" (click)="selectDigit(digit)">
+        {{ digit }}
+      </button>
+    </mat-grid-tile>
+  </mat-grid-list>
+</div>
+
+<!-- Image Grid View -->
+<div *ngIf="view === 'images'" class="image-grid-wrapper">
+  <button mat-button (click)="backToDigits()" class="back-btn">← Back</button>
+  <div *ngIf="loading" class="loading-spinner">
+    <mat-spinner diameter="40"></mat-spinner>
+  </div>
+  <div *ngIf="!loading" class="image-grid">
+    <div
+      class="image-tile"
+      *ngFor="let img of images"
+      [class.selected]="img.index === selectedIndex"
+      (click)="selectImage(img)"
+    >
+      <img
+        [src]="img.image_b64"
+        alt="MNIST digit"
+        class="mnist-image"
+        draggable="false"
+      />
+  </div>
+</div>
