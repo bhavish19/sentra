@@ -17,6 +17,10 @@ class SentraNodeList:
             ret+=str(node)
         return ret
 
+    def clear(self)->None:
+        with self.m_Lock:
+            self.m_arNodes.clear()
+            
     def add(self,node:SentraNode)->bool:
         with self.m_Lock:
             if(node.m_strNodeID in self.m_arNodes):

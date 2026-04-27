@@ -2,16 +2,20 @@ import threading
 import random
 import time
 
+import tensorflow as tf
+
 from .SentraNodeAttributeGenerator import SentraNodeAttributeGenerator
 from .SentraNodeList import SentraNodeList
 from .SentraNode import SentraNode
 from .ComitteeSelection import CommitteeSelection
 from .Log import log as log
-
+from .SentraML import InferenceResult
 class AppSimulator:
 
     m_Thread:threading.Thread|None
     m_nodeGenerator:SentraNodeAttributeGenerator
+    m_Model=None
+
 
     def __init__(self,nodeGenerator:SentraNodeAttributeGenerator,nodeList:SentraNodeList, committeeSelection:bool):
         self.m_nodeGenerator=nodeGenerator
@@ -19,11 +23,14 @@ class AppSimulator:
         self.m_committeeSelection = committeeSelection
 
     def runSimulation(self):
+        self.m_nodeList.clear()
+        from .Backend import Backend
         i:int=0
         baseId:str="SentraNode_"
+        baseLabel:str="Node "
         while(i<10):
-            node:SentraNode=self.m_nodeGenerator.generateNode(baseId+str(i))
-            if(random.random()>0.1):
+            node:SentraNode=self.m_nodeGenerator.generateNode(baseId+str(i),baseLabel+str(i))
+            if(random.random()>0.3):
                 node.setVerified(True, time.time())
             self.m_nodeList.add(node)
             i+=1
@@ -48,9 +55,62 @@ class AppSimulator:
             if committee:
                 log("committee:")
                 log(str(committee))
+                Backend.getBackend().setCommittee(committee)
             else:
                 log("no committee found!")
 
+
     def start(self):
+        threadTraining = threading.Thread(target=self.training, args=(), daemon=True)
+        threadTraining.start()
+
         self.m_Thread = threading.Thread(target=self.runSimulation, args=(), daemon=True)
         self.m_Thread.start()
+
+    def restart(self):
+        self.start()
+
+    def doInference(self,inputImageIndex:int)->InferenceResult:
+        example_image = self.x_test[inputImageIndex:inputImageIndex + 1]  # Shape: (1, 28, 28, 1)
+        actual_label = self.y_test[inputImageIndex]
+
+        predicted_probabilities = self.m_Model.predict(example_image)  # Shape: (1, 10)
+        predicted_class = tf.argmax(predicted_probabilities, axis=1).numpy()[0]
+
+        # Print results
+        print(f"Actual Label: {actual_label}")
+        print(f"Predicted Class: {predicted_class}")
+        print(f"Predicted Probabilities: {predicted_probabilities}")
+        return InferenceResult(predicted_class,predicted_probabilities[0].tolist())
+  
+
+    def training(self):
+        (x_train, y_train), (x_test, self.y_test) = tf.keras.datasets.mnist.load_data()
+        x_train = x_train.astype("float32") / 255.0
+        x_test  = x_test.astype("float32")  / 255.0
+        x_train = x_train[..., tf.newaxis]   # shape: (60000, 28, 28, 1)
+        self.x_test  = x_test[..., tf.newaxis]    # shape: (10000, 28, 28, 1)
+        self.m_Model = tf.keras.Sequential([
+        tf.keras.layers.Conv2D(32, (3, 3), activation="relu", input_shape=(28, 28, 1)),
+        tf.keras.layers.MaxPooling2D((2, 2)),
+        tf.keras.layers.Conv2D(64, (3, 3), activation="relu"),
+        tf.keras.layers.MaxPooling2D((2, 2)),
+        tf.keras.layers.Flatten(),
+        tf.keras.layers.Dense(64, activation="relu"),
+        tf.keras.layers.Dense(10, activation="softmax")
+        ], name="mnist_cnn")
+
+        self.m_Model.summary()
+        self.m_Model.compile(
+            optimizer="adam",
+            loss="sparse_categorical_crossentropy",
+            metrics=["accuracy"]
+        )
+        self.m_Model.fit(
+            x_train, y_train,
+            epochs=3,
+            batch_size=64,
+            validation_split=0.1,
+            verbose=1
+        )
+  

@@ -57,6 +57,17 @@ message PythonMsg {
     bytes msg=1;
 }
 
+message PythonControlMsg
+{
+    enum StreamState
+    {
+        OPEN=0; // signals a new stream
+        CLOSE=1; // closes an existing stream
+    }
+
+    StreamState stream_control_flag=1;
+}
+
 // Message from node to server (client -> server)
 message NodeMessage {
     oneof message_type {

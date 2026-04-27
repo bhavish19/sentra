@@ -4,8 +4,8 @@ from .Host import Host
 from .SentraNode import SentraNode
  
 ARCHITECTURES = 3
-HOSTS = 10
-OPERATORS = 10
+HOSTS = 4
+OPERATORS = 4
 
 class SentraNodeAttributeGenerator:
     m_minTrustScore:float
@@ -70,11 +70,11 @@ class SentraNodeAttributeGenerator:
     def getCPUForHost(self,i:int)->str:
         return self.getCPU(self.m_arHosts[i].m_iCPU)
 
-    def generateNode(self,nodeID:str) -> SentraNode:
+    def generateNode(self,nodeID:str,label:str) -> SentraNode:
         host:int=self.internal_generateHost()
         operator:int=self.internal_generateOperator()
         trust=self.internal_generateTrustScore()
         cpu=self.getHost(host).m_iCPU
-        node:SentraNode=SentraNode(self,nodeID,trust,cpu,host,operator)
+        node:SentraNode=SentraNode(self,nodeID,label,trust,cpu,host,operator)
         return node
     

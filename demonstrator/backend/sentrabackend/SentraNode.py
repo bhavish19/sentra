@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 class SentraNode:
     m_strNodeID:str
+    m_strLabel:str
     m_iCPUArchitecture:int
     m_iOperator:int
     m_iHost:int
@@ -20,12 +21,16 @@ class SentraNode:
     m_strInterNodeCommunicationGRPC_URL:str
 #    m_tcpProxy: TcpProxy
 
-    def __init__(self,nodeGenerator:SentraNodeAttributeGenerator,nodeID:str,trustscore:float,cpu:int,host:int,operator:int):
+    def __init__(self,nodeGenerator:SentraNodeAttributeGenerator,nodeID:str,label:str|None,trustscore:float,cpu:int,host:int,operator:int):
         self.m_iOperator=operator
         self.m_fTrustScore=trustscore
         self.m_iCPUArchitecture=cpu
         self.m_iHost=host
         self.m_strNodeID=nodeID
+        if(not (label is None)):
+            self.m_strLabel=label
+        else:
+            self.m_strLabel=nodeID
         self.m_bVerified=False
         self.m_attestTime=0
         self.m_sendQueue= asyncio.Queue()
@@ -64,6 +69,9 @@ class SentraNode:
 
     def getHostName(self)->str:
         return self.m_nodeGenerator.getHost(self.m_iHost).m_Name
+    
+    def getLabel(self)->str:
+        return self.m_strLabel
 
     def getCPUName(self)->str:
         return self.m_nodeGenerator.getCPUForHost(self.m_iHost)
@@ -71,6 +79,7 @@ class SentraNode:
     def toJSONObject(self)->object:
             return {
                 'node_id':self.m_strNodeID,
+                'label':self.getLabel(),
                 'host':self.getHostName(),
                 'grpc_url':self.getGRPC_URL(),
                 'operator':self.getOperatorName(),

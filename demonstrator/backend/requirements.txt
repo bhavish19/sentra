@@ -7,4 +7,5 @@ acme
 cryptography
 josepy
 PyYAML
+pillow
 tensorflow==2.21
