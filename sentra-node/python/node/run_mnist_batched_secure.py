@@ -1079,6 +1079,111 @@ def _flat_ys_to_weights(flat_ys: List[int], node_id: int, shapes: List[Tuple]) -
     return out
 
 
+def _load_plain_weights_from_npz(npz_path: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    data = np.load(str(npz_path))
+    w1 = np.asarray(data["w1"], dtype=np.float64)
+    w2 = np.asarray(data["w2"], dtype=np.float64)
+    b1 = np.asarray(data["b1"], dtype=np.float64)
+    b2 = np.asarray(data["b2"], dtype=np.float64)
+    return w1, w2, b1, b2
+
+
+def _flatten_plain_weights_to_fixed_ints(
+    *,
+    w1: np.ndarray,
+    w2: np.ndarray,
+    b1: np.ndarray,
+    b2: np.ndarray,
+    scale: int,
+    p: int,
+    expected_shapes: List[Tuple],
+) -> List[int]:
+    expected_count = 0
+    for shape in expected_shapes:
+        if len(shape) == 2:
+            expected_count += int(shape[0]) * int(shape[1])
+        else:
+            expected_count += int(shape[0])
+    flat_float = np.concatenate([w1.reshape(-1), w2.reshape(-1), b1.reshape(-1), b2.reshape(-1)])
+    if int(flat_float.size) != int(expected_count):
+        raise ValueError(
+            f"NPZ parameter count mismatch: expected {expected_count}, got {int(flat_float.size)} "
+            f"(w1={w1.shape}, w2={w2.shape}, b1={b1.shape}, b2={b2.shape})"
+        )
+    flat_int = np.rint(flat_float * float(scale)).astype(np.int64, copy=False)
+    return [int(v) % int(p) for v in flat_int.tolist()]
+
+
+def _distribute_or_receive_weight_shares_from_npz(
+    *,
+    weights_npz_path: str,
+    model,
+    node_id: int,
+    n_nodes: int,
+    t: int,
+    shamir,
+    network,
+    field_size: int,
+    scale: int,
+    me: MembershipEpochScope,
+    dealer_node_id: int,
+    timeout_s: float,
+) -> list:
+    ctx = me.ctx("init_weights_from_npz/v1")
+    shapes = model.get_weight_shapes()
+    dealer_node_id = int(dealer_node_id)
+    if dealer_node_id < 1 or dealer_node_id > int(n_nodes):
+        raise ValueError(f"Invalid dealer node id for NPZ weight distribution: {dealer_node_id}")
+
+    if int(node_id) == dealer_node_id:
+        w1, w2, b1, b2 = _load_plain_weights_from_npz(weights_npz_path)
+        flat_mod_p = _flatten_plain_weights_to_fixed_ints(
+            w1=w1,
+            w2=w2,
+            b1=b1,
+            b2=b2,
+            scale=int(scale),
+            p=int(field_size),
+            expected_shapes=shapes,
+        )
+        per_node: List[List[int]] = [[] for _ in range(int(n_nodes))]
+        for secret in flat_mod_p:
+            shares = shamir.share(int(secret), int(n_nodes), int(t))
+            for s in shares:
+                per_node[int(s.node_id) - 1].append(int(s.y) % int(field_size))
+        for target in range(1, int(n_nodes) + 1):
+            if int(target) == int(node_id):
+                continue
+            network.channel.send_vector(int(target), ctx, x=int(dealer_node_id), values=per_node[target - 1])
+        local_ys = per_node[int(node_id) - 1]
+        print(f"Node {node_id}: distributed secure weight shares from {weights_npz_path} ...")
+    else:
+        print(f"Node {node_id}: receiving secure weight shares from node {dealer_node_id} ...")
+        local_ys = [int(v) for v in _wait_for_vector_from_sender(network, ctx, int(dealer_node_id), float(timeout_s))]
+        print(f"Node {node_id}: weight shares received.")
+
+    network.barrier(me.barrier_tag("init_weights_from_npz_done"), timeout=float(timeout_s))
+    return _flat_ys_to_weights(local_ys, int(node_id), shapes)
+
+
+def _receive_weight_shares_from_client(
+    *,
+    model,
+    node_id: int,
+    source_node_id: int,
+    network,
+    me: MembershipEpochScope,
+    timeout_s: float,
+) -> list:
+    shapes = model.get_weight_shapes()
+    ctx = me.ctx("init_weights_from_npz/v1")
+    print(f"Node {node_id}: receiving secure weight shares from client node {source_node_id} ...")
+    local_ys = [int(v) for v in _wait_for_vector_from_sender(network, ctx, int(source_node_id), float(timeout_s))]
+    print(f"Node {node_id}: client weight shares received.")
+    network.barrier(me.barrier_tag("init_weights_from_npz_done"), timeout=float(timeout_s))
+    return _flat_ys_to_weights(local_ys, int(node_id), shapes)
+
+
 def _dpss_refresh_weights(
     weights: list,
     *,
@@ -1468,6 +1573,29 @@ def main():
                         help='Path to save reconstructed final model (.npz). Reconstruction/export is performed on opener node.')
     parser.add_argument('--export-timeout', type=float, default=180.0,
                         help='Timeout (seconds) for final model export reconstruction (default: 180)')
+    parser.add_argument(
+        '--init-weights-from-npz',
+        type=str,
+        default='',
+        help='Initialize secure weight shares from reconstructed model NPZ (dealer distributes shares to all nodes).',
+    )
+    parser.add_argument(
+        '--weights-dealer-node',
+        type=int,
+        default=0,
+        help='Dealer node id for --init-weights-from-npz (default: n_nodes).',
+    )
+    parser.add_argument(
+        '--receive-weights-shares-from-client',
+        action='store_true',
+        help='Receive model weight shares from external client sender instead of node dealer.',
+    )
+    parser.add_argument(
+        '--weights-source-node-id',
+        type=int,
+        default=0,
+        help='External sender node_id for --receive-weights-shares-from-client (default: 0).',
+    )
     parser.add_argument('--distribute-dataset-shares', action='store_true',
                         help='Owner node secret-shares MNIST and distributes only per-node shares over MPC network.')
     parser.add_argument('--dataset-owner-node', type=int, default=1,
@@ -1765,6 +1893,42 @@ def main():
     np.random.seed(args.seed) # Ensure identical initialization across all nodes
     random.seed(args.seed) # Essential because ShamirSecretSharing uses Python's native random module 
     weights = model.initialize_weights(node_id=args.node_id)
+    if bool(getattr(args, "init_weights_from_npz", "")):
+        if network is None or int(args.n_nodes) < 2:
+            raise ValueError("--init-weights-from-npz requires --enable-network and --n-nodes >= 2")
+        npz_path = str(args.init_weights_from_npz)
+        if not os.path.isabs(npz_path):
+            npz_path = os.path.abspath(npz_path)
+        if bool(getattr(args, "receive_weights_shares_from_client", False)):
+            print(
+                f"Node {args.node_id}: model-weight init mode = client-shared "
+                f"(source node_id={int(getattr(args, 'weights_source_node_id', 0))})"
+            )
+            weights = _receive_weight_shares_from_client(
+                model=model,
+                node_id=int(args.node_id),
+                source_node_id=int(getattr(args, "weights_source_node_id", 0)),
+                network=network,
+                me=me,
+                timeout_s=float(max(float(args.dataset_distribution_timeout), float(args.export_timeout), 300.0)),
+            )
+        else:
+            dealer_node_id = int(args.weights_dealer_node) if int(args.weights_dealer_node) > 0 else int(args.n_nodes)
+            print(f"Node {args.node_id}: model-weight init mode = dealer-node (dealer={dealer_node_id})")
+            weights = _distribute_or_receive_weight_shares_from_npz(
+                weights_npz_path=npz_path,
+                model=model,
+                node_id=int(args.node_id),
+                n_nodes=int(args.n_nodes),
+                t=int(args.t),
+                shamir=shamir,
+                network=network,
+                field_size=int(FIELD_SIZE),
+                scale=int(SCALE),
+                me=me,
+                dealer_node_id=dealer_node_id,
+                timeout_s=float(max(float(args.dataset_distribution_timeout), float(args.export_timeout), 300.0)),
+            )
     softmax = SecureSoftmax(
         multiplier,
         divider,

@@ -67,6 +67,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--client-eval-samples", type=int, default=100, help="Sample count for client-side reconstructed final accuracy.")
     parser.add_argument("--client-test-samples", type=int, default=-1, help="Number of test shares to distribute from client (-1: auto; with client eval uses client-eval-samples).")
     parser.add_argument("--client-eval-timeout", type=float, default=0.0, help="Timeout for client-side evaluation share collection and barrier in seconds (0 = no timeout).")
+    parser.add_argument(
+        "--init-weights-from-npz",
+        type=str,
+        default="",
+        help="Initialize secure node weights from reconstructed model (.npz).",
+    )
+    parser.add_argument(
+        "--infer-image",
+        type=str,
+        default="",
+        help="Run inference on a single image via secure multi-party execution (requires --init-weights-from-npz).",
+    )
+    parser.add_argument(
+        "--infer-raw-mnist",
+        action="store_true",
+        help="Treat --infer-image input as 28x28 MNIST PNG (no drawn-digit preprocessing).",
+    )
+    parser.add_argument(
+        "--client-shares-model-weights",
+        action="store_true",
+        help="Inference-only: client secret-shares NPZ model weights to nodes (no node-side plaintext model load).",
+    )
     parser.add_argument("--use-kvs-dataset", action="store_true", help="Store dataset shares in local KVS and retrieve mini-batches from KVS. Requires distributed dataset.")
     parser.add_argument("--use-weight-versioning", action="store_true", help="Store weight shares to local KVS with v_theta after each epoch.")
     parser.add_argument("--headless", action="store_true", help="Run all nodes in this terminal and wait for completion (writes per-node logs)")
@@ -96,6 +118,24 @@ def parse_and_validate_args(argv=None):
     if getattr(args, "use_kvs_dataset", False):
         if not (bool(args.distribute_dataset_shares) or bool(args.receive_dataset_shares_from_client)):
             raise ValueError("--use-kvs-dataset requires --distribute-dataset-shares or --receive-dataset-shares-from-client")
+    if bool(args.infer_image):
+        if not bool(args.init_weights_from_npz):
+            raise ValueError("--infer-image requires --init-weights-from-npz")
+        if not bool(args.receive_dataset_shares_from_client):
+            raise ValueError("--infer-image requires --receive-dataset-shares-from-client")
+        if not bool(args.client_eval_after_training):
+            raise ValueError("--infer-image requires --client-eval-after-training")
+        if int(args.n_nodes) < 2:
+            raise ValueError("--infer-image requires --n-nodes >= 2")
+        # Inference-only mode: client sends one test sample, nodes skip training.
+        args.num_epochs = 0
+        args.mnist_samples = 0
+        args.client_test_samples = 1
+        args.client_eval_samples = 1
+        # Default to stronger confidentiality for inference mode.
+        args.client_shares_model_weights = True
+    if bool(args.client_shares_model_weights) and not bool(args.infer_image):
+        raise ValueError("--client-shares-model-weights is supported only with --infer-image")
     if (
         bool(args.packed_forward_native)
         and bool(args.start_client_distributor)

@@ -38,6 +38,53 @@ def load_mnist_data(train_samples=None, test_samples=None):
     return (x_train, y_train_oh), (x_test, y_test_oh)
 
 
+def load_raw_mnist_image_784(path: str) -> np.ndarray:
+    """Load a 28x28 grayscale image as MNIST-space vector [0,1]."""
+    import tensorflow as tf
+
+    raw = tf.io.read_file(str(path))
+    img = tf.image.decode_image(raw, channels=1, expand_animations=False)
+    h = int(img.shape[0])
+    w = int(img.shape[1])
+    if h != 28 or w != 28:
+        raise ValueError(f"--infer-raw-mnist requires a 28x28 image, got {h}x{w}")
+    arr = tf.cast(img, tf.float32).numpy().reshape(28 * 28) / 255.0
+    return np.asarray(arr, dtype=np.float32)
+
+
+def load_plain_weights_from_npz(npz_path: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    data = np.load(str(npz_path))
+    w1 = np.asarray(data["w1"], dtype=np.float64)
+    w2 = np.asarray(data["w2"], dtype=np.float64)
+    b1 = np.asarray(data["b1"], dtype=np.float64)
+    b2 = np.asarray(data["b2"], dtype=np.float64)
+    return w1, w2, b1, b2
+
+
+def flatten_plain_weights_to_fixed_ints(
+    *,
+    w1: np.ndarray,
+    w2: np.ndarray,
+    b1: np.ndarray,
+    b2: np.ndarray,
+    scale: int,
+    p: int,
+) -> list[int]:
+    # Batched MNIST MLP expected shapes: w1(128,784), w2(10,128), b1(128,), b2(10,)
+    expected = [(128, 784), (10, 128), (128,), (10,)]
+    expected_count = 128 * 784 + 10 * 128 + 128 + 10
+    got_shapes = [tuple(w1.shape), tuple(w2.shape), tuple(b1.shape), tuple(b2.shape)]
+    if got_shapes != expected:
+        raise ValueError(
+            f"NPZ weight shape mismatch for secure inference: expected {expected}, got {got_shapes}"
+        )
+    flat_float = np.concatenate([w1.reshape(-1), w2.reshape(-1), b1.reshape(-1), b2.reshape(-1)])
+    if int(flat_float.size) != int(expected_count):
+        raise ValueError(f"NPZ parameter count mismatch: expected {expected_count}, got {int(flat_float.size)}")
+    flat_int = np.rint(flat_float * float(scale)).astype(np.int64, copy=False)
+    return [int(v) % int(p) for v in flat_int.tolist()]
+
+
 def share_vector_for_all_nodes_pss(values, n_nodes, t, field_size, pss, scale, packing_factor):
     secrets = [int(v * scale) % field_size for v in values]
     chunks = pss.share_vector(secrets, n_nodes, t, packing_factor=int(packing_factor))
@@ -107,6 +154,28 @@ def main() -> None:
     parser.add_argument("--field-size", type=int, default=2**32 - 5)
     parser.add_argument("--scale-factor", type=int, default=2**20)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--init-weights-from-npz",
+        type=str,
+        default="",
+        help="Path to reconstructed model NPZ used for client-side secure weight sharing.",
+    )
+    parser.add_argument(
+        "--share-model-weights",
+        action="store_true",
+        help="Inference-only: client secret-shares NPZ model weights to nodes.",
+    )
+    parser.add_argument(
+        "--infer-image",
+        type=str,
+        default="",
+        help="Single image inference input; sends n_train=0 and one test sample to secure nodes.",
+    )
+    parser.add_argument(
+        "--infer-raw-mnist",
+        action="store_true",
+        help="Treat --infer-image as already-MNIST 28x28 grayscale input.",
+    )
     parser.add_argument("--barrier-timeout", type=float, default=900.0)
     parser.add_argument(
         "--collect-client-eval",
@@ -140,19 +209,35 @@ def main() -> None:
     if scale <= 0:
         raise ValueError("--scale-factor must be positive")
 
-    train_samples = int(args.mnist_samples) if args.mnist_samples is not None else None
-    if int(args.client_test_samples) >= 0:
-        test_samples = int(args.client_test_samples)
-    elif args.collect_client_eval:
-        test_samples = int(args.client_eval_samples)
-    else:
-        test_samples = train_samples
+    infer_path = str(getattr(args, "infer_image", "")).strip()
+    if infer_path:
+        if bool(getattr(args, "infer_raw_mnist", False)):
+            x_vec = load_raw_mnist_image_784(infer_path)
+        else:
+            import tensorflow as tf
 
-    (x_train, y_train), (x_test, y_test) = load_mnist_data(train_samples, test_samples)
+            raw = tf.io.read_file(str(infer_path))
+            img = tf.image.decode_image(raw, channels=1, expand_animations=False)
+            img = tf.image.resize(img, [28, 28], method="bilinear", antialias=True)
+            x_vec = tf.cast(img, tf.float32).numpy().reshape(28 * 28) / 255.0
+        x_train = np.zeros((0, 784), dtype=np.float32)
+        y_train = np.zeros((0, 10), dtype=np.float32)
+        x_test = np.asarray([x_vec], dtype=np.float32)
+        # Placeholder label only for shape compatibility in infer-image mode.
+        y_test = keras.utils.to_categorical(np.asarray([0], dtype=np.int64), 10).astype(np.float32)
+    else:
+        train_samples = int(args.mnist_samples) if args.mnist_samples is not None else None
+        if int(args.client_test_samples) >= 0:
+            test_samples = int(args.client_test_samples)
+        elif args.collect_client_eval:
+            test_samples = int(args.client_eval_samples)
+        else:
+            test_samples = train_samples
+        (x_train, y_train), (x_test, y_test) = load_mnist_data(train_samples, test_samples)
     n_train = int(len(x_train))
     n_test = int(len(x_test))
-    feat_dim = int(x_train.shape[1])
-    cls_dim = int(y_train.shape[1])
+    feat_dim = 784
+    cls_dim = 10
 
     if str(args.topology).strip():
         ct = load_client_topology(str(args.topology).strip())
@@ -188,6 +273,31 @@ def main() -> None:
             f"{raw_packing} -> {pss_packing_factor} (2*(t+s-1) < n_active={n_active})"
         )
     print(f"Client {client_node_id}: PSS mode enabled; packing factor={pss_packing_factor}")
+
+    if bool(getattr(args, "share_model_weights", False)):
+        npz_path = str(getattr(args, "init_weights_from_npz", "")).strip()
+        if not npz_path:
+            raise ValueError("--share-model-weights requires --init-weights-from-npz")
+        print(f"Client {client_node_id}: model-weight init mode = client-shared (source NPZ: {npz_path})")
+        w1, w2, b1, b2 = load_plain_weights_from_npz(npz_path)
+        flat_mod_p = flatten_plain_weights_to_fixed_ints(
+            w1=w1,
+            w2=w2,
+            b1=b1,
+            b2=b2,
+            scale=int(scale),
+            p=int(field_size),
+        )
+        shamir_dist = ShamirSecretSharing(int(field_size))
+        per_node = [[] for _ in range(int(n_nodes))]
+        for secret in flat_mod_p:
+            shares = shamir_dist.share(int(secret), int(n_nodes), int(args.t))
+            for s in shares:
+                per_node[int(s.node_id) - 1].append(int(s.y) % int(field_size))
+        w_ctx = me.ctx("init_weights_from_npz/v1")
+        for target in range(1, int(n_nodes) + 1):
+            network.channel.send_vector(int(target), w_ctx, x=int(client_node_id), values=per_node[target - 1])
+        print(f"Client {client_node_id}: secure model-weight shares distributed from NPZ.")
 
     meta_ctx = me.ctx("dataset/meta/v1")
     _t_dist0 = time.time()
@@ -258,12 +368,20 @@ def main() -> None:
                 logits.append(float(mod_p_to_signed(rec, p)))
 
             pred = int(np.argmax(np.asarray(logits, dtype=np.float64)))
-            true_label = int(np.argmax(np.asarray(y_test[int(eval_indices[slot])], dtype=np.float64)))
-            if pred == true_label:
-                correct += 1
+            logits_np = np.asarray(logits, dtype=np.float64)
+            if infer_path:
+                print(f"Client predicted digit: {pred}")
+                print(f"Client logits (10 classes): {logits_np.tolist()}")
+            else:
+                true_label = int(np.argmax(np.asarray(y_test[int(eval_indices[slot])], dtype=np.float64)))
+                if pred == true_label:
+                    correct += 1
 
-        acc = float(correct) / float(max(1, n_eval))
-        print(f"Client Final Accuracy ({n_eval} samples): {acc*100:.2f}%")
+        if infer_path:
+            print("Client Final Accuracy: N/A (infer-image mode; label is a dummy placeholder)")
+        else:
+            acc = float(correct) / float(max(1, n_eval))
+            print(f"Client Final Accuracy ({n_eval} samples): {acc*100:.2f}%")
         print(f"Client Eval Time: {time.time() - _t_eval0:.6f}s")
 
         network.barrier(me.barrier_tag("client_eval_final_done"), timeout=_barrier_timeout(float(args.eval_timeout)))

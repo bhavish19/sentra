@@ -29,12 +29,29 @@ _NODE_ROOT = Path(__file__).resolve().parent
 _CLIENT_ROOT = _NODE_ROOT.parent / "client"
 
 
+def _resolve_from_node_root(path_like: str) -> str:
+    """Resolve relative paths against node root for cross-process consistency."""
+    p = Path(str(path_like))
+    if p.is_absolute():
+        return str(p)
+    return str((_NODE_ROOT / p).resolve())
+
+
+def _quiet_tf_env(base: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    """Default TF log level so headless runs do not fill stderr with repeated oneDNN banners."""
+    e = dict(base if base is not None else os.environ)
+    # 0=all, 1=hide INFO, 2=hide WARNING, 3=errors only. User can override in environment.
+    e.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+    return e
+
+
 def _env_with_node_on_pythonpath() -> Dict[str, str]:
     """Allow ``python -m sentra_client`` from ``client/`` to import ``ml_training`` from ``node/``."""
+    e = _quiet_tf_env()
     node_path = str(_NODE_ROOT)
-    prev = (os.environ.get("PYTHONPATH") or "").strip()
-    merged = node_path if not prev else f"{node_path}{os.pathsep}{prev}"
-    return {**os.environ, "PYTHONPATH": merged}
+    prev = (e.get("PYTHONPATH") or "").strip()
+    e["PYTHONPATH"] = node_path if not prev else f"{node_path}{os.pathsep}{prev}"
+    return e
 
 
 def _build_node_command(args, node_id: int) -> List[str]:
@@ -151,6 +168,21 @@ def _build_node_command(args, node_id: int) -> List[str]:
                 str(float(args.export_timeout)),
             ]
         )
+    if bool(getattr(args, "init_weights_from_npz", "")):
+        cmd.extend(
+            [
+                "--init-weights-from-npz",
+                str(args.init_weights_from_npz),
+            ]
+        )
+    if bool(getattr(args, "client_shares_model_weights", False)):
+        cmd.extend(
+            [
+                "--receive-weights-shares-from-client",
+                "--weights-source-node-id",
+                str(int(getattr(args, "dataset_source_node_id", 0))),
+            ]
+        )
 
     if bool(getattr(args, "use_kvs_dataset", False)):
         cmd.append("--use-kvs-dataset")
@@ -201,15 +233,14 @@ def _run_headless(args) -> None:
     open_files = []
     for nid in range(1, int(args.n_nodes) + 1):
         out_path = run_dir / f"node_{nid}.log"
-        err_path = run_dir / f"node_{nid}.err"
         out_f = open(out_path, "w", encoding="utf-8")
-        err_f = open(err_path, "w", encoding="utf-8")
-        open_files.extend([out_f, err_f])
+        open_files.append(out_f)
         p = subprocess.Popen(
             _build_node_command(args, nid),
             cwd=str(_NODE_ROOT),
             stdout=out_f,
-            stderr=err_f,
+            stderr=subprocess.STDOUT,
+            env=_quiet_tf_env(),
         )
         procs.append((nid, p))
         print(f"[headless] started node {nid} -> {out_path}")
@@ -250,6 +281,14 @@ def _run_headless(args) -> None:
             "--membership-epoch",
             str(int(args.membership_epoch)),
         ]
+        if bool(getattr(args, "infer_image", "")):
+            cmd.extend(["--infer-image", _resolve_from_node_root(str(args.infer_image))])
+            if bool(getattr(args, "infer_raw_mnist", False)):
+                cmd.append("--infer-raw-mnist")
+        if bool(getattr(args, "init_weights_from_npz", "")):
+            cmd.extend(["--init-weights-from-npz", _resolve_from_node_root(str(args.init_weights_from_npz))])
+        if bool(getattr(args, "client_shares_model_weights", False)):
+            cmd.append("--share-model-weights")
         if bool(args.client_eval_after_training):
             cmd.extend(
                 [
