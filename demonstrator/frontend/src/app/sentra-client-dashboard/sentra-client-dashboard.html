@@ -1,13 +1,10 @@
-<mat-grid-list cols="1" rowHeight="50%" style="width:50%;background-color: aqua;"> 
-<mat-grid-tile>
+<div style="display:grid;grid-template-columns: 400px 1fr; grid-template-rows: 1fr 1fr; gap: 10px; height: 100vh;background-color: aqua;"> 
+<div style="grid-column: 1; grid-row: 1; background-color: lightblue; display: flex; align-items: center; justify-content: center;">
  <!--   <app-image-selector/> -->
     <mnist-number-selector style="width:100%" (imageSelected)="selectedImageIndex=$event"/>
-</mat-grid-tile>
-<mat-grid-tile>
-    <prediction-result-display style="width: 100%;" [predictionProbabilities]=predictionProbabilities
-  [predictedDigit]=predictionResult/>
-</mat-grid-tile>
-</mat-grid-list>
+</div>
+<div style="grid-column: 2; grid-row: 1 / span 2; background-color: lightcoral; display: flex; align-items: center; justify-content: center;">
+<app-ai-widget/><br>  
     <div>
         <button mat-raised-button color="primary" (click)="onDoInference()">
         Do Inference
@@ -17,5 +14,11 @@
       </button>    
     
     </div>
+</div>
+<div style="grid-column: 1; grid-row: 2; background-color: lightgreen; display: flex; align-items: center; justify-content: center;">
+    <prediction-result-display style="width: 100%;" [predictionProbabilities]=predictionProbabilities
+  [predictedDigit]=predictionResult/>
+</div>
+</div>
 
-<app-ai-widget/>    
+  

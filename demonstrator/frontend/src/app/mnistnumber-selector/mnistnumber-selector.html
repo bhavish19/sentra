@@ -1,9 +1,9 @@
 <!-- Selected digit image View -->
 
 <div *ngIf="view === 'digit_image'">
-<mat-card (click)="onStartDigitSelection()" style="height:100%;width:100%">
+<mat-card (click)="onStartDigitSelection()" style="height:100%;width:100%;overflow:hidden">
     <mat-card-content>
-        <img [src]="selectedImage" style="height:100%;width:100%;object-fit: contain;"/>
+        <img [src]="selectedImage" style="height:100%;width:100%;object-fit: cover;"/>
     </mat-card-content>
 </mat-card>
 </div>

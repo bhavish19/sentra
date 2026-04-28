@@ -12,7 +12,7 @@
             "args": ["-s","-c"],
             "console": "integratedTerminal",
             "env": {
-                    "PYTHONPATH": "${workspaceFolder}/sentra-node/python"
+                    "PYTHONPATH": "${workspaceFolder}/sentra-node/python/node"
                 }
         },
         {
