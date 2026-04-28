@@ -1,0 +1,170 @@
+/* ai-widget.component.scss */
+
+/* ── Card wrapper ── */
+.ai-widget-card {
+  max-width: 640px;
+  margin: 2rem auto;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+
+  mat-card-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #1a237e;
+  }
+
+  mat-card-subtitle {
+    font-size: 0.9rem;
+    color: #555;
+    margin-bottom: 0.5rem;
+  }
+}
+
+/* ── Mode toggle ── */
+.toggle-container {
+  display: flex;
+  justify-content: center;
+  margin: 1.25rem 0 1.75rem;
+}
+
+.mode-toggle {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+
+  .mat-button-toggle {
+    font-size: 0.95rem;
+    font-weight: 500;
+    padding: 0 1.1rem;
+
+    mat-icon {
+      margin-right: 6px;
+      vertical-align: middle;
+      font-size: 1.1rem;
+    }
+  }
+
+  .mat-button-toggle-checked {
+    background: #1a237e;
+    color: #fff;
+  }
+}
+
+/* ── Stepper ── */
+::ng-deep .mat-stepper-vertical {
+  background: transparent;
+}
+
+::ng-deep .mat-step-header {
+  border-radius: 8px;
+  transition: background 0.2s;
+
+  &:hover {
+    background: rgba(26, 35, 126, 0.06);
+  }
+}
+
+/* ── Completed step icon ── */
+.step-done-icon {
+  color: #2e7d32 !important;
+  font-size: 1.2rem !important;
+}
+
+::ng-deep .mat-step-icon-state-done,
+::ng-deep .mat-step-icon-selected {
+  background-color: #2e7d32 !important;
+}
+
+/* ── Step info block ── */
+.step-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  background: #f5f5f5;
+  border-left: 4px solid #1a237e;
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+
+  .info-icon {
+    color: #1a237e;
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: #333;
+  }
+}
+
+/* ── Step actions ── */
+.step-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+
+  mat-icon {
+    font-size: 1rem;
+    vertical-align: middle;
+    margin-left: 4px;
+  }
+}
+
+/* ── Done badge ── */
+.done-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #2e7d32;
+  font-weight: 600;
+  font-size: 0.95rem;
+
+  mat-icon {
+    color: #2e7d32;
+    font-size: 1.2rem;
+  }
+}
+
+/* ── Pulse animation ── */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(26, 35, 126, 0.55);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 8px rgba(26, 35, 126, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(26, 35, 126, 0);
+  }
+}
+
+.pulse-btn {
+  animation: pulse 1.8s ease-in-out infinite;
+  border-radius: 6px !important;
+
+  /* Stronger pulse glow for accent (privacy) buttons */
+  &.mat-accent {
+    @keyframes pulse-accent {
+      0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(0, 150, 136, 0.6);
+      }
+      50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 0 8px rgba(0, 150, 136, 0);
+      }
+      100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(0, 150, 136, 0);
+      }
+    }
+    animation: pulse-accent 1.8s ease-in-out infinite;
+  }
+}

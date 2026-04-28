@@ -22,11 +22,13 @@ export interface ImageSelectedEvent {
 })
 
 export class MnistNumberSelector {
+
   digits = Array.from({ length: 10 }, (_, i) => i);
-  view: 'digit' | 'images' = 'digit';
+  view: 'digit' | 'images' | 'selection_start' | 'digit_image' = 'selection_start';
   images: MnistImage[] = [];
   selectedDigit: number | null = null;
   selectedIndex: number | null = null;
+  selectedImage:string |null=null;
   loading = false;
 
   @Output() imageSelected = new EventEmitter<number>();
@@ -49,6 +51,8 @@ export class MnistNumberSelector {
 
   selectImage(image: MnistImage) {
     this.selectedIndex = image.index;
+    this.selectedImage=image.image_b64;
+    this.view='digit_image';
     this.imageSelected.emit(image.index);
   }
 
@@ -58,4 +62,9 @@ export class MnistNumberSelector {
     this.selectedDigit = null;
     this.selectedIndex = null;
   }
+
+  onStartDigitSelection() 
+    {
+      this.view='digit';
+    }
 }

@@ -1,7 +1,7 @@
-<mat-grid-list cols="2" rowHeight="100%"> 
+<mat-grid-list cols="1" rowHeight="50%" style="width:50%;background-color: aqua;"> 
 <mat-grid-tile>
  <!--   <app-image-selector/> -->
-    <mnist-number-selector style="width:100%"/>
+    <mnist-number-selector style="width:100%" (imageSelected)="selectedImageIndex=$event"/>
 </mat-grid-tile>
 <mat-grid-tile>
     <prediction-result-display style="width: 100%;" [predictionProbabilities]=predictionProbabilities
@@ -17,3 +17,5 @@
       </button>    
     
     </div>
+
+<app-ai-widget/>    

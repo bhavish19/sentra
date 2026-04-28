@@ -1,11 +1,10 @@
 .digit-grid {
   margin: 32px auto;
-  max-width: 350px;
 }
 
 .image-grid-wrapper {
   margin: 24px auto;
-  max-width: 480px;
+  width: 400px;
   display: flex;
   flex-direction: column;
 }

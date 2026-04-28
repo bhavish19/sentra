@@ -5,10 +5,11 @@ import { MatButtonModule } from '@angular/material/button';
 import { ClassificationResult, RestService } from '../../rest.service';
 import { PredictionResultDisplay } from '../prediction-result-display/prediction-result-display';
 import { MnistNumberSelector } from "../mnistnumber-selector/mnistnumber-selector";
+import { AiWidgetComponent } from "../ai-widget.component/ai-widget.component";
 
 @Component({
   selector: 'app-sentra-client-dashboard',
-  imports: [MnistNumberSelector,ImageSelector, MatGridListModule, MatButtonModule, PredictionResultDisplay, MnistNumberSelector],
+  imports: [MnistNumberSelector, MatGridListModule, MatButtonModule, PredictionResultDisplay, MnistNumberSelector, AiWidgetComponent],
   templateUrl: './sentra-client-dashboard.html',
   styleUrl: './sentra-client-dashboard.css',
 })
@@ -16,8 +17,7 @@ export class SentraClientDashboard
 {
 predictionProbabilities: number[]=[];
 predictionResult: number=0;
-
- @ViewChild(ImageSelector) m_imageSelector!: ImageSelector;
+selectedImageIndex:number=-1;
 
 constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef)
   {
@@ -55,12 +55,15 @@ getFileNameWithoutExtension(path: string): string {
 
 onDoInference() 
 {
-  let fileName:string|null=this.m_imageSelector.imageName;
+/*  let fileName:string|null=this.m_imageSelector.imageName;
   if(fileName===null)
     return;
   fileName=this.getFileNameWithoutExtension(fileName);
   let index:number=Number(fileName);
-  this.m_RestService.doPrediction(index).subscribe((inferenceResult)=>
+  */
+ if(this.selectedImageIndex==-1)
+  return;
+  this.m_RestService.doPrediction(this.selectedImageIndex).subscribe((inferenceResult)=>
   {
     console.log(inferenceResult);
     this.predictionResult=inferenceResult.predictedValue;
