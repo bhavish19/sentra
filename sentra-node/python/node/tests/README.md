@@ -15,7 +15,6 @@ tests/
 ├── test_secure_division.py  # Secure division tests
 ├── test_mpc_engine.py       # MPC engine tests
 ├── test_secure_matrix_ops.py # Matrix operations tests
-├── test_dp_sgd.py           # DP-SGD integration tests
 ├── test_communication.py    # Communication protocol tests
 ├── test_integration.py      # Integration tests
 └── test_benchmarks.py       # Performance benchmarks
@@ -30,12 +29,12 @@ pytest
 
 ### Run specific test file
 ```bash
-pytest tests/test_secret_sharing.py
+pytest node/tests/test_secret_sharing.py
 ```
 
 ### Run specific test
 ```bash
-pytest tests/test_secret_sharing.py::TestShamirSecretSharing::test_share_secret
+pytest node/tests/test_secret_sharing.py::TestShamirSecretSharing::test_share_secret
 ```
 
 ### Run with coverage
@@ -55,7 +54,7 @@ pytest -m "not integration"
 
 ### Run benchmarks
 ```bash
-pytest tests/test_benchmarks.py -m benchmark
+pytest node/tests/test_benchmarks.py -m benchmark
 ```
 
 ## Test Categories
@@ -67,7 +66,6 @@ pytest tests/test_benchmarks.py -m benchmark
 - **Secure Operations**: Comparison, division, clipping
 - **MPC Engine**: Forward/backward pass, weight updates
 - **Matrix Operations**: Secure matrix multiplication
-- **DP-SGD**: Noise generation, clipping, averaging
 - **Communication**: Network protocol, reconstruction
 
 ### Integration Tests
@@ -86,7 +84,6 @@ The test suite covers:
 - ✅ All core components
 - ✅ Secure operations
 - ✅ Matrix operations
-- ✅ DP-SGD integration
 - ✅ Communication protocol
 - ✅ Integration scenarios
 

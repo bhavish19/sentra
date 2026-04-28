@@ -17,11 +17,12 @@ class TestBeaverTriple:
     """Tests for BeaverTriple"""
     
     def test_beaver_triple_creation(self):
-        """Test creating a Beaver triple"""
-        triple = BeaverTriple(a=Share(1, 10, 1), b=Share(1, 20, 1), c=Share(1, 200, 1))
-        assert triple.a.y == 10
-        assert triple.b.y == 20
-        assert triple.c.y == 200
+        """Test creating a Beaver triple (one share per party)."""
+        a = [Share(1, 10, i) for i in (1, 2, 3)]
+        b = [Share(1, 20, i) for i in (1, 2, 3)]
+        c = [Share(1, 200, i) for i in (1, 2, 3)]
+        triple = BeaverTriple(a=a, b=b, c=c)
+        assert triple.get_for_node(1) == (a[0], b[0], c[0])
 
 
 class TestBeaverTripleGenerator:

@@ -6,7 +6,7 @@ This process is the input owner:
 - Secret-shares each sample/label
 - Sends only per-node shares to training nodes
 
-based on: sentra-node/python/client_distributor.py
+based on: sentra-node/python/client/client_distributor.py
 """
 
 import random

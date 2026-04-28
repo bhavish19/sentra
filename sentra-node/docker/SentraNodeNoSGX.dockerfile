@@ -22,9 +22,9 @@ RUN /miniconda/bin/conda create --prefix /python-occlum -y  python=3.10.0 numpy=
 
 RUN mkdir /bin/sentra
 RUN mkdir /bin/sentra/ml_training
-COPY ./sentra-node/python/ml_training /bin/sentra/ml_training/
-COPY ./sentra-node/python/run_mnist_batched_secure.py /bin/sentra/
-COPY ./sentra-node/python/communication_test/InterNodeCommunicationTest.py /bin/sentra/
+COPY ./sentra-node/python/node/ml_training /bin/sentra/ml_training/
+COPY ./sentra-node/python/node/run_mnist_batched_secure.py /bin/sentra/
+COPY ./sentra-node/python/node/communication_test/InterNodeCommunicationTest.py /bin/sentra/
 
 COPY ./sentra-node/docker/training_config.yaml /etc/training_config.yaml
 RUN chmod 644 /etc/training_config.yaml

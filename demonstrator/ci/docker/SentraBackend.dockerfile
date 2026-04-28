@@ -16,8 +16,8 @@ COPY ./demonstrator/backend /sentra/backend
 COPY ./demonstrator/ci/docker/scripts/entrypoint.sh /
 
 RUN mkdir /sentra/ml_training
-COPY ./sentra-node/python/ml_training /sentra/ml_training/
-COPY ./sentra-node/python/pyproject.toml /sentra/
+COPY ./sentra-node/python/node/ml_training /sentra/ml_training/
+COPY ./sentra-node/python/node/pyproject.toml /sentra/
 
 COPY ./sentra-node/docker/training_config.yaml /etc/
 

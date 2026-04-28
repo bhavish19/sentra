@@ -23,13 +23,10 @@ class TestTrainingPipeline:
         assert pipeline.t == 1
         assert pipeline.s == 1
     
-    def test_pipeline_with_network_config(self):
+    def test_pipeline_with_network_config(self, local_node_configs_pair):
         """Test pipeline with network configuration"""
-        node_configs = {
-            1: {'host': 'localhost', 'port': 8001},
-            2: {'host': 'localhost', 'port': 8002}
-        }
-        
+        node_configs = local_node_configs_pair
+
         pipeline = SentraTrainingPipeline(
             n_nodes=2,
             t=1,
@@ -38,8 +35,17 @@ class TestTrainingPipeline:
             node_configs=node_configs,
             enable_network=True
         )
-        assert pipeline.node_id == 1
-        assert pipeline.enable_network
+        try:
+            assert pipeline.node_id == 1
+            assert pipeline.enable_network
+        finally:
+            coord = pipeline.coordinator
+            fd = getattr(coord, "failure_detector", None)
+            if fd is not None:
+                fd.stop_monitoring()
+            net = getattr(coord, "network", None)
+            if net is not None:
+                net.stop()
     
     def test_ingest_dataset(self):
         """Test dataset ingestion"""
