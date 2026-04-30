@@ -2,6 +2,7 @@ import threading
 import random
 import time
 
+import numpy as np
 import tensorflow as tf
 
 from .SentraNodeAttributeGenerator import SentraNodeAttributeGenerator
@@ -21,6 +22,9 @@ class AppSimulator:
         self.m_nodeGenerator=nodeGenerator
         self.m_nodeList=nodeList
         self.m_committeeSelection = committeeSelection
+        threadTraining = threading.Thread(target=self.training, args=(), daemon=True)
+        threadTraining.start()
+
 
     def runSimulation(self):
         self.m_nodeList.clear()
@@ -58,12 +62,10 @@ class AppSimulator:
                 Backend.getBackend().setCommittee(committee)
             else:
                 log("no committee found!")
+        Backend.getBackend().notifyNodeListUpdated()
 
 
     def start(self):
-        threadTraining = threading.Thread(target=self.training, args=(), daemon=True)
-        threadTraining.start()
-
         self.m_Thread = threading.Thread(target=self.runSimulation, args=(), daemon=True)
         self.m_Thread.start()
 
@@ -84,8 +86,18 @@ class AppSimulator:
         return InferenceResult(predicted_class,predicted_probabilities[0].tolist())
   
 
+    def loadMNISTDataset(self):
+
+        # Load datasets
+        data = np.load('resources/mnist.npz')
+        x_train2, y_train2 = data['x_train'], data['y_train']
+        x_test2, y_test2 = data['x_test'], data['y_test']
+        return (x_train2,y_train2),(x_test2,y_test2)
+
+
+
     def training(self):
-        (x_train, y_train), (x_test, self.y_test) = tf.keras.datasets.mnist.load_data()
+        (x_train, y_train), (x_test, self.y_test) = self.loadMNISTDataset()
         x_train = x_train.astype("float32") / 255.0
         x_test  = x_test.astype("float32")  / 255.0
         x_train = x_train[..., tf.newaxis]   # shape: (60000, 28, 28, 1)

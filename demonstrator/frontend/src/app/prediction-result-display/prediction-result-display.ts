@@ -49,14 +49,6 @@ export class PredictionResultDisplay implements OnInit {
   // Initialize the chart options
   initializeChart(): void {
     this.chartOptions = {
-      title: {
-        text: 'Prediction Probabilities',
-        left: 'center'
-      },
-      tooltip: {
-        trigger: 'item',
-        formatter: '{b}: {c}'
-      },
       yAxis: {
         type: 'category',
         data: ['9', '8', '7', '6', '5', '4', '3', '2', '1', '0'], // Digits 0-9

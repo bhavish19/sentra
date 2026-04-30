@@ -1,29 +1,21 @@
 <!-- Selected digit image View -->
 
-<div *ngIf="view === 'digit_image'">
-<mat-card (click)="onStartDigitSelection()" style="height:100%;width:100%;overflow:hidden">
-    <mat-card-content>
-        <img [src]="selectedImage" style="height:100%;width:100%;object-fit: cover;"/>
-    </mat-card-content>
-</mat-card>
+<div *ngIf="view === 'digit_image'" style="display:flex;justify-content: center;align-items: center;height: 100%;">
+        <img (click)="onStartDigitSelection()" [src]="selectedImage" style="width:80%;object-fit: contain;border-radius: 15px;"/>
 </div>
 
 
 <!-- Initial View -->
-<div *ngIf="view === 'selection_start'">
-<mat-card>
-    <mat-card-content>
-        <button mat-raised-button color="primary" (click)="onStartDigitSelection()">
+<div *ngIf="view === 'selection_start'" style="display:flex;justify-content: center;align-items: center;height: 100%;">
+        <button mat-raised-button color="primary" (click)="onStartDigitSelection()" style="justify-content: center;">
             Select Handwritten Digit for Inference
         </button>
-    </mat-card-content>
-</mat-card>
 </div>
 
 
 <!-- Digit Selection View -->
-<div *ngIf="view === 'digit'" class="digit-grid">
-  <mat-grid-list cols="5" rowHeight="60px" gutterSize="12px">
+<div *ngIf="view === 'digit'" style="justify-content: center;align-items: center;height: 100%;">
+  <mat-grid-list cols="4" rowHeight="60px" gutterSize="12px" style="margin: auto;">
     <mat-grid-tile *ngFor="let digit of digits">
       <button mat-raised-button color="primary" (click)="selectDigit(digit)">
         {{ digit }}

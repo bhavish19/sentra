@@ -8,6 +8,11 @@ import { RouterOutlet } from '@angular/router';
   styleUrl: './app.css'
 })
 export class App {
+public staticHeadline: string="Privacy-preserving Machine Learning";
+public static staticSubTitle: string="Client Side";
 
-
+get getSubTitle()
+  {
+    return App.staticSubTitle;
+  }
 }

@@ -1,9 +1,10 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask import send_file
 import threading
 import asyncio
 import grpc
 import grpc.aio as grpc_aio
+from simple_websocket import Server
 
 from .CommandLineOptions import CommandLineOptions
 from .CustomJSONProvider import CustomJSONProvider
@@ -24,6 +25,10 @@ class Backend:
 
     m_sStaticFolder="../../frontend/dist/frontend/browser"
     m_sIndexHtml=m_sStaticFolder+"/index.html"
+    
+    m_WS:Server|None = None
+    m_lockWS=threading.Lock()
+
 
     m_nodeGenerator:SentraNodeAttributeGenerator
     m_nodeList:SentraNodeList
@@ -47,7 +52,7 @@ class Backend:
         self.m_MNIST=MNIST()
 
     @classmethod
-    def getBackend(cls) -> "Backend":
+    def getBackend(cls) -> "Backend|None":
         return cls.theBackend
 
     async def runGRPCServer(self):
@@ -90,6 +95,7 @@ class Backend:
         self.m_committee_selection=cmdlineargs.getRunCommitteeSelection()
         self.app:Flask = Flask(__name__,static_url_path='',static_folder=self.m_sStaticFolder)
         self.app.add_url_rule("/",view_func=self.getIndex)
+        self.app.add_url_rule("/ws", view_func=ws, websocket=True)        
         self.app.add_url_rule("/sentra-nodes-table",view_func=self.getIndex)
         self.app.add_url_rule("/sentra-nodes",view_func=self.getIndex)
         self.app.add_url_rule("/api/v1/getNodes",view_func=self.getNodes)
@@ -164,5 +170,56 @@ class Backend:
     def getMNISTTestImageForIndex(self,index:int):
         return jsonify(self.m_MNIST.getJSONObjectForTestImage(index))
 
+    def registerWebSocket(self, ws:Server):
+        if(self.m_WS is not None and self.m_WS.connected):
+            try:
+                self.m_WS.close()
+            except:
+                pass
+        self.m_WS = ws
 
+    def sendWSMessage(self,msg:str):
+        if(not self.m_WS is None):
+            self.m_lockWS.acquire()
+            if(self.m_WS.connected):
+                try:
+                    self.m_WS.send(msg)
+                except:
+                    try:
+                        self.m_WS.close()
+                    except:
+                        pass
+                    self.m_WS=None
+            else:
+                self.m_WS=None
+            self.m_lockWS.release()
+    
+    def notifyNodeListUpdated(self):
+        data:object={"cloudUpdate":
+                {
+                  "nodeList":self.m_nodeList,
+                  "committee":self.m_Committee
+                }
+              }
+        self.sendWSMessage(self.app.json.dumps(data))
+
+# @app.route("/ws",websocket=True)
+def ws():
+    backend:Backend|None=Backend.getBackend()
+    if(backend is None):
+        return "",500
+    try:
+       
+        if(backend.m_WS is not None and backend.m_WS.connected):
+            return "",200
+        ws = Server.accept(request.environ)
+        
+        backend.registerWebSocket(ws)
+        while ws.connected:
+            ws.receive()
+        backend.m_WS=None
+    except:
+        backend.m_WS=None
+        return "",500
+    return "",200
     

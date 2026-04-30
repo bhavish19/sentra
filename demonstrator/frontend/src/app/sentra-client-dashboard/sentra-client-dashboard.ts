@@ -6,10 +6,11 @@ import { ClassificationResult, RestService } from '../../rest.service';
 import { PredictionResultDisplay } from '../prediction-result-display/prediction-result-display';
 import { MnistNumberSelector } from "../mnistnumber-selector/mnistnumber-selector";
 import { AiWidgetComponent } from "../ai-widget.component/ai-widget.component";
-
+import { MatCardModule } from "@angular/material/card";
+import {MatDividerModule} from '@angular/material/divider';
 @Component({
   selector: 'app-sentra-client-dashboard',
-  imports: [MnistNumberSelector, MatGridListModule, MatButtonModule, PredictionResultDisplay, MnistNumberSelector, AiWidgetComponent],
+  imports: [MnistNumberSelector,MatDividerModule, MatGridListModule, MatButtonModule, PredictionResultDisplay, MnistNumberSelector, AiWidgetComponent, MatCardModule],
   templateUrl: './sentra-client-dashboard.html',
   styleUrl: './sentra-client-dashboard.css',
 })

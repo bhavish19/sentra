@@ -105,41 +105,7 @@ private static layoutOptions={
     cytoscape.use(coseBilkent);
       this.cy = cytoscape({
         container: this.cyContainer.nativeElement,
-        elements: [/*
-          {
-            data:
-            {
-              id: "A"
-            }
-          },
-          {
-          data:
-            {
-              id: "A1",
-              parent: "A"
-            }
-          },
-          {
-          data:
-            {
-              id: "A2",
-              parent: "A"
-            }
-          },
-          {
-            data:
-            {
-              id: "B"
-            }
-          },
-          {
-            data:
-            {
-              id: "B1",
-              parent: "B"
-            }
-          },*/
-        ],
+        elements: [],
         style: this.getStylesheet(),
         
       });
@@ -203,6 +169,8 @@ private static layoutOptions={
     this.cy.nodes("[type=='server'").layout(SentraNodeGraph.layoutOptions).run();
     this.cy.nodes("[type=='cloud'").layout(SentraNodeGraph.layoutOptionsClouds).run();*/
     this.cy.layout(SentraNodeGraph.layoutOptions).run();
+    this.cy.resize();
+    this.cy.style().update();
 //    this.cy.layout(SentraNodeGraph.layoutOptionsGrid).run();
   }
 
@@ -212,6 +180,19 @@ private static layoutOptions={
     }
   }
 
+  public clear():void
+  {
+    this.cy.destroy();
+    this.cy = cytoscape({
+        container: this.cyContainer.nativeElement,
+        elements: [],
+        style: this.getStylesheet(),
+        
+      });
+
+ //   this.cy.remove(this.cy.elements());
+
+  }
   /**
    * Add a process to the topology.
    * @param processName Name of the process (e.g., 'nginx')
