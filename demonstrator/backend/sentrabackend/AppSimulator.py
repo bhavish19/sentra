@@ -28,6 +28,7 @@ class AppSimulator:
 
     def runSimulation(self):
         self.m_nodeList.clear()
+        self.m_nodeGenerator.shuffleOperators()
         from .Backend import Backend
         i:int=0
         baseId:str="SentraNode_"

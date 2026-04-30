@@ -54,7 +54,7 @@ getFileNameWithoutExtension(path: string): string {
     : fileNameWithExtension;
 }
 
-onDoInference() 
+doInference() 
 {
 /*  let fileName:string|null=this.m_imageSelector.imageName;
   if(fileName===null)
@@ -72,5 +72,20 @@ onDoInference()
     this.cdr.detectChanges();
   });
 }
+
+doDistributeShares()
+{
+  console.log("Distribute shares");
+}
+
+doRemoteAttestation()
+  {
+    this.m_RestService.doRemoteAttestation().subscribe();
+  }
+
+  doCommitteeSelection()
+  {
+    this.m_RestService.doCommitteeSelection().subscribe();
+  }
 
 }

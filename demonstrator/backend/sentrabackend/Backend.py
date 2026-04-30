@@ -102,6 +102,8 @@ class Backend:
         self.app.add_url_rule("/api/v1/getCommittee",view_func=self.getCommittee)
         self.app.add_url_rule("/api/v1/getPrediction/<int:id>",view_func=self.getPrediction)
         self.app.add_url_rule("/api/v1/postReset",view_func=self.postReset,methods=['POST'])
+        self.app.add_url_rule("/api/v1/postRemoteAttestation",view_func=self.postRemoteAttestation,methods=['POST'])
+        self.app.add_url_rule("/api/v1/postCommitteeSelection",view_func=self.postCommitteeSelection,methods=['POST'])
         self.app.add_url_rule("/api/v1/mnist/getTestImagesForDigit/<int:digit>",view_func=self.getMNISTTestImagesForDigit)
         self.app.add_url_rule("/api/v1/mnist/getTestImageForIndex/<int:index>",view_func=self.getMNISTTestImageForIndex)
         self.app.json = CustomJSONProvider(self.app)
@@ -155,7 +157,17 @@ class Backend:
     def postReset(self):
         self.doReset()
         return ""
+
+    #@app.route('/api/v1/postRemoteAttestation', methods=['POST'])
+    def postRemoteAttestation(self):
+        self.sendWSMessage("{\"doRemoteAttestation\":true}");
+        return ""
     
+    #@app.route('/api/v1/postCommitteeSelection', methods=['POST'])
+    def postCommitteeSelection(self):
+        self.sendWSMessage("{\"doCommitteeSelection\":true}");
+        return ""
+
     #@app.route('/api/v1/getPrediction/<int:id>', methods=['GET'])    
     def getPrediction(self,id:int):
         if(self.m_bAppSimulation and self.m_appSimulator):

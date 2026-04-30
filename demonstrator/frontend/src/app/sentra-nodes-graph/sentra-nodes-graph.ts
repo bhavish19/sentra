@@ -51,9 +51,9 @@ export class SentraNodeGraph implements AfterViewInit, OnDestroy {
   private processCounter = 0;
 
   private static CLOUD_ICON="/images/icons/cloud.png";
-  private static  SERVER_ARM_ICON="/images/icons/cloud.svg";
-  private static  SERVER_INTEL_ICON="/images/icons/cloud.svg";
-  private static  SERVER_AMD_ICON="/images/icons/cloud.svg";
+  private static  SERVER_ARM_ICON="/images/icons/host.png";
+  private static  SERVER_INTEL_ICON="/images/icons/host.png";
+  private static  SERVER_AMD_ICON="/images/icons/host.png";
   private static  PROCESS_ICON="/images/icons/sentra.png";
   private static layoutOptionsClouds={
           name: 'grid',
@@ -314,6 +314,111 @@ private static layoutOptions={
     }
   }
 
+
+  stopPulseBorder(node_id: string): void {
+  const node = this.cy.getElementById(node_id);
+    node.stop();
+    node.removeClass('pulse-border');
+  }
+  // Function to create a pulsing border effect
+  internal_pulseBorder(node:NodeSingular):void
+  {
+  node.animate(
+    {
+      style: { 'overlay-padding': 6 } // Increase overlay padding
+    },
+    {
+      duration: 500, // Animation duration in milliseconds
+      complete: () => {
+        node.animate(
+          {
+            style: { 'overlay-padding': 2 } // Reset overlay padding
+          },
+          {
+            duration: 500, // Animation duration in milliseconds
+            complete: () => {
+              this.internal_pulseBorder(node); // Recursively call to continue pulsing
+            }
+          }
+        );
+      }
+    }
+  );
+
+  }
+ pulseBorder(node_id: string): void {
+  const node = this.cy.getElementById(node_id);
+    node.addClass('pulse-border');
+    this.internal_pulseBorder(node);
+    
+}
+
+addEdge(nodeid1:string,nodeid2:string)
+{
+  let edgeID:string='edge-'+nodeid1+"-"+nodeid2;
+this.cy.add({
+  group: 'edges', // Specify that this is an edge
+  data: {
+    id: edgeID, // Unique ID for the edge
+    source: nodeid1, // ID of the source node
+    target: nodeid2  // ID of the target node
+  }
+});
+this.animateCircle(edgeID);
+}
+
+
+animateCircle(edgeId:string) {
+  const edge = this.cy.$(`#${edgeId}`);
+  const mcircle = document.getElementById('moving-circle');
+  if(mcircle===null)
+    return;
+  const circle=mcircle.cloneNode(false) as HTMLElement;
+  
+  mcircle.insertAdjacentElement('afterend', circle);
+
+  // Get the edge's source and target positions
+  const sourcePos = edge.renderedSourceEndpoint();
+  const targetPos = edge.renderedTargetEndpoint();
+
+  // Show the circle
+  circle.style.display = 'block';
+
+  // Animate the circle along the edge
+  let forward = true;
+
+  console.log("Start:",sourcePos);
+  console.log("End:",targetPos);
+  circle.style.left=(sourcePos.x-5)+"px";
+  circle.style.top=(sourcePos.y-5)+"px";
+  let dx:number=targetPos.x-sourcePos.x;
+  let dy:number=targetPos.y-sourcePos.y;
+  function move() {
+      if(circle===null)
+    return;
+
+  const animation = circle.animate(
+      [
+        { transform: 'translate(0px,0px)' },
+        { transform: 'translate('+dx+'px,'+dy+'px)' },
+
+      ],
+      {
+        duration: 2000,
+        easing: 'linear',
+        iterations:Infinity,
+        direction:'alternate'
+      }
+    );
+    animation.addEventListener('animationiteration',
+     (event) =>  {
+console.log("loop");
+    });
+  
+  }
+  move();
+}
+
   /**
    * Cytoscape stylesheet for all node types and overlays.
    */
@@ -342,7 +447,7 @@ private static layoutOptions={
           'padding': '40px',
           'z-index': 1,
                     'compound-sizing-wrt-labels':'include',
-                    'text-margin-y':-20,
+                    'text-margin-y':-25,
 
         }
       },
@@ -354,6 +459,9 @@ private static layoutOptions={
           'background-color': '#e8f5e9',
           'border-width': 3,
           'border-color': '#388e3c',
+          'background-image': SentraNodeGraph.SERVER_ARM_ICON,
+          'background-fit': 'cover',
+          'background-opacity': 1,
           'label': 'data(label)',
           'font-size': 16,
           'font-weight': 'bold',
@@ -373,13 +481,16 @@ private static layoutOptions={
           'shape': 'roundrectangle',
           'background-color': '#e3f2fd',
           'border-width': 3,
-          'border-color': '#1976d2',
+          'border-color': '#001021',
+          'background-image': SentraNodeGraph.SERVER_INTEL_ICON,
+          'background-fit': 'cover',
+          'background-opacity': 1,
           'label': 'data(label)',
           'font-size': 16,
           'font-weight': 'bold',
           'text-valign': 'bottom',
           'text-halign': 'center',
-          'color': '#1976d2',
+          'color': '#001021',
           'padding': '24px',
           'z-index': 2,
                     'text-margin-y':5,
@@ -393,6 +504,9 @@ private static layoutOptions={
           'background-color': '#fff3e0',
           'border-width': 3,
           'border-color': '#f57c00',
+          'background-image': SentraNodeGraph.SERVER_AMD_ICON,
+          'background-fit': 'cover',
+          'background-opacity': 1,
           'label': 'data(label)',
           'font-size': 16,
           'font-weight': 'bold',
@@ -415,6 +529,7 @@ private static layoutOptions={
           'background-color': '#fffde7',
           'border-width': 2,
           'border-color': '#fbc02d',
+          
           'background-image': SentraNodeGraph.PROCESS_ICON,
           'background-fit': 'cover',
           'background-opacity': 1,
@@ -442,7 +557,7 @@ private static layoutOptions={
         css: {
 //          'box-shadow': '0 0 16px 8px #1976d2',
           'border-color': '#0ee232',
-          'border-width': 6
+          'border-width': 2
         }
       },
       {
@@ -450,7 +565,7 @@ private static layoutOptions={
         css: {
 //          'box-shadow': '0 0 16px 8px #1976d2',
           'border-color': '#e11013',
-          'border-width': 6
+          'border-width': 2
         }
 
       },
@@ -463,6 +578,15 @@ private static layoutOptions={
           'text-background-padding':'2px'
         }
       },
+      {
+        selector: '.pulse-border',
+        css:{
+          'overlay-color': '#e2e1ed', // Color of the pulsing effect
+          'overlay-shape':'ellipse',
+          'overlay-opacity': 0.5, // Transparency of the overlay
+          'overlay-padding': 0 ,// Initial overlay padding
+        }
+      }
 
     ];
   }

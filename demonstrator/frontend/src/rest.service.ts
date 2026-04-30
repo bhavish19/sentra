@@ -69,6 +69,17 @@ export class RestService {
     return this.m_HttpClient.post('api/v1/postReset',null);
    }
 
+   doRemoteAttestation():Observable<Object>
+   {
+    return this.m_HttpClient.post('api/v1/postRemoteAttestation',null);
+   }
+
+    doCommitteeSelection():Observable<Object>
+   {
+    return this.m_HttpClient.post('api/v1/postCommitteeSelection',null);
+   }
+
+
    doPrediction(index:number):Observable<InferenceResult>
    {
     return this.m_HttpClient.get<InferenceResult>('/api/v1/getPrediction/'+index);

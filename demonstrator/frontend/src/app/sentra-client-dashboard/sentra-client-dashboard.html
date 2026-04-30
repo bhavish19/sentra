@@ -13,11 +13,9 @@
     </mat-card>
 </div>
 <div style="grid-column: 2; grid-row: 1 / span 2;  display: flex; align-items: center; justify-content: center;">
-<app-ai-widget/><br>  
+<app-ai-widget  [m_clientDashboard]="this"/><br>  
     <div>
-        <button mat-raised-button color="primary" (click)="onDoInference()">
-        Do Inference
-      </button>    
+       
         <button mat-raised-button color="primary" (click)="onDoResetSentra()">
         Reset SENTRA
       </button>    

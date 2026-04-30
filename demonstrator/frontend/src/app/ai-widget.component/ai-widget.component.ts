@@ -1,5 +1,5 @@
 // ai-widget.component.ts
-import { Component } from '@angular/core';
+import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatStepperModule } from '@angular/material/stepper';
@@ -7,6 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { FormsModule } from '@angular/forms';
+import { SentraClientDashboard } from '../sentra-client-dashboard/sentra-client-dashboard';
 
 interface AiStep {
   label: string;
@@ -32,6 +33,8 @@ export class AiWidgetComponent {
   mode: string = 'normal';
   selectedIndex: number = 0;
   completedSteps: boolean[] = [];
+
+  @Input() m_clientDashboard!: SentraClientDashboard;
 
   normalSteps: AiStep[] = [
     {
@@ -77,7 +80,50 @@ export class AiWidgetComponent {
     this.completedSteps = [];
   }
 
+  doRemoteAttestation()
+  {
+    this.m_clientDashboard.doRemoteAttestation();
+  }
+
+  doCommitteeSelection()
+  {
+this.m_clientDashboard.doCommitteeSelection();
+  }
+
+    doDistributeShares()
+  {
+this.m_clientDashboard.doDistributeShares();
+  }
+
+    doInference()
+  {
+this.m_clientDashboard.doInference();
+  }
+
+  handleStep(index:number)
+  {
+    if(this.mode==='privacy')
+    {
+      switch(index)
+      {
+        case 0:
+          this.doRemoteAttestation();
+          break;
+        case 1:
+          this.doCommitteeSelection();
+          break;
+        case 2:
+          this.doDistributeShares();
+          break;
+        case 3:
+          this.doInference();
+          break;
+      }
+    }
+  }
+
   completeStep(index: number): void {
+    this.handleStep(index);
     this.completedSteps[index] = true;
     // Advance to next step if one exists
     if (index + 1 < this.currentSteps.length) {

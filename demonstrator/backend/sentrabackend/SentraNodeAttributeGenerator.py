@@ -40,11 +40,14 @@ class SentraNodeAttributeGenerator:
             i+=1
 
     def internal_generateOperators(self)->None:
-        i:int=0
-        self.m_arOperators:list[str]=[]
-        while(i<self.m_numOperators):
-            self.m_arOperators.append("Operator "+str(i))
-            i+=1
+        #i:int=0
+        self.m_arOperators:list[str]=['McScale','MegaNimbus','Cloudzilla','SkyForge','DataDragon','LibertyScale','AlpineCloud']
+        # while(i<self.m_numOperators):
+        #    self.m_arOperators.append("Operator "+str(i))
+        #    i+=1
+
+    def shuffleOperators(self)->None:
+        random.shuffle(self.m_arOperators)
 
     def internal_generateCPU(self)->int:
         return random.randrange(self.m_numCPUArchitectures)

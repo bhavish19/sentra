@@ -2,7 +2,7 @@ import { ChangeDetectorRef, Component, ViewChild } from '@angular/core';
 import { SentraNodeGraph } from '../sentra-nodes-graph/sentra-nodes-graph';
 import { RestService, SentraNode } from '../../rest.service';
 import { App } from '../app';
-import { createWebSocketURLForPath } from '../../utils';
+import { createWebSocketURLForPath, sleep } from '../../utils';
 import { Router } from '@angular/router';
 
 @Component({
@@ -17,32 +17,66 @@ export class SentraCloudDashboard {
 @ViewChild('graph') graph!: SentraNodeGraph;
   m_socket?:WebSocket=undefined;
 
+  m_NodeList?:SentraNode[]=undefined;
+  m_Committee?:SentraNode[]=undefined;
+
 constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef,private router: Router)
   {
     this.receiveWebSocketMsg();
     this.autoWebSocketReconnect();
 
     App.staticSubTitle="Cloud Side";
-    this.m_RestService.getNodes().subscribe((nodes)=>
+    this.m_RestService.getNodes().subscribe(async (nodes)=>
       {
+        this.m_NodeList=nodes;
       console.log("Loaded nodes: "+nodes.length);
       for (let node of nodes)
       {
-        this.graph.add(node.node_id,node.label,
-          node.host,node.cpu,node.operator
-        )
-        this.graph.setAttested(node.node_id,node.attested);
+        this.graph.add(node.node_id,node.label,node.host,node.cpu,node.operator);
       }
       this.graph.layout();
-      this.m_RestService.getCommittee().subscribe((committee)=>
+      this.m_RestService.getCommittee().subscribe(async (committee)=>
       {
         console.log("Loaded committee: "+committee.length);
-        for (let c of committee)
-          {
-            this.graph.setCommitteeMember(c.node_id,true);
-          }
+        this.m_Committee=committee;
+
+
       });
     });
+  }
+
+  async showAttestedNodes()
+  {
+    if(this.m_NodeList===undefined)
+    {
+      return;
+    }
+ for (let node of this.m_NodeList)
+      {
+        this.graph.setAttested(node.node_id,node.attested);
+        this.graph.stopPulseBorder(node.node_id);
+        await sleep(2000);
+      }
+       
+  }
+
+  async showCommittee()
+  {
+if(this.m_Committee===undefined)
+  return;
+ let i:number=0;
+  for (i=0;i<this.m_Committee.length;i++)
+          {
+            let c=this.m_Committee[i];
+            this.graph.setCommitteeMember(c.node_id,true);
+            let j:number=0;
+            let nodeid1:string=c.node_id;
+            for(j=i+1;j<this.m_Committee.length;j++)
+            {
+              this.graph.addEdge(nodeid1,this.m_Committee[j].node_id);
+            }
+            await sleep(2000);
+          }    
   }
 
   handleCloudUpdate(cloudUpdate: any) {
@@ -62,6 +96,16 @@ constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef,pr
 //    this.cdr.detectChanges();    
 //      this.router.navigate([this.router.url]);
  */         window.location.reload();
+  }
+
+  handleRemoteAttestation(remoteAttestation:any)
+  {
+    this.showAttestedNodes();
+  }
+
+    handleCommitteeSelection(committeeSelection:any)
+  {
+    this.showCommittee();
   }
 
 
@@ -85,9 +129,16 @@ receiveWebSocketMsg()
     const obj = JSON.parse(ev.data);
    if('cloudUpdate' in obj) //Cloud has changed
     {
-            this.handleCloudUpdate(obj.cloudUpdate);
-
-   }
+      this.handleCloudUpdate(obj.cloudUpdate);
+    }
+    else if('doRemoteAttestation' in obj)
+    {
+      this.handleRemoteAttestation(obj.remoteAttestation);
+    }
+    else if('doCommitteeSelection' in obj)
+    {
+      this.handleCommitteeSelection(obj.committeeSelection);
+    }
     console.log(ev.data)
   });
 }
