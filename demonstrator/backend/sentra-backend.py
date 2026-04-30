@@ -1,6 +1,6 @@
 from flask import Flask
 
-BACKEND_VERSION="00.04.019"
+BACKEND_VERSION="00.05.003"
 
 import sentrabackend
 from sentrabackend import log as log
