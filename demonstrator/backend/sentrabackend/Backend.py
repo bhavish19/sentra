@@ -101,6 +101,7 @@ class Backend:
         self.app.add_url_rule("/api/v1/getNodes",view_func=self.getNodes)
         self.app.add_url_rule("/api/v1/getCommittee",view_func=self.getCommittee)
         self.app.add_url_rule("/api/v1/getPrediction/<int:id>",view_func=self.getPrediction)
+        self.app.add_url_rule("/api/v1/postPredictionForPixel",view_func=self.postPredictionForPixel,methods=['POST'])
         self.app.add_url_rule("/api/v1/postReset",view_func=self.postReset,methods=['POST'])
         self.app.add_url_rule("/api/v1/postRemoteAttestation",view_func=self.postRemoteAttestation,methods=['POST'])
         self.app.add_url_rule("/api/v1/postCommitteeSelection",view_func=self.postCommitteeSelection,methods=['POST'])
@@ -172,6 +173,15 @@ class Backend:
     def getPrediction(self,id:int):
         if(self.m_bAppSimulation and self.m_appSimulator):
             return jsonify(self.m_appSimulator.doInference(id))
+        return jsonify({})
+
+    #@app.route('/api/v1/getPrediction/<int:id>', methods=['GET'])    
+    def postPredictionForPixel(self):
+        if(self.m_bAppSimulation and self.m_appSimulator):
+            data=request.get_json()
+            pixels = data['pixels']
+            print(pixels)
+            return jsonify(self.m_appSimulator.doInferenceForPixel(pixels))
         return jsonify({})
     
     #@app.route("/api/v1/mnist/getTestImagesForDigit/<int:digit>")

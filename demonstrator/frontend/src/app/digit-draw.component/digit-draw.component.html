@@ -1,0 +1,25 @@
+<!-- Outer wrapper captures mouseup / mouseleave so drawing stops even when
+     the cursor moves off a cell without triggering its own mouseup. -->
+<div class="widget-container"
+     (mouseup)="onMouseUp()"
+     (mouseleave)="onMouseUp()">
+
+  <!-- 28 × 28 pixel grid -->
+  <div class="grid">
+    <div
+      *ngFor="let i of indices"
+      class="cell"
+      [class.painted]="grid[i] > 0"
+      (mousedown)="onMouseDown(i)"
+      (mousemove)="onMouseMove(i)"
+      (dragstart)="$event.preventDefault()">
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button type="button" (click)="clearGrid()">Clear</button>
+    <button type="button" (click)="doInference()">Inference</button>
+  </div>
+
+</div>

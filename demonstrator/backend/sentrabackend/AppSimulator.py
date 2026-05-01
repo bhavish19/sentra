@@ -73,8 +73,21 @@ class AppSimulator:
     def restart(self):
         self.start()
 
+    def doInferenceForPixel(self,pixels)->InferenceResult:
+        pixel_array = np.array(pixels, dtype=np.float32).reshape(1, 28, 28, 1)  # Reshape to [1, 28, 28, 1]
+      #  pixel_array /= 255.0
+        print(pixel_array)
+        predicted_probabilities = self.m_Model.predict(pixel_array)  # Shape: (1, 10)
+        predicted_class = tf.argmax(predicted_probabilities, axis=1).numpy()[0]
+
+        # Print results
+        print(f"Predicted Class: {predicted_class}")
+        print(f"Predicted Probabilities: {predicted_probabilities}")
+        return InferenceResult(predicted_class,predicted_probabilities[0].tolist())
+
     def doInference(self,inputImageIndex:int)->InferenceResult:
         example_image = self.x_test[inputImageIndex:inputImageIndex + 1]  # Shape: (1, 28, 28, 1)
+        print(example_image)
         actual_label = self.y_test[inputImageIndex]
 
         predicted_probabilities = self.m_Model.predict(example_image)  # Shape: (1, 10)

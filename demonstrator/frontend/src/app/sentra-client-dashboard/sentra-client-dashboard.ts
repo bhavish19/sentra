@@ -8,9 +8,10 @@ import { MnistNumberSelector } from "../mnistnumber-selector/mnistnumber-selecto
 import { AiWidgetComponent } from "../ai-widget.component/ai-widget.component";
 import { MatCardModule } from "@angular/material/card";
 import {MatDividerModule} from '@angular/material/divider';
+import { DigitDrawComponent } from "../digit-draw.component/digit-draw.component";
 @Component({
   selector: 'app-sentra-client-dashboard',
-  imports: [MnistNumberSelector,MatDividerModule, MatGridListModule, MatButtonModule, PredictionResultDisplay, MnistNumberSelector, AiWidgetComponent, MatCardModule],
+  imports: [MnistNumberSelector, MatDividerModule, MatGridListModule, MatButtonModule, PredictionResultDisplay, MnistNumberSelector, AiWidgetComponent, MatCardModule, DigitDrawComponent],
   templateUrl: './sentra-client-dashboard.html',
   styleUrl: './sentra-client-dashboard.css',
 })
