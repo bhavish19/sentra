@@ -86,6 +86,13 @@ export class RestService {
 
    }
 
+   doPredictionPixel(pixels:Float32Array):Observable<InferenceResult>
+   {
+     const payload = { pixels: Array.from(pixels) };
+    return this.m_HttpClient.post<InferenceResult>('/api/v1/postPredictionForPixel',payload);
+
+   }
+
    /** Returns all test-set images for the given digit. */
   getTestImagesForDigit(digit: number): Observable<MnistImage[]> {
     return this.m_HttpClient.get<MnistImage[]>('/api/v1/mnist/getTestImagesForDigit/'+digit);
