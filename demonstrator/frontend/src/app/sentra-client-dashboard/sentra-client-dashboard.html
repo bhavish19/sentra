@@ -8,13 +8,13 @@
       </mat-card-header>
         <mat-divider style="margin-left: 10px;margin-right: 10px;"></mat-divider>
       <mat-card-content style="height: 100%;">
-        <mnist-number-selector style="width:100%;height: 100%;" (imageSelected)="selectedImageIndex=$event"/>
+        <mnist-number-selector style="width:100%;height: 100%;" (imageSelected)="onImageSelected($event)"/>
     </mat-card-content>
     </mat-card>
 </div>
-<div style="grid-column: 2; grid-row: 1 / span 2;  display: flex; align-items: center; justify-content: center;">
-<!-- <app-digit-draw #drawWidget></app-digit-draw> -->
-  <app-ai-widget  [m_clientDashboard]="this"/><br> 
+<div  [ngClass]="{'disabled-card': isAIDisabled}" style="grid-column: 2; grid-row: 1 / span 2;  display: flex; align-items: center; justify-content: center;">
+ 
+ <app-ai-widget  [m_clientDashboard]="this"/>
 </div>
 <div style="grid-column: 1; grid-row: 2; display: flex; align-items: center; justify-content: center;padding: 10px;">
    <mat-card style="height:400px;width:100%">
@@ -33,4 +33,9 @@
 
 
 </div>
+
+<div id="moving-digit-image" class="message"  style="display: none;position: fixed;top: 50%;right:{{posRight_MovingDigitImage}}px">
+ <img style="width:56px;height: 56px;"
+        [src]="selectedImage?.image_b64"/>
+</div> 
   

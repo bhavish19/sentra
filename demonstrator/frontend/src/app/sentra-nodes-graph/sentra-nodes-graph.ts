@@ -26,8 +26,8 @@
  * this.graph.fitView();
  */
 
-import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, inject } from '@angular/core';
-import cytoscape, { Core, StylesheetCSS, NodeSingular } from 'cytoscape';
+import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
+import cytoscape, { Core, StylesheetCSS, NodeSingular, Position } from 'cytoscape';
 //import fcose from 'cytoscape-fcose';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import { NgZone } from '@angular/core';
@@ -50,10 +50,13 @@ export class SentraNodeGraph implements AfterViewInit, OnDestroy {
   private existingServers = new Set<string>();
   private processCounter = 0;
 
+  uploadedImage:string|null=null;
+
+
   private static CLOUD_ICON="/images/icons/cloud.png";
-  private static  SERVER_ARM_ICON="/images/icons/host.png";
-  private static  SERVER_INTEL_ICON="/images/icons/host.png";
-  private static  SERVER_AMD_ICON="/images/icons/host.png";
+  private static  SERVER_ARM_ICON="/images/icons/host-arm.png";
+  private static  SERVER_INTEL_ICON="/images/icons/host-intel.png";
+  private static  SERVER_AMD_ICON="/images/icons/host-amd.png";
   private static  PROCESS_ICON="/images/icons/sentra.png";
   private static layoutOptionsClouds={
           name: 'grid',
@@ -180,6 +183,9 @@ private static layoutOptions={
     }
   }
 
+  constructor(private cdr: ChangeDetectorRef)
+  {
+  }
   public clear():void
   {
     this.cy.destroy();
@@ -367,6 +373,11 @@ this.cy.add({
 this.animateCircle(edgeID);
 }
 
+getPositionForNode(node_id:string):Position
+{
+  const node=this.cy.$(`#${node_id}`);
+  return node.renderedPosition();
+}
 
 animateCircle(edgeId:string) {
   const edge = this.cy.$(`#${edgeId}`);
@@ -418,6 +429,49 @@ console.log("loop");
   }
   move();
 }
+
+
+ doImageUpload(image_b64:string,selectedNode:string)
+  {
+    this.uploadedImage=image_b64;
+   const divImg = document.getElementById('moving-digit-image');
+  if(divImg===null)
+    return;
+  // Show the circle
+  divImg.style.display = 'block';
+    this.cdr.detectChanges();
+   
+    let pos:Position=this.getPositionForNode(selectedNode);
+    console.log("Node posistion: ",pos);
+    let dx:number=pos.x-28;
+    let dy:number=pos.y-(divImg.getBoundingClientRect().top-56);
+
+
+
+
+  const animation:Animation = divImg.animate(
+      [
+        { transform: 'translate(0px,0px)' },
+        { transform: 'translate('+(dx)+'px,'+dy+'px)' },
+
+      ],
+      {
+        duration: 2000,
+        easing: 'linear',
+        iterations:1,
+      }
+    );
+  animation.onfinish=(e)=>
+  {
+    divImg.style.display='none';
+  };
+    
+}
+
+
+
+
+
 
   /**
    * Cytoscape stylesheet for all node types and overlays.
@@ -481,7 +535,7 @@ console.log("loop");
           'shape': 'roundrectangle',
           'background-color': '#e3f2fd',
           'border-width': 3,
-          'border-color': '#001021',
+          'border-color': '#04407f',
           'background-image': SentraNodeGraph.SERVER_INTEL_ICON,
           'background-fit': 'cover',
           'background-opacity': 1,
@@ -490,7 +544,7 @@ console.log("loop");
           'font-weight': 'bold',
           'text-valign': 'bottom',
           'text-halign': 'center',
-          'color': '#001021',
+          'color': '#04407f',
           'padding': '24px',
           'z-index': 2,
                     'text-margin-y':5,
@@ -581,7 +635,7 @@ console.log("loop");
       {
         selector: '.pulse-border',
         css:{
-          'overlay-color': '#e2e1ed', // Color of the pulsing effect
+          'overlay-color': '#08deff', // Color of the pulsing effect
           'overlay-shape':'ellipse',
           'overlay-opacity': 0.5, // Transparency of the overlay
           'overlay-padding': 0 ,// Initial overlay padding

@@ -4,7 +4,7 @@ import { RestService, SentraNode } from '../../rest.service';
 import { App } from '../app';
 import { createWebSocketURLForPath, sleep } from '../../utils';
 import { Router } from '@angular/router';
-
+import { Position } from 'cytoscape';
 @Component({
   selector: 'app-sentra-cloud-dashboard',
   imports: [SentraNodeGraph],
@@ -19,6 +19,7 @@ export class SentraCloudDashboard {
 
   m_NodeList?:SentraNode[]=undefined;
   m_Committee?:SentraNode[]=undefined;
+  m_strSelectedNodeID:string|null=null;
 
 constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef,private router: Router)
   {
@@ -53,12 +54,26 @@ constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef,pr
     }
  for (let node of this.m_NodeList)
       {
+        this.graph.pulseBorder(node.node_id);
+      }
+
+    for (let node of this.m_NodeList)
+      {
+        await sleep(2000);
         this.graph.setAttested(node.node_id,node.attested);
         this.graph.stopPulseBorder(node.node_id);
-        await sleep(2000);
       }
        
   }
+
+    nodeSelection(node_id:string)
+  {
+        console.log("Select node: "+node_id);
+        this.m_strSelectedNodeID=node_id;
+        this.graph.pulseBorder(node_id);
+       
+  }
+
 
   async showCommittee()
   {
@@ -103,11 +118,25 @@ if(this.m_Committee===undefined)
     this.showAttestedNodes();
   }
 
-    handleCommitteeSelection(committeeSelection:any)
+  handleCommitteeSelection(committeeSelection:any)
   {
     this.showCommittee();
   }
 
+  handleNodeSelection(nodeSelection:any)
+  {
+    let node_id:string=String(nodeSelection)
+    this.nodeSelection(node_id);
+     
+  }
+
+  handleImageUpload(img:any)
+  {
+    console.log("handleImageUpload(): ",img);
+    if(this.m_strSelectedNodeID===null)
+      return;
+    this.graph.doImageUpload(img,this.m_strSelectedNodeID);
+  }
 
   //do something with the web socket
 receiveWebSocketMsg()
@@ -133,11 +162,19 @@ receiveWebSocketMsg()
     }
     else if('doRemoteAttestation' in obj)
     {
-      this.handleRemoteAttestation(obj.remoteAttestation);
+      this.handleRemoteAttestation(obj.doRemoteAttestation);
     }
     else if('doCommitteeSelection' in obj)
     {
-      this.handleCommitteeSelection(obj.committeeSelection);
+      this.handleCommitteeSelection(obj.doCommitteeSelection);
+    }
+    else if('doNodeSelection' in obj)
+    {
+      this.handleNodeSelection(obj.doNodeSelection);
+    }
+    else if('imageUpload' in obj)
+    {
+      this.handleImageUpload(obj.imageUpload);
     }
     console.log(ev.data)
   });

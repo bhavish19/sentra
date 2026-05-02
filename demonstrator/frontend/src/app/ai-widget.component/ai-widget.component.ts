@@ -100,6 +100,16 @@ this.m_clientDashboard.doDistributeShares();
 this.m_clientDashboard.doInference();
   }
 
+      doImageUpload()
+  {
+this.m_clientDashboard.doImageUpload();
+  }
+
+      doNodeSelection()
+  {
+this.m_clientDashboard.doNodeSelection();
+  }
+  
   handleStep(index:number)
   {
     if(this.mode==='privacy')
@@ -116,6 +126,21 @@ this.m_clientDashboard.doInference();
           this.doDistributeShares();
           break;
         case 3:
+          this.doInference();
+          break;
+      }
+    }
+    else//normal mode
+    {
+        switch(index)
+      {
+        case 0:
+          this.doNodeSelection();
+          break;
+        case 1:
+          this.doImageUpload();
+          break;
+        case 2:
           this.doInference();
           break;
       }

@@ -79,12 +79,25 @@ export class RestService {
     return this.m_HttpClient.post('api/v1/postCommitteeSelection',null);
    }
 
+   doNodeSelection(node_id:string):Observable<Object>
+   {
+    return this.m_HttpClient.post('api/v1/postNodeSelection/'+node_id,null);
+   }
+
+   doImageUpload(img_b64:string):Observable<Object>
+   {
+     const payload = { image: img_b64 };
+    return this.m_HttpClient.post<Object>('/api/v1/postImageUpload',payload);
+
+   }
 
    doPrediction(index:number):Observable<InferenceResult>
    {
     return this.m_HttpClient.get<InferenceResult>('/api/v1/getPrediction/'+index);
 
    }
+
+
 
    doPredictionPixel(pixels:Float32Array):Observable<InferenceResult>
    {

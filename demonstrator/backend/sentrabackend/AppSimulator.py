@@ -16,6 +16,8 @@ class AppSimulator:
     m_Thread:threading.Thread|None
     m_nodeGenerator:SentraNodeAttributeGenerator
     m_Model=None
+    m_nodeList:SentraNodeList
+    m_committeeSelection:bool
 
 
     def __init__(self,nodeGenerator:SentraNodeAttributeGenerator,nodeList:SentraNodeList, committeeSelection:bool):

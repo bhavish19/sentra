@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, EventEmitter, OnInit, Output } from '@angular/core';
+import { ChangeDetectorRef, Component, EventEmitter, inject, OnInit, Output, ViewChild } from '@angular/core';
 import { MnistImage, RestService } from '../../rest.service';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -8,14 +8,18 @@ import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
-
-export interface ImageSelectedEvent {
-  digit: number;
-  index: number;
+import { DigitDrawComponent } from "../digit-draw.component/digit-draw.component";
+import { MatDivider } from "@angular/material/divider";
+import { MatDialog, MatDialogRef, MatDialogContent, MatDialogActions }  from '@angular/material/dialog';
+import { float32ArrayToImageUrl } from '../../utils';
+export class ImageSelectedEvent {
+  index: number|null=null;
+  image_data:Float32Array|null=null;
+  image_b64:string|null=null;
 }
 
 @Component({
-  imports: [MatButtonModule,MatProgressSpinnerModule,MatFormFieldModule,MatGridListModule,MatSelectModule,FormsModule,MatCardModule,CommonModule],
+  imports: [MatButtonModule, MatProgressSpinnerModule, MatFormFieldModule, MatGridListModule, MatSelectModule, FormsModule, MatCardModule, CommonModule, MatDivider],
   selector: 'mnist-number-selector',
   templateUrl: './mnistnumber-selector.html',
   styleUrl: './mnistnumber-selector.css'
@@ -29,11 +33,14 @@ export class MnistNumberSelector {
   selectedDigit: number | null = null;
   selectedIndex: number | null = null;
   selectedImage:string |null=null;
+  selectedImageData:Float32Array|null=null;
   loading = false;
 
-  @Output() imageSelected = new EventEmitter<number>();
-
-  constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef) {}
+  @Output() imageSelected = new EventEmitter<ImageSelectedEvent>();
+  readonly m_dlgDrawDigit = inject(MatDialog);
+  constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef) 
+  {
+  }
 
   selectDigit(digit: number) {
     this.selectedDigit = digit;
@@ -53,7 +60,10 @@ export class MnistNumberSelector {
     this.selectedIndex = image.index;
     this.selectedImage=image.image_b64;
     this.view='digit_image';
-    this.imageSelected.emit(image.index);
+    let event=new ImageSelectedEvent();
+    event.index=image.index
+    event.image_b64=this.selectedImage;
+    this.imageSelected.emit(event);
   }
 
   backToDigits() {
@@ -67,4 +77,48 @@ export class MnistNumberSelector {
     {
       this.view='digit';
     }
+
+    onDrawDigit() 
+    {
+      console.log("onDrawDigit()");
+      let dialogRef=this.m_dlgDrawDigit.open(DigitDrawDialog);
+      dialogRef.afterClosed().subscribe(result => {
+      console.log('The dialog was closed');
+      if (result !== undefined) {
+        console.log(result);
+        this.selectedImageData=result;
+        this.selectedIndex=null;
+        this.selectedImage=float32ArrayToImageUrl(result,28,28);
+        this.view='digit_image';
+        this.cdr.detectChanges();
+        let event=new ImageSelectedEvent();
+        event.image_data=result;
+        event.image_b64=this.selectedImage;
+        this.imageSelected.emit(event);
+      }
+    });
+}
+
+}
+
+@Component({
+  selector: 'digit-draw-dialog',
+  templateUrl: 'digit-draw-dialog.html',
+  imports: [
+    DigitDrawComponent,
+    MatDialogContent,
+    MatDialogActions
+],
+})
+export class DigitDrawDialog {
+  @ViewChild('digit_draw_component') m_DigitDrawComponent!: DigitDrawComponent;
+
+onOkClick() {
+    this.dialogRef.close(this.m_DigitDrawComponent.getImageData());
+}
+onCancelClick() {
+    this.dialogRef.close();
+}
+  readonly dialogRef = inject(MatDialogRef<DigitDrawDialog>);
+
 }

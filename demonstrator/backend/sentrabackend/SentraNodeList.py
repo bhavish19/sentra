@@ -1,3 +1,4 @@
+import random
 import threading
 import asyncio
 
@@ -59,3 +60,9 @@ class SentraNodeList:
     def getNodes(self)->list[SentraNode]:
         with self.m_Lock:
             return self.m_arNodes.values()
+        
+    def getRandomNode(self)->SentraNode:
+        with self.m_Lock:
+            index:int=random.randint(0,len(self.m_arNodes))
+            random_item:SentraNode = list(self.m_arNodes.values())[index]
+            return random_item

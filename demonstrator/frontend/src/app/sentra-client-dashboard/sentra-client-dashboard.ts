@@ -2,16 +2,17 @@ import { ChangeDetectorRef, Component, ViewChild } from '@angular/core';
 import { ImageSelector } from "../image-selector/image-selector";
 import {MatGridListModule} from '@angular/material/grid-list';
 import { MatButtonModule } from '@angular/material/button';
-import { ClassificationResult, RestService } from '../../rest.service';
+import { ClassificationResult, InferenceResult, RestService } from '../../rest.service';
 import { PredictionResultDisplay } from '../prediction-result-display/prediction-result-display';
-import { MnistNumberSelector } from "../mnistnumber-selector/mnistnumber-selector";
+import { ImageSelectedEvent, MnistNumberSelector } from "../mnistnumber-selector/mnistnumber-selector";
 import { AiWidgetComponent } from "../ai-widget.component/ai-widget.component";
 import { MatCardModule } from "@angular/material/card";
 import {MatDividerModule} from '@angular/material/divider';
-import { DigitDrawComponent } from "../digit-draw.component/digit-draw.component";
+import { CommonModule } from '@angular/common';
 @Component({
   selector: 'app-sentra-client-dashboard',
-  imports: [MnistNumberSelector, MatDividerModule, MatGridListModule, MatButtonModule, PredictionResultDisplay, MnistNumberSelector, AiWidgetComponent, MatCardModule, DigitDrawComponent],
+  imports: [CommonModule,MnistNumberSelector, MatDividerModule, MatGridListModule, MatButtonModule,
+     PredictionResultDisplay, MnistNumberSelector, AiWidgetComponent, MatCardModule],
   templateUrl: './sentra-client-dashboard.html',
   styleUrl: './sentra-client-dashboard.css',
 })
@@ -19,7 +20,11 @@ export class SentraClientDashboard
 {
 predictionProbabilities: number[]=[];
 predictionResult: number=0;
-selectedImageIndex:number=-1;
+selectedImage:ImageSelectedEvent|null=null;
+
+ posRight_MovingDigitImage:number=180;
+isAIDisabled: boolean=true;
+
 
 constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef)
   {
@@ -29,6 +34,14 @@ constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef)
     this.m_RestService.doReset().subscribe();
 
   }
+
+onImageSelected(event: ImageSelectedEvent) 
+{
+  this.selectedImage=event;
+  this.isAIDisabled=false;
+  this.cdr.detectChanges();
+}
+
 
  getClassificationLikelihoods(classificationResults:ClassificationResult[]): number[] {
     let ret:number[]=[];
@@ -55,6 +68,13 @@ getFileNameWithoutExtension(path: string): string {
     : fileNameWithExtension;
 }
 
+showInferenceResult(inferenceResult:InferenceResult)
+{
+      console.log(inferenceResult);
+    this.predictionResult=inferenceResult.predictedValue;
+    this.predictionProbabilities=this.getClassificationLikelihoods(inferenceResult.classificationResults);
+    this.cdr.detectChanges();
+}
 doInference() 
 {
 /*  let fileName:string|null=this.m_imageSelector.imageName;
@@ -63,15 +83,22 @@ doInference()
   fileName=this.getFileNameWithoutExtension(fileName);
   let index:number=Number(fileName);
   */
- if(this.selectedImageIndex==-1)
+ if(this.selectedImage==null)
   return;
-  this.m_RestService.doPrediction(this.selectedImageIndex).subscribe((inferenceResult)=>
+if(this.selectedImage.index!=null)
+{
+  this.m_RestService.doPrediction(this.selectedImage.index).subscribe((inferenceResult)=>
   {
-    console.log(inferenceResult);
-    this.predictionResult=inferenceResult.predictedValue;
-    this.predictionProbabilities=this.getClassificationLikelihoods(inferenceResult.classificationResults);
-    this.cdr.detectChanges();
+   this.showInferenceResult(inferenceResult);
   });
+}
+else if(this.selectedImage.image_data!=null)
+{
+  this.m_RestService.doPredictionPixel(this.selectedImage.image_data).subscribe((inferenceResult)=>
+  {
+   this.showInferenceResult(inferenceResult);
+  });
+}
 }
 
 doDistributeShares()
@@ -89,4 +116,54 @@ doRemoteAttestation()
     this.m_RestService.doCommitteeSelection().subscribe();
   }
 
+  doNodeSelection()
+  {
+    this.m_RestService.doNodeSelection("1").subscribe();
+  }
+
+  doImageUpload()
+  {
+  const divImg = document.getElementById('moving-digit-image');
+  if(divImg===null)
+    return;
+
+  // Show the circle
+  divImg.style.display = 'block';
+
+
+  const animation:Animation = divImg.animate(
+      [
+        { transform: 'translate(0px,0px)' },
+        { transform: 'translate('+(this.posRight_MovingDigitImage+56)+'px,0px)' },
+
+      ],
+      {
+        duration: 2000,
+        easing: 'linear',
+        iterations:1,
+      }
+    );
+  animation.onfinish=(e)=>
+  {
+    divImg.style.display='none';
+    if(this.selectedImage?.image_b64!=null)
+    this.m_RestService.doImageUpload(this.selectedImage?.image_b64).subscribe();
+  };
 }
+
+
+
+}
+
+/*
+ doInference() {
+    let z=this.transposeMatrix(this.grid);
+    let g=new Float32Array(z.flat().map((v) => v / 255));
+  this.m_RestService.doPredictionPixel(g).subscribe
+  (
+    (result)=>
+    {
+      console.log(result);
+    }
+  )
+}*/

@@ -1,0 +1,7 @@
+<mat-dialog-content>
+<app-digit-draw #digit_draw_component/>
+</mat-dialog-content>
+<mat-dialog-actions>
+    <button matButton (click)="onCancelClick()">Cancel</button>
+    <button matButton  (click)="onOkClick()" cdkFocusInitial>Ok</button>
+</mat-dialog-actions>

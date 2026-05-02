@@ -8,13 +8,15 @@
 <!-- Initial View -->
 <div *ngIf="view === 'selection_start'" style="display:flex;justify-content: center;align-items: center;height: 100%;">
         <button mat-raised-button color="primary" (click)="onStartDigitSelection()" style="justify-content: center;">
-            Select Handwritten Digit for Inference
+            Select or Draw Handwritten Digit for Inference
         </button>
 </div>
 
 
 <!-- Digit Selection View -->
 <div *ngIf="view === 'digit'" style="justify-content: center;align-items: center;height: 100%;">
+  Select existing Image for Digit
+  <mat-divider/>
   <mat-grid-list cols="4" rowHeight="60px" gutterSize="12px" style="margin: auto;">
     <mat-grid-tile *ngFor="let digit of digits">
       <button mat-raised-button color="primary" (click)="selectDigit(digit)">
@@ -22,6 +24,10 @@
       </button>
     </mat-grid-tile>
   </mat-grid-list>
+    Draw Digit
+  <mat-divider/>
+      <button mat-raised-button color="primary" (click)="onDrawDigit()">Draw Digit</button>
+
 </div>
 
 <!-- Image Grid View -->
@@ -44,4 +50,5 @@
         draggable="false"
       />
   </div>
+
 </div>

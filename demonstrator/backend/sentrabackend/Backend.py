@@ -105,6 +105,9 @@ class Backend:
         self.app.add_url_rule("/api/v1/postReset",view_func=self.postReset,methods=['POST'])
         self.app.add_url_rule("/api/v1/postRemoteAttestation",view_func=self.postRemoteAttestation,methods=['POST'])
         self.app.add_url_rule("/api/v1/postCommitteeSelection",view_func=self.postCommitteeSelection,methods=['POST'])
+        self.app.add_url_rule("/api/v1/postNodeSelection/<string:node_id>",view_func=self.postNodeSelection,methods=['POST'])
+        self.app.add_url_rule("/api/v1/postImageUpload",view_func=self.postImageUpload,methods=['POST'])
+
         self.app.add_url_rule("/api/v1/mnist/getTestImagesForDigit/<int:digit>",view_func=self.getMNISTTestImagesForDigit)
         self.app.add_url_rule("/api/v1/mnist/getTestImageForIndex/<int:index>",view_func=self.getMNISTTestImageForIndex)
         self.app.json = CustomJSONProvider(self.app)
@@ -169,6 +172,13 @@ class Backend:
         self.sendWSMessage("{\"doCommitteeSelection\":true}");
         return ""
 
+    #@app.route('/api/v1/postNodeSelection/<string:node_id>', methods=['POST'])
+    def postNodeSelection(self,node_id:str):
+        if(self.m_bAppSimulation and self.m_appSimulator):
+            node_id=self.m_nodeList.getRandomNode().m_strNodeID
+            self.sendWSMessage("{\"doNodeSelection\":\""+node_id+"\"}");
+        return ""
+
     #@app.route('/api/v1/getPrediction/<int:id>', methods=['GET'])    
     def getPrediction(self,id:int):
         if(self.m_bAppSimulation and self.m_appSimulator):
@@ -180,10 +190,16 @@ class Backend:
         if(self.m_bAppSimulation and self.m_appSimulator):
             data=request.get_json()
             pixels = data['pixels']
-            print(pixels)
             return jsonify(self.m_appSimulator.doInferenceForPixel(pixels))
         return jsonify({})
-    
+
+    #@app.route('/api/v1/postImageUpload', methods=['POST'])    
+    def postImageUpload(self):
+        data=request.get_json()
+        img_b64 = data['image']
+        self.sendWSMessage("{\"imageUpload\":\""+img_b64+"\"}")
+        return jsonify({})
+
     #@app.route("/api/v1/mnist/getTestImagesForDigit/<int:digit>")
     def getMNISTTestImagesForDigit(self,digit:int):
         return jsonify(self.m_MNIST.getJSONObjectForDigit(digit))
