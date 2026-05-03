@@ -9,7 +9,6 @@ import { MatCardModule } from '@angular/material/card';
 import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { DigitDrawComponent } from "../digit-draw.component/digit-draw.component";
-import { MatDivider } from "@angular/material/divider";
 import { MatDialog, MatDialogRef, MatDialogContent, MatDialogActions }  from '@angular/material/dialog';
 import { float32ArrayToImageUrl } from '../../utils';
 export class ImageSelectedEvent {
@@ -19,7 +18,8 @@ export class ImageSelectedEvent {
 }
 
 @Component({
-  imports: [MatButtonModule, MatProgressSpinnerModule, MatFormFieldModule, MatGridListModule, MatSelectModule, FormsModule, MatCardModule, CommonModule, MatDivider],
+  imports: [MatButtonModule, MatProgressSpinnerModule, MatFormFieldModule, MatGridListModule, 
+    MatSelectModule, FormsModule, MatCardModule, CommonModule],
   selector: 'mnist-number-selector',
   templateUrl: './mnistnumber-selector.html',
   styleUrl: './mnistnumber-selector.css'
@@ -88,7 +88,7 @@ export class MnistNumberSelector {
         console.log(result);
         this.selectedImageData=result;
         this.selectedIndex=null;
-        this.selectedImage=float32ArrayToImageUrl(result,28,28);
+        this.selectedImage=float32ArrayToImageUrl(result,28,28,0);
         this.view='digit_image';
         this.cdr.detectChanges();
         let event=new ImageSelectedEvent();

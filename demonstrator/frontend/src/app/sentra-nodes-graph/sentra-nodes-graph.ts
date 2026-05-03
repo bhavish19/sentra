@@ -431,14 +431,26 @@ console.log("loop");
 }
 
 
- doImageUpload(image_b64:string,selectedNode:string)
+ doImageUpload(image:string,selectedNode:string)
   {
-    this.uploadedImage=image_b64;
-   const divImg = document.getElementById('moving-digit-image');
-  if(divImg===null)
+    console.log("Graph - doImageUpload() for node: ",selectedNode);
+    this.uploadedImage=image;
+  const divImgOrig = document.getElementById('moving-digit-image-div');
+  if(divImgOrig===null)
     return;
-  // Show the circle
+ const hmtlImgOrig:HTMLImageElement|null = document.getElementById('moving-digit-image-image') as HTMLImageElement;
+  if(hmtlImgOrig===null)
+    return;
+  const divImg=divImgOrig.cloneNode(false) as HTMLElement;
+  
+  divImgOrig.insertAdjacentElement('afterend', divImg);
+  const hmtlImg=hmtlImgOrig.cloneNode(false) as HTMLIFrameElement
+  divImg.appendChild(hmtlImg);
+
+  hmtlImg.src=image;
   divImg.style.display = 'block';
+
+
     this.cdr.detectChanges();
    
     let pos:Position=this.getPositionForNode(selectedNode);
@@ -463,8 +475,8 @@ console.log("loop");
     );
   animation.onfinish=(e)=>
   {
-    divImg.style.display='none';
-  };
+ if(divImg.parentNode)
+      divImg.parentNode.removeChild(divImg);  };
     
 }
 

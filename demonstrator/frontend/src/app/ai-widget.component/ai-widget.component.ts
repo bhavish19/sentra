@@ -8,6 +8,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { FormsModule } from '@angular/forms';
 import { SentraClientDashboard } from '../sentra-client-dashboard/sentra-client-dashboard';
+import { sleep } from '../../utils';
 
 interface AiStep {
   label: string;
@@ -38,31 +39,31 @@ export class AiWidgetComponent {
 
   normalSteps: AiStep[] = [
     {
-      label: 'Select Host',
-      info: 'Choose the remote inference host. The system will ping available endpoints and rank them by latency and capability before presenting the best candidates.',
+      label: 'Host Selection',
+      info: 'The the remote inference host is choosen. The system will ping available endpoints and rank them by latency and capability before selecting the best candidate.',
     },
     {
-      label: 'Send Image',
-      info: 'Upload or capture an image and transmit it securely to the selected host. Image is compressed and encrypted in transit using TLS 1.3.',
+      label: 'Send Digit Image',
+      info: 'The image of the handwritten digit is securely transmitted to the selected host. The Image is compressed and encrypted in transit using TLS 1.3.',
     },
     {
       label: 'Do Inference',
-      info: 'The host runs the ML model on the received image. Results—including class labels and confidence scores—are returned and rendered here in real time.',
+      info: 'The host runs the ML model on the received image. Results (including class labels and confidence scores) are returned and shown here in real time.',
     },
   ];
 
   privacySteps: AiStep[] = [
     {
       label: 'Do Attestation',
-      info: 'Remote attestation verifies that each compute node is running trusted, unmodified software inside a secure enclave (TEE). Attestation reports are validated before proceeding.',
+      info: 'Remote attestation verifies that each compute node is running trusted, unmodified software inside a trusted execution environmentt (TEE). Attestation reports are validated before proceeding.',
     },
     {
       label: 'Select Committee',
-      info: 'A committee of independent, attested nodes is randomly selected to participate in the computation. This ensures no single party can access the full data.',
+      info: 'A committee of independent, attested nodes is selected to participate in the computation. The selection is based on trsutworthniess scores considering diverstiy in processing architectures, hosts and cloud operators. This ensures no single party can access the full data.',
     },
     {
       label: 'Send Shares',
-      info: 'Your image is split into secret shares using a threshold secret-sharing scheme. Each committee member receives exactly one share—never enough to reconstruct the original.',
+      info: 'The image of the handwritten digit is split into secret shares using a threshold secret-sharing scheme. Each committee member receives exactly one share — never enough to reconstruct the original.',
     },
     {
       label: 'Do Inference',
@@ -105,12 +106,13 @@ this.m_clientDashboard.doInference();
 this.m_clientDashboard.doImageUpload();
   }
 
-      doNodeSelection()
+async doNodeSelection()
   {
-this.m_clientDashboard.doNodeSelection();
+    this.m_clientDashboard.doNodeSelection();
+    await sleep(2000);
   }
   
-  handleStep(index:number)
+ async handleStep(index:number)
   {
     if(this.mode==='privacy')
     {
@@ -135,7 +137,7 @@ this.m_clientDashboard.doNodeSelection();
         switch(index)
       {
         case 0:
-          this.doNodeSelection();
+          await this.doNodeSelection();
           break;
         case 1:
           this.doImageUpload();
@@ -147,8 +149,8 @@ this.m_clientDashboard.doNodeSelection();
     }
   }
 
-  completeStep(index: number): void {
-    this.handleStep(index);
+  async completeStep(index: number) {
+    await this.handleStep(index);
     this.completedSteps[index] = true;
     // Advance to next step if one exists
     if (index + 1 < this.currentSteps.length) {

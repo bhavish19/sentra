@@ -130,14 +130,26 @@ if(this.m_Committee===undefined)
      
   }
 
-  handleImageUpload(img:any)
+  handleImageUpload(imgMsg:any)
   {
-    console.log("handleImageUpload(): ",img);
-    if(this.m_strSelectedNodeID===null)
-      return;
-    this.graph.doImageUpload(img,this.m_strSelectedNodeID);
-  }
+    console.log("handleImageUpload() - recevied message: ",imgMsg);
+    let img=imgMsg.imageUpload;
+    let node_id=imgMsg.node_id;
+    console.log("handleImageUpload() - recevied message for node: ",node_id);
+    if(node_id==="")
+    {      
+      if(this.m_strSelectedNodeID===null)
+      {
+        return;
+      }
+      else
+      {
+        node_id=this.m_strSelectedNodeID;
+      }
+    }
+    this.graph.doImageUpload(img,node_id);
 
+  }
   //do something with the web socket
 receiveWebSocketMsg()
 {
@@ -174,7 +186,7 @@ receiveWebSocketMsg()
     }
     else if('imageUpload' in obj)
     {
-      this.handleImageUpload(obj.imageUpload);
+      this.handleImageUpload(obj);
     }
     console.log(ev.data)
   });

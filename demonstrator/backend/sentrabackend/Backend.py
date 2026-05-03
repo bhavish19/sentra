@@ -170,7 +170,8 @@ class Backend:
     #@app.route('/api/v1/postCommitteeSelection', methods=['POST'])
     def postCommitteeSelection(self):
         self.sendWSMessage("{\"doCommitteeSelection\":true}");
-        return ""
+        print("postCommitteeSelection()",self.m_Committee)
+        return jsonify(self.m_Committee)
 
     #@app.route('/api/v1/postNodeSelection/<string:node_id>', methods=['POST'])
     def postNodeSelection(self,node_id:str):
@@ -197,7 +198,10 @@ class Backend:
     def postImageUpload(self):
         data=request.get_json()
         img_b64 = data['image']
-        self.sendWSMessage("{\"imageUpload\":\""+img_b64+"\"}")
+        node_id= data['node_id']
+        msg:str="{\"imageUpload\":\""+img_b64+"\",\"node_id\":\""+node_id+"\"}"
+        print("postImageUploade - send WS msg: ",msg)
+        self.sendWSMessage(msg)
         return jsonify({})
 
     #@app.route("/api/v1/mnist/getTestImagesForDigit/<int:digit>")

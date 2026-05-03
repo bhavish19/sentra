@@ -2,19 +2,20 @@ import { ChangeDetectorRef, Component, ViewChild } from '@angular/core';
 import { ImageSelector } from "../image-selector/image-selector";
 import {MatGridListModule} from '@angular/material/grid-list';
 import { MatButtonModule } from '@angular/material/button';
-import { ClassificationResult, InferenceResult, RestService } from '../../rest.service';
+import { ClassificationResult, InferenceResult, RestService, SentraNode } from '../../rest.service';
 import { PredictionResultDisplay } from '../prediction-result-display/prediction-result-display';
 import { ImageSelectedEvent, MnistNumberSelector } from "../mnistnumber-selector/mnistnumber-selector";
 import { AiWidgetComponent } from "../ai-widget.component/ai-widget.component";
 import { MatCardModule } from "@angular/material/card";
 import {MatDividerModule} from '@angular/material/divider';
 import { CommonModule } from '@angular/common';
+import { float32ArrayToImageUrl, generateRandomFloat32Array, sleep } from '../../utils';
 @Component({
   selector: 'app-sentra-client-dashboard',
   imports: [CommonModule,MnistNumberSelector, MatDividerModule, MatGridListModule, MatButtonModule,
      PredictionResultDisplay, MnistNumberSelector, AiWidgetComponent, MatCardModule],
   templateUrl: './sentra-client-dashboard.html',
-  styleUrl: './sentra-client-dashboard.css',
+  styleUrl: './sentra-client-dashboard.scss',
 })
 export class SentraClientDashboard 
 {
@@ -24,7 +25,7 @@ selectedImage:ImageSelectedEvent|null=null;
 
  posRight_MovingDigitImage:number=180;
 isAIDisabled: boolean=true;
-
+m_Committee:SentraNode[]|undefined=undefined;
 
 constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef)
   {
@@ -101,9 +102,19 @@ else if(this.selectedImage.image_data!=null)
 }
 }
 
-doDistributeShares()
+async doDistributeShares()
 {
   console.log("Distribute shares");
+  if(this.m_Committee===undefined)
+    return;
+  let numShares:number=this.m_Committee.length;
+  for(let i=0;i<numShares;i++)
+    {
+      const randImgData:Float32Array=generateRandomFloat32Array(784);
+      const img:string=float32ArrayToImageUrl(randImgData,28,28,i);
+      this.animateImageUpload(img,this.m_Committee[i].node_id);
+      await sleep(1000);
+    }
 }
 
 doRemoteAttestation()
@@ -113,7 +124,13 @@ doRemoteAttestation()
 
   doCommitteeSelection()
   {
-    this.m_RestService.doCommitteeSelection().subscribe();
+    this.m_RestService.doCommitteeSelection().subscribe(
+      (res)=>
+      {
+        console.log("Recevied Committee: ",res);
+        this.m_Committee=res;
+      }
+    );
   }
 
   doNodeSelection()
@@ -121,13 +138,24 @@ doRemoteAttestation()
     this.m_RestService.doNodeSelection("1").subscribe();
   }
 
-  doImageUpload()
-  {
-  const divImg = document.getElementById('moving-digit-image');
-  if(divImg===null)
+animateImageUpload(image:string|null,node_id:string|null)
+{
+  if(image===null)
     return;
+  const divImgOrig = document.getElementById('moving-digit-image-div');
+  if(divImgOrig===null)
+    return;
+ const hmtlImgOrig:HTMLImageElement|null = document.getElementById('moving-digit-image-image') as HTMLImageElement;
+  if(hmtlImgOrig===null)
+    return;
+  const divImg=divImgOrig.cloneNode(false) as HTMLElement;
+  
+  divImgOrig.insertAdjacentElement('afterend', divImg);
+  const hmtlImg=hmtlImgOrig.cloneNode(false) as HTMLIFrameElement
+  divImg.appendChild(hmtlImg);
 
-  // Show the circle
+  hmtlImg.src=image;
+  // Show 
   divImg.style.display = 'block';
 
 
@@ -145,10 +173,17 @@ doRemoteAttestation()
     );
   animation.onfinish=(e)=>
   {
-    divImg.style.display='none';
-    if(this.selectedImage?.image_b64!=null)
-    this.m_RestService.doImageUpload(this.selectedImage?.image_b64).subscribe();
+    if(divImg.parentNode)
+      divImg.parentNode.removeChild(divImg);
+    if(image!=null)
+      this.m_RestService.doImageUpload(image,node_id).subscribe();
   };
+}
+
+  doImageUpload()
+  {
+    if(this.selectedImage)
+  this.animateImageUpload(this.selectedImage.image_b64,null);
 }
 
 

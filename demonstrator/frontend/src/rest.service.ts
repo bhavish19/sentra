@@ -74,9 +74,9 @@ export class RestService {
     return this.m_HttpClient.post('api/v1/postRemoteAttestation',null);
    }
 
-    doCommitteeSelection():Observable<Object>
+    doCommitteeSelection():Observable<SentraNode[]>
    {
-    return this.m_HttpClient.post('api/v1/postCommitteeSelection',null);
+    return this.m_HttpClient.post<SentraNode[]>('api/v1/postCommitteeSelection',null);
    }
 
    doNodeSelection(node_id:string):Observable<Object>
@@ -84,9 +84,16 @@ export class RestService {
     return this.m_HttpClient.post('api/v1/postNodeSelection/'+node_id,null);
    }
 
-   doImageUpload(img_b64:string):Observable<Object>
+   doImageUpload(img_b64:string,nodeID:string|null):Observable<Object>
    {
-     const payload = { image: img_b64 };
+    if(nodeID===null)
+      {
+        nodeID="";
+      }
+    const payload = { image: img_b64,
+      node_id:nodeID
+      };
+    console.log("REST doImageUpload(): ",payload);  
     return this.m_HttpClient.post<Object>('/api/v1/postImageUpload',payload);
 
    }
