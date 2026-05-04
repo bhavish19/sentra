@@ -94,6 +94,26 @@ if(this.m_Committee===undefined)
           }    
   }
 
+  async doRunMPC(bRunMPC:boolean)
+  {
+if(this.m_Committee===undefined)
+  return;
+ let i:number=0;
+  for (i=0;i<this.m_Committee.length;i++)
+          {
+            let c=this.m_Committee[i];
+            let j:number=0;
+            let nodeid1:string=c.node_id;
+            for(j=i+1;j<this.m_Committee.length;j++)
+            {
+              this.graph.animateCircle(nodeid1,this.m_Committee[j].node_id,bRunMPC);
+            }
+            await sleep(50);
+          }    
+  }
+
+
+
   handleCloudUpdate(cloudUpdate: any) {
  /*   this.graph.clear();
     for (let node of cloudUpdate.nodeList)
@@ -180,6 +200,11 @@ receiveWebSocketMsg()
     {
       this.handleCommitteeSelection(obj.doCommitteeSelection);
     }
+    else if('doRunMPC' in obj)
+    {
+      this.doRunMPC(obj.doRunMPC);
+    }
+
     else if('doNodeSelection' in obj)
     {
       this.handleNodeSelection(obj.doNodeSelection);

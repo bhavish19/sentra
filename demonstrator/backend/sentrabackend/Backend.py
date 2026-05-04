@@ -105,6 +105,7 @@ class Backend:
         self.app.add_url_rule("/api/v1/postReset",view_func=self.postReset,methods=['POST'])
         self.app.add_url_rule("/api/v1/postRemoteAttestation",view_func=self.postRemoteAttestation,methods=['POST'])
         self.app.add_url_rule("/api/v1/postCommitteeSelection",view_func=self.postCommitteeSelection,methods=['POST'])
+        self.app.add_url_rule("/api/v1/postRunMPC",view_func=self.postRunMPC,methods=['POST'])
         self.app.add_url_rule("/api/v1/postNodeSelection/<string:node_id>",view_func=self.postNodeSelection,methods=['POST'])
         self.app.add_url_rule("/api/v1/postImageUpload",view_func=self.postImageUpload,methods=['POST'])
 
@@ -172,6 +173,16 @@ class Backend:
         self.sendWSMessage("{\"doCommitteeSelection\":true}");
         print("postCommitteeSelection()",self.m_Committee)
         return jsonify(self.m_Committee)
+
+    #@app.route('/api/v1/postRunMPC', methods=['POST'])
+    def postRunMPC(self):
+        data=request.get_json()
+        bRun:bool=data['doRunMPC']
+        if(bRun):
+            self.sendWSMessage("{\"doRunMPC\":true}");
+        else:
+            self.sendWSMessage("{\"doRunMPC\":false}");
+        return jsonify({})
 
     #@app.route('/api/v1/postNodeSelection/<string:node_id>', methods=['POST'])
     def postNodeSelection(self,node_id:str):

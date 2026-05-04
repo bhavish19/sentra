@@ -1,5 +1,5 @@
 // ai-widget.component.ts
-import { Component, Input } from '@angular/core';
+import { ChangeDetectorRef, Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatStepperModule } from '@angular/material/stepper';
@@ -31,6 +31,10 @@ interface AiStep {
   styleUrls: ['./ai-widget.component.scss'],
 })
 export class AiWidgetComponent {
+onRestart() {
+  console.log("Restart!");
+  this.m_clientDashboard.doRestart();
+}
   mode: string = 'normal';
   selectedIndex: number = 0;
   completedSteps: boolean[] = [];
@@ -55,11 +59,11 @@ export class AiWidgetComponent {
   privacySteps: AiStep[] = [
     {
       label: 'Do Attestation',
-      info: 'Remote attestation verifies that each compute node is running trusted, unmodified software inside a trusted execution environmentt (TEE). Attestation reports are validated before proceeding.',
+      info: 'Remote attestation verifies that each compute node is running trusted, unmodified software inside a trusted execution environment (TEE). Attestation reports are validated before proceeding.',
     },
     {
       label: 'Select Committee',
-      info: 'A committee of independent, attested nodes is selected to participate in the computation. The selection is based on trsutworthniess scores considering diverstiy in processing architectures, hosts and cloud operators. This ensures no single party can access the full data.',
+      info: 'A committee of independent, attested nodes is selected to participate in the computation. The selection is based on trustworthiness scores considering diversity in hardware architectures, hosts and cloud operators. This ensures no single party can access the full data.',
     },
     {
       label: 'Send Shares',
@@ -71,6 +75,11 @@ export class AiWidgetComponent {
     },
   ];
 
+    constructor(private cdr: ChangeDetectorRef) {
+      this.completedSteps = [false,false,false,false];
+    }
+
+
   get currentSteps(): AiStep[] {
     return this.mode === 'normal' ? this.normalSteps : this.privacySteps;
   }
@@ -78,7 +87,7 @@ export class AiWidgetComponent {
   onModeChange(newMode: string): void {
     this.mode = newMode;
     this.selectedIndex = 0;
-    this.completedSteps = [];
+    this.completedSteps = [false,false,false,false];
   }
 
   doRemoteAttestation()
@@ -101,6 +110,12 @@ this.m_clientDashboard.doDistributeShares();
 this.m_clientDashboard.doInference();
   }
 
+async  doExecuteMPC()
+  {
+await this.m_clientDashboard.doExecuteMPC();
+  }
+
+
       doImageUpload()
   {
 this.m_clientDashboard.doImageUpload();
@@ -109,7 +124,7 @@ this.m_clientDashboard.doImageUpload();
 async doNodeSelection()
   {
     this.m_clientDashboard.doNodeSelection();
-    await sleep(2000);
+    //await sleep(2000);
   }
   
  async handleStep(index:number)
@@ -128,7 +143,7 @@ async doNodeSelection()
           this.doDistributeShares();
           break;
         case 3:
-          this.doInference();
+          await this.doExecuteMPC();
           break;
       }
     }
@@ -152,13 +167,16 @@ async doNodeSelection()
   async completeStep(index: number) {
     await this.handleStep(index);
     this.completedSteps[index] = true;
+      this.cdr.detectChanges();
     // Advance to next step if one exists
     if (index + 1 < this.currentSteps.length) {
       this.selectedIndex = index + 1;
+      //this.cdr.detectChanges();
     }
   }
 
   isStepCompleted(index: number): boolean {
-    return !!this.completedSteps[index];
+    console.log("Is step completed: ",index," - ",this.completedSteps[index]);
+    return this.completedSteps[index];
   }
 }

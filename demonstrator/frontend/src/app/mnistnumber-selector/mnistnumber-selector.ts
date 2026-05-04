@@ -107,7 +107,8 @@ export class MnistNumberSelector {
   imports: [
     DigitDrawComponent,
     MatDialogContent,
-    MatDialogActions
+    MatDialogActions,
+    MatButtonModule
 ],
 })
 export class DigitDrawDialog {

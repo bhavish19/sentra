@@ -36,6 +36,12 @@ constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef)
 
   }
 
+doRestart()
+{
+  this.onDoResetSentra();
+  window.location.reload();
+}
+
 onImageSelected(event: ImageSelectedEvent) 
 {
   this.selectedImage=event;
@@ -102,6 +108,15 @@ else if(this.selectedImage.image_data!=null)
 }
 }
 
+async doExecuteMPC()
+{
+  this.m_RestService.doExecuteMPC().subscribe();
+  await sleep(2000);
+  this.doInference();
+  await sleep(2000);
+  this.m_RestService.doStopMPC().subscribe();
+}
+
 async doDistributeShares()
 {
   console.log("Distribute shares");
@@ -135,7 +150,7 @@ doRemoteAttestation()
 
   doNodeSelection()
   {
-    this.m_RestService.doNodeSelection("1").subscribe();
+    this.m_RestService.doNodeSelection("-").subscribe();
   }
 
 animateImageUpload(image:string|null,node_id:string|null)

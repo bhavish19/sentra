@@ -1,8 +1,8 @@
 <!-- ai-widget.component.html -->
 <mat-card class="ai-widget-card">
   <mat-card-header>
-    <mat-card-title>AI Inference Widget</mat-card-title>
-    <mat-card-subtitle>Select a mode and execute each stage of the pipeline</mat-card-subtitle>
+    <mat-card-title>Machine Learning-based Handwritten Digits Recognition</mat-card-title>
+    <mat-card-subtitle>Select a machine learning mode and execute each stage of the pipeline</mat-card-subtitle>
   </mat-card-header>
 
   <mat-card-content>
@@ -10,6 +10,7 @@
     <!-- Mode Toggle -->
     <div class="toggle-container">
       <mat-button-toggle-group
+      hideSingleSelectionIndicator="true"
         [(ngModel)]="mode"
         (change)="onModeChange($event.value)"
         aria-label="AI Mode"
@@ -27,17 +28,18 @@
 
     <!-- ── Normal AI Pipeline ── -->
     <ng-container *ngIf="mode === 'normal'">
-      <mat-stepper orientation="vertical" [selectedIndex]="selectedIndex" #normalStepper>
+      <mat-stepper linear orientation="vertical" [selectedIndex]="selectedIndex" #normalStepper>
 
         <!-- Custom icon for completed steps -->
         <ng-template matStepperIcon="done">
-          <mat-icon class="step-done-icon">check_circle</mat-icon>
+          <mat-icon class="step-done-icon">check</mat-icon>
         </ng-template>
 
         <mat-step
           *ngFor="let step of normalSteps; let i = index"
           [label]="step.label"
-          [completed]="isStepCompleted(i)">
+          [completed]="isStepCompleted(i)"
+          editable="false">
 
           <div class="step-info">
             <mat-icon class="info-icon">info_outline</mat-icon>
@@ -46,12 +48,12 @@
 
           <div class="step-actions">
             <button
-              mat-raised-button
+              mat-raised-button matStepperNext
               color="primary"
               class="pulse-btn"
               *ngIf="!isStepCompleted(i)"
               (click)="completeStep(i)">
-              {{ i === normalSteps.length - 1 ? 'Complete' : 'Next' }}
+              {{ i === normalSteps.length - 1 ? 'Execute' : 'Next' }}
               <mat-icon>arrow_forward</mat-icon>
             </button>
 
@@ -59,8 +61,8 @@
               <mat-icon>check_circle</mat-icon> Done
             </span>
 
-            <button mat-button *ngIf="i > 0" (click)="selectedIndex = i - 1">
-              Back
+            <button mat-button *ngIf="isStepCompleted(2)" (click)="onRestart()">
+              Restart
             </button>
           </div>
         </mat-step>
@@ -70,17 +72,18 @@
 
     <!-- ── Privacy-Preserving AI Pipeline ── -->
     <ng-container *ngIf="mode === 'privacy'">
-      <mat-stepper orientation="vertical" [selectedIndex]="selectedIndex" #privacyStepper>
+      <mat-stepper linear orientation="vertical" [selectedIndex]="selectedIndex" #privacyStepper>
 
         <!-- Custom icon for completed steps -->
         <ng-template matStepperIcon="done">
-          <mat-icon class="step-done-icon">check_circle</mat-icon>
+          <mat-icon class="step-done-icon">check</mat-icon>
         </ng-template>
 
         <mat-step
           *ngFor="let step of privacySteps; let i = index"
           [label]="step.label"
-          [completed]="isStepCompleted(i)">
+          [completed]="isStepCompleted(i)"
+          editable="false">
 
           <div class="step-info">
             <mat-icon class="info-icon">security</mat-icon>
@@ -94,7 +97,7 @@
               class="pulse-btn"
               *ngIf="!isStepCompleted(i)"
               (click)="completeStep(i)">
-              {{ i === privacySteps.length - 1 ? 'Complete' : 'Next' }}
+              {{ i === privacySteps.length - 1 ? 'Execute' : 'Next' }}
               <mat-icon>arrow_forward</mat-icon>
             </button>
 
@@ -102,8 +105,8 @@
               <mat-icon>check_circle</mat-icon> Done
             </span>
 
-            <button mat-button *ngIf="i > 0" (click)="selectedIndex = i - 1">
-              Back
+            <button mat-button *ngIf="isStepCompleted(3)" (click)="onRestart()">
+              Restart
             </button>
           </div>
         </mat-step>

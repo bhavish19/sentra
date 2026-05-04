@@ -6,9 +6,11 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RestService } from '../../rest.service';
+import { MatAnchor, MatButtonModule } from "@angular/material/button";
+import {MatSliderModule} from '@angular/material/slider';
 
 @Component({
-  imports:[CommonModule,FormsModule],
+  imports: [CommonModule, FormsModule, MatAnchor,MatButtonModule,MatSliderModule],
   selector: 'app-digit-draw',
   templateUrl: './digit-draw.component.html',
   styleUrls: ['./digit-draw.component.css'],

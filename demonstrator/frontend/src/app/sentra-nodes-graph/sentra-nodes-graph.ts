@@ -370,8 +370,9 @@ this.cy.add({
     target: nodeid2  // ID of the target node
   }
 });
-this.animateCircle(edgeID);
 }
+
+
 
 getPositionForNode(node_id:string):Position
 {
@@ -379,13 +380,21 @@ getPositionForNode(node_id:string):Position
   return node.renderedPosition();
 }
 
-animateCircle(edgeId:string) {
-  const edge = this.cy.$(`#${edgeId}`);
+animateCircle(nodeid1:string,nodeid2:string,bAnimate:boolean) {
+    let edgeID:string='edge-'+nodeid1+"-"+nodeid2;
+    let circleID="moving-circle-"+edgeID;
+if(!bAnimate)
+{
+  const mcircle = document.getElementById(circleID);
+  mcircle?.parentNode?.removeChild(mcircle);
+  return;
+}
+  const edge = this.cy.$(`#${edgeID}`);
   const mcircle = document.getElementById('moving-circle');
   if(mcircle===null)
     return;
   const circle=mcircle.cloneNode(false) as HTMLElement;
-  
+  circle.id=circleID;
   mcircle.insertAdjacentElement('afterend', circle);
 
   // Get the edge's source and target positions

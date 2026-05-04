@@ -79,6 +79,25 @@ export class RestService {
     return this.m_HttpClient.post<SentraNode[]>('api/v1/postCommitteeSelection',null);
    }
 
+     internal_runMPC(bRunMPC:boolean):Observable<Object>
+   {
+    const payload = { doRunMPC: bRunMPC,
+      };
+    return this.m_HttpClient.post<Object>('api/v1/postRunMPC',payload);
+   }
+
+  doExecuteMPC():Observable<Object>
+   {
+    return this.internal_runMPC(true);
+   }
+
+     doStopMPC():Observable<Object>
+   {
+    return this.internal_runMPC(false);
+   }
+
+
+
    doNodeSelection(node_id:string):Observable<Object>
    {
     return this.m_HttpClient.post('api/v1/postNodeSelection/'+node_id,null);
