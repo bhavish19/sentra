@@ -31,10 +31,10 @@ class AppSimulator:
     def runSimulation(self):
   
         from .Backend import Backend
-        i:int=0
         baseId:str="SentraNode_"
         baseLabel:str="Node "
         while(True):
+            i:int=0
             self.m_nodeList.clear()     
             self.m_nodeGenerator.shuffleOperators()          
             while(i<10):
