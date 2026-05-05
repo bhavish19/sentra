@@ -63,6 +63,6 @@ class SentraNodeList:
         
     def getRandomNode(self)->SentraNode:
         with self.m_Lock:
-            index:int=random.randint(0,len(self.m_arNodes))
+            index:int=random.randint(0,len(self.m_arNodes)-1)
             random_item:SentraNode = list(self.m_arNodes.values())[index]
             return random_item
