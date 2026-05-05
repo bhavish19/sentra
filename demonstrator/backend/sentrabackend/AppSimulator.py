@@ -29,42 +29,45 @@ class AppSimulator:
 
 
     def runSimulation(self):
-        self.m_nodeList.clear()
-        self.m_nodeGenerator.shuffleOperators()
+  
         from .Backend import Backend
         i:int=0
         baseId:str="SentraNode_"
         baseLabel:str="Node "
-        while(i<10):
-            node:SentraNode=self.m_nodeGenerator.generateNode(baseId+str(i),baseLabel+str(i))
-            if(random.random()>0.3):
-                node.setVerified(True, time.time())
-            self.m_nodeList.add(node)
-            i+=1
+        while(True):
+            self.m_nodeList.clear()     
+            self.m_nodeGenerator.shuffleOperators()          
+            while(i<10):
+                node:SentraNode=self.m_nodeGenerator.generateNode(baseId+str(i),baseLabel+str(i))
+                if(random.random()>0.3):
+                    node.setVerified(True, time.time())
+                self.m_nodeList.add(node)
+                i+=1
 
-        if self.m_committeeSelection:
-            log("node list:")
-            log(str(self.m_nodeList))
+            if self.m_committeeSelection:
+                log("node list:")
+                log(str(self.m_nodeList))
 
-            committee_target_size = 5
-            committee_min_trust = 2
-            committee_max_attest_age = 100
-            committee_max_hw_frac = 0.8
-            committee_max_op_frac = 0.8
-            committee_max_pm_frac = 0.8
+                committee_target_size = 5
+                committee_min_trust = 2
+                committee_max_attest_age = 100
+                committee_max_hw_frac = 0.8
+                committee_max_op_frac = 0.8
+                committee_max_pm_frac = 0.8
 
-            committeeSelection: CommitteeSelection = CommitteeSelection(committee_target_size, committee_min_trust, committee_max_attest_age, committee_max_hw_frac, committee_max_op_frac, committee_max_pm_frac)
+                committeeSelection: CommitteeSelection = CommitteeSelection(committee_target_size, committee_min_trust, committee_max_attest_age, committee_max_hw_frac, committee_max_op_frac, committee_max_pm_frac)
 
-            committee = committeeSelection.selectionAlgorithm(self.m_nodeList)
+                committee = committeeSelection.selectionAlgorithm(self.m_nodeList)
 
-            log(f"running committee selction with: committee target size: {committee_target_size}, committee min trust: {committee_min_trust}, committee_max_attest_age: {committee_max_attest_age}, committee_max_hw_frac: {committee_max_hw_frac}, committee_max_op_frac: {committee_max_op_frac}, committee_max_pm_frac: {committee_max_pm_frac}")
+                log(f"running committee selction with: committee target size: {committee_target_size}, committee min trust: {committee_min_trust}, committee_max_attest_age: {committee_max_attest_age}, committee_max_hw_frac: {committee_max_hw_frac}, committee_max_op_frac: {committee_max_op_frac}, committee_max_pm_frac: {committee_max_pm_frac}")
 
-            if committee:
-                log("committee:")
-                log(str(committee))
-                Backend.getBackend().setCommittee(committee)
-            else:
-                log("no committee found!")
+                if committee:
+                    log("committee:")
+                    log(str(committee))
+                    Backend.getBackend().setCommittee(committee)
+                    break
+                else:
+                    log("no committee found!  -Restarting")
         Backend.getBackend().notifyNodeListUpdated()
 
 
@@ -78,7 +81,6 @@ class AppSimulator:
     def doInferenceForPixel(self,pixels)->InferenceResult:
         pixel_array = np.array(pixels, dtype=np.float32).reshape(1, 28, 28, 1)  # Reshape to [1, 28, 28, 1]
       #  pixel_array /= 255.0
-        print(pixel_array)
         predicted_probabilities = self.m_Model.predict(pixel_array)  # Shape: (1, 10)
         predicted_class = tf.argmax(predicted_probabilities, axis=1).numpy()[0]
 
@@ -89,7 +91,6 @@ class AppSimulator:
 
     def doInference(self,inputImageIndex:int)->InferenceResult:
         example_image = self.x_test[inputImageIndex:inputImageIndex + 1]  # Shape: (1, 28, 28, 1)
-        print(example_image)
         actual_label = self.y_test[inputImageIndex]
 
         predicted_probabilities = self.m_Model.predict(example_image)  # Shape: (1, 10)

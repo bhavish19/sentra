@@ -79,7 +79,7 @@ export class RestService {
     return this.m_HttpClient.post<SentraNode[]>('api/v1/postCommitteeSelection',null);
    }
 
-     internal_runMPC(bRunMPC:boolean):Observable<Object>
+  internal_runMPC(bRunMPC:boolean):Observable<Object>
    {
     const payload = { doRunMPC: bRunMPC,
       };
@@ -91,7 +91,7 @@ export class RestService {
     return this.internal_runMPC(true);
    }
 
-     doStopMPC():Observable<Object>
+  doStopMPC():Observable<Object>
    {
     return this.internal_runMPC(false);
    }
@@ -115,6 +115,28 @@ export class RestService {
     console.log("REST doImageUpload(): ",payload);  
     return this.m_HttpClient.post<Object>('/api/v1/postImageUpload',payload);
 
+   }
+
+  doReceiveResult(img_b64:string,nodeID:string|null):Observable<Object>
+   {
+    if(nodeID===null)
+      {
+        nodeID="";
+      }
+    const payload = { result: img_b64,
+      node_id:nodeID
+      };
+    console.log("REST doReceiveResult(): ",payload);  
+    return this.m_HttpClient.post<Object>('/api/v1/postReceiveResult',payload);
+
+   }
+
+   doReceiveResultOnClient(img_b64:string,nodeID:string):Observable<Object>
+   {
+    const payload = { result: img_b64,
+      node_id:nodeID
+      };
+    return this.m_HttpClient.post<Object>('/api/v1/postReceiveResultOnClient',payload);
    }
 
    doPrediction(index:number):Observable<InferenceResult>

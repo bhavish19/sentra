@@ -170,6 +170,29 @@ if(this.m_Committee===undefined)
     this.graph.doImageUpload(img,node_id);
 
   }
+
+
+doReceiveResult(resultMsg:any)
+{
+    console.log("doReceiveResult() - recevied message: ",resultMsg);
+    let img=resultMsg.receiveResult;
+    let node_id=resultMsg.node_id;
+    console.log("doReceiveResult() - received message for node: ",node_id);
+    if(node_id==="")
+    {      
+      if(this.m_strSelectedNodeID===null)
+      {
+        return;
+      }
+      else
+      {
+        node_id=this.m_strSelectedNodeID;
+      }
+    }
+    this.graph.doResultDownload(img,node_id);
+
+}
+
   //do something with the web socket
 receiveWebSocketMsg()
 {
@@ -203,6 +226,10 @@ receiveWebSocketMsg()
     else if('doRunMPC' in obj)
     {
       this.doRunMPC(obj.doRunMPC);
+    }
+    else if('receiveResult' in obj)
+    {
+      this.doReceiveResult(obj);
     }
 
     else if('doNodeSelection' in obj)

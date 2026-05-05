@@ -176,7 +176,6 @@ async doNodeSelection()
   }
 
   isStepCompleted(index: number): boolean {
-    console.log("Is step completed: ",index," - ",this.completedSteps[index]);
     return this.completedSteps[index];
   }
 }

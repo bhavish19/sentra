@@ -1,8 +1,16 @@
 /* ai-widget.component.scss */
+@use '@angular/material' as mat;
 
+
+:app-ai-widget {
+  @include mat.stepper-overrides((
+   header-label-text-size: 2rem,
+   header-selected-state-label-text-size: 2rem
+  ));
+}
 /* ── Card wrapper ── */
 .ai-widget-card {
-  max-width: 640px;
+  max-width: 1000px;
   margin: 2rem auto;
 
   mat-card-title {
@@ -92,7 +100,7 @@
 
   p {
     margin: 0;
-    font-size: 0.9rem;
+    font-size: 2rem;
     line-height: 1.55;
     color: #333;
   }

@@ -31,6 +31,7 @@ import cytoscape, { Core, StylesheetCSS, NodeSingular, Position } from 'cytoscap
 //import fcose from 'cytoscape-fcose';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import { NgZone } from '@angular/core';
+import { RestService } from '../../rest.service';
 
 @Component({
   selector: 'sentra-node-graph',
@@ -183,7 +184,7 @@ private static layoutOptions={
     }
   }
 
-  constructor(private cdr: ChangeDetectorRef)
+  constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef)
   {
   }
   public clear():void
@@ -491,6 +492,48 @@ console.log("loop");
 
 
 
+ doResultDownload(image:string,selectedNode:string)
+  {
+    console.log("Graph - doResultDownload() for node: ",selectedNode);
+    const divImgOrig = document.getElementById('moving-result-div');
+    if(divImgOrig===null)
+      return;
+    const hmtlImgOrig:HTMLImageElement|null = document.getElementById('moving-result-image') as HTMLImageElement;
+    if(hmtlImgOrig===null)
+      return;
+    const divImg=divImgOrig.cloneNode(false) as HTMLElement;
+  
+    divImgOrig.insertAdjacentElement('afterend', divImg);
+    const hmtlImg=hmtlImgOrig.cloneNode(false) as HTMLIFrameElement
+    divImg.appendChild(hmtlImg);
+
+    hmtlImg.src=image;
+    divImg.style.display = 'block';
+    this.cdr.detectChanges();
+   
+    let pos:Position=this.getPositionForNode(selectedNode);
+    let dx:number=pos.x-28;
+    let dy:number=pos.y-(divImg.getBoundingClientRect().top-56);
+
+    const animation:Animation = divImg.animate(
+      [
+        { transform: 'translate('+(dx)+'px,'+dy+'px)' },
+        { transform: 'translate(0px,0px)' },
+
+      ],
+      {
+        duration: 2000,
+        easing: 'linear',
+        iterations:1,
+      }
+    );
+    animation.onfinish=(e)=>
+    {
+      if(divImg.parentNode)
+            divImg.parentNode.removeChild(divImg);
+      this.m_RestService.doReceiveResultOnClient(image,selectedNode).subscribe();  
+    };   
+  }
 
 
 

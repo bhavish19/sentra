@@ -12,6 +12,9 @@
         (mousedown)="onMouseDown(rowIndex, colIndex)"
         (mousemove)="onMouseMove(rowIndex, colIndex)"
         (mouseup)="onMouseUp()"
+        (touchend)="onMouseUp()"
+        (touchstart)="onMouseDown(rowIndex,colIndex)"
+        (touchmove)="onMouseMove(rowIndex, colIndex)"
        
       ></div>
     </div>

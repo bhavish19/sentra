@@ -27,7 +27,9 @@ class Backend:
     m_sIndexHtml=m_sStaticFolder+"/index.html"
     
     m_WS:Server|None = None
+    m_WSClient:Server|None = None
     m_lockWS=threading.Lock()
+    m_lockWSClient=threading.Lock()
 
 
     m_nodeGenerator:SentraNodeAttributeGenerator
@@ -96,6 +98,7 @@ class Backend:
         self.app:Flask = Flask(__name__,static_url_path='',static_folder=self.m_sStaticFolder)
         self.app.add_url_rule("/",view_func=self.getIndex)
         self.app.add_url_rule("/ws", view_func=ws, websocket=True)        
+        self.app.add_url_rule("/wsclient", view_func=wsClient, websocket=True)        
         self.app.add_url_rule("/sentra-nodes-table",view_func=self.getIndex)
         self.app.add_url_rule("/sentra-nodes",view_func=self.getIndex)
         self.app.add_url_rule("/api/v1/getNodes",view_func=self.getNodes)
@@ -106,6 +109,8 @@ class Backend:
         self.app.add_url_rule("/api/v1/postRemoteAttestation",view_func=self.postRemoteAttestation,methods=['POST'])
         self.app.add_url_rule("/api/v1/postCommitteeSelection",view_func=self.postCommitteeSelection,methods=['POST'])
         self.app.add_url_rule("/api/v1/postRunMPC",view_func=self.postRunMPC,methods=['POST'])
+        self.app.add_url_rule("/api/v1/postReceiveResult",view_func=self.postReceiveResult,methods=['POST'])
+        self.app.add_url_rule("/api/v1/postReceiveResultOnClient",view_func=self.postReceiveResultOnClient,methods=['POST'])
         self.app.add_url_rule("/api/v1/postNodeSelection/<string:node_id>",view_func=self.postNodeSelection,methods=['POST'])
         self.app.add_url_rule("/api/v1/postImageUpload",view_func=self.postImageUpload,methods=['POST'])
 
@@ -211,8 +216,25 @@ class Backend:
         img_b64 = data['image']
         node_id= data['node_id']
         msg:str="{\"imageUpload\":\""+img_b64+"\",\"node_id\":\""+node_id+"\"}"
-        print("postImageUploade - send WS msg: ",msg)
         self.sendWSMessage(msg)
+        return jsonify({})
+
+    #@app.route('/api/v1/postReceiveResult', methods=['POST'])    
+    def postReceiveResult(self):
+        data=request.get_json()
+        img_b64 = data['result']
+        node_id= data['node_id']
+        msg:str="{\"receiveResult\":\""+img_b64+"\",\"node_id\":\""+node_id+"\"}"
+        self.sendWSMessage(msg)
+        return jsonify({})
+
+    #@app.route('/api/v1/postReceiveResultOnClient', methods=['POST'])    
+    def postReceiveResultOnClient(self):
+        data=request.get_json()
+        img_b64 = data['result']
+        node_id= data['node_id']
+        msg:str="{\"receiveResultOnClient\":\""+img_b64+"\",\"node_id\":\""+node_id+"\"}"
+        self.sendWSMessageToClient(msg)
         return jsonify({})
 
     #@app.route("/api/v1/mnist/getTestImagesForDigit/<int:digit>")
@@ -231,6 +253,14 @@ class Backend:
                 pass
         self.m_WS = ws
 
+    def registerClientWebSocket(self, ws:Server):
+        if(self.m_WSClient is not None and self.m_WSClient.connected):
+            try:
+                self.m_WSClient.close()
+            except:
+                pass
+        self.m_WSClient = ws
+
     def sendWSMessage(self,msg:str):
         if(not self.m_WS is None):
             self.m_lockWS.acquire()
@@ -247,6 +277,22 @@ class Backend:
                 self.m_WS=None
             self.m_lockWS.release()
     
+    def sendWSMessageToClient(self,msg:str):
+        if(not self.m_WSClient is None):
+            self.m_lockWSClient.acquire()
+            if(self.m_WSClient.connected):
+                try:
+                    self.m_WSClient.send(msg)
+                except:
+                    try:
+                        self.m_WSClient.close()
+                    except:
+                        pass
+                    self.m_lockWSClient=None
+            else:
+                self.m_lockWSClient=None
+            self.m_lockWSClient.release()
+
     def notifyNodeListUpdated(self):
         data:object={"cloudUpdate":
                 {
@@ -275,4 +321,23 @@ def ws():
         backend.m_WS=None
         return "",500
     return "",200
-    
+
+# @app.route("/wsclient",websocket=True)
+def wsClient():
+    backend:Backend|None=Backend.getBackend()
+    if(backend is None):
+        return "",500
+    try:
+       
+        if(backend.m_WSClient is not None and backend.m_WSClient.connected):
+            return "",200
+        ws = Server.accept(request.environ)
+        
+        backend.registerClientWebSocket(ws)
+        while ws.connected:
+            ws.receive()
+        backend.m_WSClient=None
+    except:
+        backend.m_WSClient=None
+        return "",500
+    return "",200
