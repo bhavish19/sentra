@@ -73,3 +73,37 @@ export function float32ArrayToImageUrl(float32Array: Float32Array, width: number
   // Step 4: Export the Canvas as a Data URL
   return canvas.toDataURL('image/png'); // Returns a Base64-encoded PNG image URL
 }
+
+export function generateBase64Image(digit:number):string|null {
+    if (typeof digit !== 'number' || digit < 0 || digit > 9) {
+        throw new Error("Input must be a single digit (0-9).");
+    }
+
+    // Create a canvas element
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if(ctx===null)
+      return null;
+
+    // Set canvas dimensions
+    canvas.width = 56; // Width of the image
+    canvas.height = 56; // Height of the image
+
+    // Set background color (optional)
+    ctx.fillStyle = "#ffffff"; // White background
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Set text properties
+    ctx.font = "bold 30px Arial"; // Font size and style
+    ctx.fillStyle = "#000000"; // Black text color
+    ctx.textAlign = "center"; // Center align text
+    ctx.textBaseline = "middle"; // Middle align text
+
+    // Draw the digit in the center of the canvas
+    ctx.fillText(digit.toString(), canvas.width / 2, canvas.height / 2);
+
+    // Convert the canvas to a Base64 image URL
+    const base64Image:string = canvas.toDataURL("image/png");
+
+    return base64Image;
+}

@@ -9,7 +9,7 @@ import { AiWidgetComponent } from "../ai-widget.component/ai-widget.component";
 import { MatCardModule } from "@angular/material/card";
 import {MatDividerModule} from '@angular/material/divider';
 import { CommonModule } from '@angular/common';
-import { createWebSocketURLForPath, float32ArrayToImageUrl, generateRandomFloat32Array, sleep } from '../../utils';
+import { createWebSocketURLForPath, float32ArrayToImageUrl, generateBase64Image, generateRandomFloat32Array, sleep } from '../../utils';
 @Component({
   selector: 'app-sentra-client-dashboard',
   imports: [CommonModule,MnistNumberSelector, MatDividerModule, MatGridListModule, MatButtonModule,
@@ -27,6 +27,7 @@ selectedImage:ImageSelectedEvent|null=null;
  posRight_MovingDigitImage:number=180;
 isAIDisabled: boolean=true;
 m_Committee:SentraNode[]|undefined=undefined;
+m_InferenceResult:InferenceResult|null=null;
 
 constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef)
   {
@@ -86,7 +87,7 @@ showInferenceResult(inferenceResult:InferenceResult)
     this.predictionProbabilities=this.getClassificationLikelihoods(inferenceResult.classificationResults);
     this.cdr.detectChanges();
 }
-doInference() 
+doInference(bPlain:boolean) 
 {
 /*  let fileName:string|null=this.m_imageSelector.imageName;
   if(fileName===null)
@@ -100,7 +101,18 @@ if(this.selectedImage.index!=null)
 {
   this.m_RestService.doPrediction(this.selectedImage.index).subscribe((inferenceResult)=>
   {
-   this.showInferenceResult(inferenceResult);
+    this.m_InferenceResult=inferenceResult;
+    console.log("Inference result is now: ",this.m_InferenceResult);
+    if(bPlain)
+    {
+      let imgResult:string|null=generateBase64Image(inferenceResult.predictedValue);
+      if(imgResult!=null)
+        this.m_RestService.doReceiveResult(imgResult,"").subscribe();
+      else
+        this.showInferenceResult(inferenceResult);
+    }
+    else
+        this.showInferenceResult(inferenceResult);
   });
 }
 else if(this.selectedImage.image_data!=null)
@@ -132,9 +144,10 @@ async doExecuteMPC()
 {
   this.m_RestService.doExecuteMPC().subscribe();
   await sleep(8000);
-  await this.doReceiveShares();
-  this.doInference();
   this.m_RestService.doStopMPC().subscribe();
+  await this.doReceiveShares();
+  await sleep(4000);
+  this.doInference(false);
 }
 
 async doDistributeShares()
@@ -272,13 +285,19 @@ animateReceiveResult(image:string)
   this.animateImageUpload(this.selectedImage.image_b64,null);
 }
 
-handleReceiveResult(resultMsg:any)
+async handleReceiveResult(resultMsg:any)
 {
     console.log("doReceiveResult() - recevied message: ",resultMsg);
     let img=resultMsg.receiveResultOnClient;
     let node_id=resultMsg.node_id;
     console.log("doReceiveResult() - received message for node: ",node_id);
     this.animateReceiveResult(img);
+    console.log("Inference Result is still: ",this.m_InferenceResult)
+    if(node_id==="" && this.m_InferenceResult!=null)
+    {
+      await sleep(2000);
+      this.showInferenceResult(this.m_InferenceResult);
+    }
 
 }
 
@@ -297,12 +316,12 @@ receiveWebSocketMsg()
     }
   );
 
-  this.m_socket.onmessage=((ev:any)=>
+  this.m_socket.onmessage=(async (ev:any)=>
   {
     const obj = JSON.parse(ev.data);
     if('receiveResultOnClient' in obj) //Cloud has changed
     {
-      this.handleReceiveResult(obj);
+      await this.handleReceiveResult(obj);
     }
     console.log(ev.data)
   });

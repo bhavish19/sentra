@@ -105,9 +105,9 @@ this.m_clientDashboard.doCommitteeSelection();
 this.m_clientDashboard.doDistributeShares();
   }
 
-    doInference()
+  doInference()
   {
-this.m_clientDashboard.doInference();
+    this.m_clientDashboard.doInference(true);
   }
 
 async  doExecuteMPC()

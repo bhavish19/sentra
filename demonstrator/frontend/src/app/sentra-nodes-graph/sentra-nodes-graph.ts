@@ -492,7 +492,7 @@ console.log("loop");
 
 
 
- doResultDownload(image:string,selectedNode:string)
+ doResultDownload(image:string,selectedNode:string,bPlain:boolean)
   {
     console.log("Graph - doResultDownload() for node: ",selectedNode);
     const divImgOrig = document.getElementById('moving-result-div');
@@ -531,6 +531,8 @@ console.log("loop");
     {
       if(divImg.parentNode)
             divImg.parentNode.removeChild(divImg);
+      if(bPlain) 
+        selectedNode="";   
       this.m_RestService.doReceiveResultOnClient(image,selectedNode).subscribe();  
     };   
   }

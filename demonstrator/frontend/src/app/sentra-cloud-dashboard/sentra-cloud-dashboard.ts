@@ -177,6 +177,7 @@ doReceiveResult(resultMsg:any)
     console.log("doReceiveResult() - recevied message: ",resultMsg);
     let img=resultMsg.receiveResult;
     let node_id=resultMsg.node_id;
+    let bPlain:boolean=false;
     console.log("doReceiveResult() - received message for node: ",node_id);
     if(node_id==="")
     {      
@@ -187,9 +188,10 @@ doReceiveResult(resultMsg:any)
       else
       {
         node_id=this.m_strSelectedNodeID;
+        bPlain=true;
       }
     }
-    this.graph.doResultDownload(img,node_id);
+    this.graph.doResultDownload(img,node_id,bPlain);
 
 }
 

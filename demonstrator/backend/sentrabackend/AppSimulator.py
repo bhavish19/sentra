@@ -67,7 +67,7 @@ class AppSimulator:
                     Backend.getBackend().setCommittee(committee)
                     break
                 else:
-                    log("no committee found!  -Restarting")
+                    log("no committee found! - Restarting")
         Backend.getBackend().notifyNodeListUpdated()
 
 
