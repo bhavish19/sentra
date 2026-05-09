@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, ElementRef, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, HostListener, ViewChild } from '@angular/core';
 import { ImageSelector } from "../image-selector/image-selector";
 import {MatGridListModule} from '@angular/material/grid-list';
 import { MatButtonModule } from '@angular/material/button';
@@ -9,7 +9,7 @@ import { AiWidgetComponent } from "../ai-widget.component/ai-widget.component";
 import { MatCardModule } from "@angular/material/card";
 import {MatDividerModule} from '@angular/material/divider';
 import { CommonModule } from '@angular/common';
-import { createWebSocketURLForPath, float32ArrayToImageUrl, generateBase64Image, generateRandomFloat32Array, sleep } from '../../utils';
+import { createWebSocketURLForPath, float32ArrayToImageUrl, generateBase64Image, generateFlashingArrowSVG, generateRandomFloat32Array, sleep } from '../../utils';
 @Component({
   selector: 'app-sentra-client-dashboard',
   imports: [CommonModule,MnistNumberSelector, MatDividerModule, MatGridListModule, MatButtonModule,
@@ -17,8 +17,11 @@ import { createWebSocketURLForPath, float32ArrayToImageUrl, generateBase64Image,
   templateUrl: './sentra-client-dashboard.html',
   styleUrl: './sentra-client-dashboard.scss',
 })
-export class SentraClientDashboard 
+export class SentraClientDashboard implements AfterViewInit
 {
+ @ViewChild('arrowRight', { static: true }) divArrowLeft! :ElementRef<HTMLDivElement>;
+ @ViewChild('cardDigit',{ static: true }) htmlCardDigit! :ElementRef;
+
    m_socket?:WebSocket=undefined;
 predictionProbabilities: number[]=[];
 predictionResult: number=0;
@@ -34,6 +37,23 @@ constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef)
     this.receiveWebSocketMsg();
     this.autoWebSocketReconnect();
 
+  }
+
+
+ @HostListener('window:resize', ['$event'])
+  onResize(event: Event) {
+    this.ngAfterViewInit();
+  }
+
+  ngAfterViewInit(): void {
+    let divAi=document.getElementById("ai_widget") as HTMLElement;
+    let rectAi=divAi.getBoundingClientRect();
+    let rectDigit=this.htmlCardDigit.nativeElement.getBoundingClientRect();
+    let dx:number=rectAi.width/2+rectAi.left-rectDigit.right;
+    let dy:number=rectAi.top-(rectDigit.top+20);
+    this.divArrowLeft.nativeElement.innerHTML=generateFlashingArrowSVG(dx,dy);
+    this.divArrowLeft.nativeElement.style.left=rectDigit.right+20+"px";
+    this.divArrowLeft.nativeElement.style.top=rectDigit.top+20+"px";
   }
   onDoResetSentra()
   {

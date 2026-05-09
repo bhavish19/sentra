@@ -108,3 +108,66 @@ export function generateBase64Image(digit:number):string|null {
 
     return base64Image;
 }
+
+export function generateFlashingArrowSVG(width:number,height:number):string
+{
+  let svg=`<?xml version='1.0' encoding='UTF-8'?> \
+<svg xmlns='http://www.w3.org/2000/svg' width="`+width+`" height="500" viewBox="0 0 `+width+` 500"> \
+  <defs> \
+    <filter id='neon-glow' x='-80%' y='-80%' width='260%' height='260%'>
+      <feGaussianBlur in='SourceGraphic' stdDeviation='9' result='blur_fat'/>
+      <feGaussianBlur in='SourceGraphic' stdDeviation='4' result='blur_med'/>
+      <feGaussianBlur in='SourceGraphic' stdDeviation='2' result='blur_fine'/>
+      <feMerge>
+        <feMergeNode in='blur_fat'/>
+        <feMergeNode in='blur_fat'/>
+        <feMergeNode in='blur_med'/>
+        <feMergeNode in='blur_fine'/>
+        <feMergeNode in='SourceGraphic'/>
+      </feMerge>
+    </filter>
+  </defs>
+`
+  let posX:number=10;
+  let posY:number=65;
+  let curTim:number=0.0;
+  let dT:number=0.13;
+  let xA:number=(width-posX)/55;
+  let yA:number=(height-posY)/40;
+  let duration:number=(xA+yA)*dT+2;
+  while(posX<width-50)
+  {
+    let s=`
+      <g filter="url(#neon-glow)">
+    <polyline points="`+posX+`,15 `+(posX+22)+`,35 `+posX+`,55" fill="none" stroke="#0088bb" stroke-width="14" stroke-linecap="round"
+     stroke-linejoin="round" opacity="0.12">
+      <animate attributeName="opacity" values="0.12;0.12;0.50;0.12;0.12" keyTimes="0;0.12;0.25;0.38;1" dur="`+duration+`s" begin="`+curTim+`s" 
+      repeatCount="indefinite" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/>
+    </polyline>
+    <polyline points="`+posX+`,15 `+(posX+22)+`,35 `+posX+`,55" fill="none" stroke="#00e5ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.12">
+      <animate attributeName="opacity" values="0.12;0.12;1.0;0.12;0.12" keyTimes="0;0.12;0.25;0.38;1" dur="`+duration+`s" begin="`+curTim+`s" repeatCount="indefinite" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/>
+    </polyline>
+  </g>`;
+  svg+=s;
+  posX+=55;
+  curTim+=dT;
+  }
+  posX-=45;
+   while(posY<height)
+  { 
+  svg+=`
+  <g filter="url(#neon-glow)">
+    <polyline points="`+posX+","+posY+" "+(posX+20)+","+(posY+20)+" "+(posX+40)+" "+posY+`" fill="none" stroke="#0088bb" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.12">
+      <animate attributeName="opacity" values="0.12;0.12;0.50;0.12;0.12" keyTimes="0;0.12;0.25;0.38;1" dur="`+duration+`s" begin="`+curTim+`s" repeatCount="indefinite" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/>
+    </polyline>
+    <polyline points="`+posX+","+posY+" "+(posX+20)+","+(posY+20)+" "+(posX+40)+" "+posY+`" fill="none" stroke="#00e5ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.12">
+      <animate attributeName="opacity" values="0.12;0.12;1.0;0.12;0.12" keyTimes="0;0.12;0.25;0.38;1" dur="`+duration+`s" begin="`+curTim+`s" repeatCount="indefinite" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/>
+    </polyline>
+  </g>`
+  posY+=40;
+  curTim+=dT;
+  }
+
+  svg+="</svg>";
+  return svg;
+}

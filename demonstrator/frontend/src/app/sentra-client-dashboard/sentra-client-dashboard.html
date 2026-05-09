@@ -2,7 +2,8 @@
 <div style="display:grid;grid-template-columns: 400px 1fr; grid-template-rows: 1fr 1fr; gap: 10px; height: 100%;width: 100%;"> 
 <div style="grid-column: 1; grid-row: 1; display: flex; align-items: center; justify-content: center;padding: 10px;">
  <!--   <app-image-selector/> -->
-    <mat-card style="height:400px;width:100%" class="custom-elevation">
+    <div #cardDigit>
+    <mat-card #cardDigit style="height:400px;width:100%" class="custom-elevation">
       <mat-card-header style="text-align: center;width:100%">
         <mat-card-title style="text-align: center;width:100%">Handwritten Digit</mat-card-title>
       </mat-card-header>
@@ -11,6 +12,7 @@
         <mnist-number-selector style="width:100%;height: 100%;" (imageSelected)="onImageSelected($event)"/>
     </mat-card-content>
     </mat-card>
+    </div>
 </div>
 <div  [ngClass]="{'disabled-card': isAIDisabled}" class="custom-elevation"  style="grid-column: 2; grid-row: 1 / span 2;  display: flex; align-items: center; justify-content: center;">
  <div id="ai_widget">
@@ -31,6 +33,8 @@
     </mat-card>
 </div>
 </div>
+
+<div #arrowRight style="position: fixed;top:200px;left:200px"></div>
 
 <div id="moving-digit-image-div" class="message"  style="display: none;position: fixed;top: 50%;right:{{posRight_MovingDigitImage}}px">
  <img id="moving-digit-image-image" style="width:56px;height: 56px;"
