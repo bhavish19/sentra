@@ -95,30 +95,30 @@ onRestart() {
     this.m_clientDashboard.doRemoteAttestation();
   }
 
-  doCommitteeSelection()
+doCommitteeSelection()
   {
-this.m_clientDashboard.doCommitteeSelection();
+    this.m_clientDashboard.doCommitteeSelection();
   }
 
-    doDistributeShares()
+doDistributeShares()
   {
-this.m_clientDashboard.doDistributeShares();
+    this.m_clientDashboard.doDistributeShares();
   }
 
-  doInference()
+doInference()
   {
     this.m_clientDashboard.doInference(true);
   }
 
 async  doExecuteMPC()
   {
-await this.m_clientDashboard.doExecuteMPC();
+    await this.m_clientDashboard.doExecuteMPC();
   }
 
 
-      doImageUpload()
+doImageUpload()
   {
-this.m_clientDashboard.doImageUpload();
+    this.m_clientDashboard.doImageUpload();
   }
 
 async doNodeSelection()

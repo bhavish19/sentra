@@ -70,8 +70,7 @@ constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef,pr
   {
         console.log("Select node: "+node_id);
         this.m_strSelectedNodeID=node_id;
-        this.graph.pulseBorder(node_id);
-       
+        this.graph.pulseBorder(node_id);       
   }
 
 
@@ -145,9 +144,8 @@ if(this.m_Committee===undefined)
 
   handleNodeSelection(nodeSelection:any)
   {
-    let node_id:string=String(nodeSelection)
-    this.nodeSelection(node_id);
-     
+    let node_id:string=nodeSelection
+    this.nodeSelection(node_id);    
   }
 
   handleImageUpload(imgMsg:any)
@@ -174,7 +172,7 @@ if(this.m_Committee===undefined)
 
 doReceiveResult(resultMsg:any)
 {
-    console.log("doReceiveResult() - recevied message: ",resultMsg);
+    console.log("doReceiveResult() - received message: ",resultMsg);
     let img=resultMsg.receiveResult;
     let node_id=resultMsg.node_id;
     let bPlain:boolean=false;

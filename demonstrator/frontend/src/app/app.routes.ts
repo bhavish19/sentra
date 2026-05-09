@@ -5,7 +5,7 @@ import { SentraClientDashboard } from './sentra-client-dashboard/sentra-client-d
 
 export const routes: Routes = [
 
-  {path: 'sentra-nodes-table', component: SentraNodesTable},
-  {path: 'sentra-nodes', component: SentraCloudDashboard},
-      {path: '**', component: SentraClientDashboard}  
+  {path: 'sentra-nodes-table', component: SentraNodesTable,title:'SENTRA Backend'},
+  {path: 'sentra-nodes', component: SentraCloudDashboard,title:'SENTRA Backend'},
+      {path: '**', component: SentraClientDashboard,title:'SENTRA Frontend'}  
 ];

@@ -6,12 +6,14 @@
 .message {
   background-color: #e0f7fa; /* Light blue background for the message bubble */
   border-radius: 10px; /* Rounded corners for the bubble effect */
-  padding: 5px; /* Space inside the bubble */
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Adds a subtle shadow for depth */
+  width: 66px;
+  height: 66px;
 }
 
 .message img {
   border-radius: 5px; /* Rounds the image corners slightly */
+  margin: 5px;
 }
 
 .disabled-card {

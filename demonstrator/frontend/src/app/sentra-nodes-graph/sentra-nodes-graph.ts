@@ -647,7 +647,7 @@ console.log("loop");
           'width': 48,
           'height': 48,
           'background-color': '#fffde7',
-          'border-width': 2,
+          'border-width': 4,
           'border-color': '#fbc02d',
           
           'background-image': SentraNodeGraph.PROCESS_ICON,
@@ -677,7 +677,7 @@ console.log("loop");
         css: {
 //          'box-shadow': '0 0 16px 8px #1976d2',
           'border-color': '#0ee232',
-          'border-width': 2
+          'border-width': 4
         }
       },
       {
@@ -685,7 +685,7 @@ console.log("loop");
         css: {
 //          'box-shadow': '0 0 16px 8px #1976d2',
           'border-color': '#e11013',
-          'border-width': 2
+          'border-width': 4
         }
 
       },

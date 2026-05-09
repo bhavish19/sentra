@@ -51,11 +51,32 @@ export class DigitDrawComponent {
 
   // Stop drawing
   onMouseUp(): void {
+    console.log("Mouse up");
     this.isDrawing = false;
   }
 
+onTouchMove(event:TouchEvent)
+{
+    const touch = event.touches[0];
+    const x = touch.clientX;
+    const y = touch.clientY;
+
+    // Find the element under the touch point
+    const element = document.elementFromPoint(x, y);
+
+    // Check if the element is one of the divs
+    const mouseMoveEvent = new MouseEvent("mousemove", {
+      bubbles: true, // Allow the event to bubble up the DOM
+      cancelable: true, // Allow the event to be canceled
+      clientX: 10, // X-coordinate of the mouse pointer
+      clientY: 10, // Y-coordinate of the mouse pointer
+    });
+    element?.dispatchEvent(mouseMoveEvent);
+}
+
   // Draw while moving the mouse
   onMouseMove(row: number, col: number): void {
+//    console.log("Mouse move: ",row," -- ",col);
     if (this.isDrawing) {
       this.paintCell(row, col);
     }

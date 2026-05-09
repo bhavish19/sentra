@@ -75,9 +75,10 @@ export function float32ArrayToImageUrl(float32Array: Float32Array, width: number
 }
 
 export function generateBase64Image(digit:number):string|null {
-    if (typeof digit !== 'number' || digit < 0 || digit > 9) {
+    if (typeof digit !== 'number' || digit < 0 || digit > 9) 
+      {
         throw new Error("Input must be a single digit (0-9).");
-    }
+      }
 
     // Create a canvas element
     const canvas = document.createElement('canvas');

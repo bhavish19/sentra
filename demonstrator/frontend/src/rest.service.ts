@@ -123,12 +123,12 @@ export class RestService {
       {
         nodeID="";
       }
-    const payload = { result: img_b64,
+    const payload = { 
+      result: img_b64,
       node_id:nodeID
       };
     console.log("REST doReceiveResult(): ",payload);  
     return this.m_HttpClient.post<Object>('/api/v1/postReceiveResult',payload);
-
    }
 
    doReceiveResultOnClient(img_b64:string,nodeID:string):Observable<Object>
