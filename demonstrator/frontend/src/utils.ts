@@ -109,10 +109,16 @@ export function generateBase64Image(digit:number):string|null {
     return base64Image;
 }
 
-export function generateFlashingArrowSVG(width:number,height:number):string
+export interface IArrowAnimation
+{
+  svg:string;
+  duration:number;
+}
+
+export function generateFlashingArrowSVG(width:number,height:number,bDirectionLeft:boolean,tStart:number):IArrowAnimation
 {
   let svg=`<?xml version='1.0' encoding='UTF-8'?> \
-<svg xmlns='http://www.w3.org/2000/svg' width="`+width+`" height="500" viewBox="0 0 `+width+` 500"> \
+<svg xmlns='http://www.w3.org/2000/svg' width="`+(width+10)+`" height="`+(height)+`" viewBox="0 0 `+(width+10)+` `+(height)+`"> \
   <defs> \
     <filter id='neon-glow' x='-80%' y='-80%' width='260%' height='260%'>
       <feGaussianBlur in='SourceGraphic' stdDeviation='9' result='blur_fat'/>
@@ -134,17 +140,29 @@ export function generateFlashingArrowSVG(width:number,height:number):string
   let dT:number=0.13;
   let xA:number=(width-posX)/55;
   let yA:number=(height-posY)/40;
-  let duration:number=(xA+yA)*dT+2;
+  let duration:number=9;//
+  let ret=(xA+yA)*dT;
+  let dxArrow=22;
+  if(bDirectionLeft)
+  {
+    posY=height-50;
+    dxArrow=-22;
+    posX=32;
+    curTim=tStart+ret;
+    dT=-dT;
+  }
+  else
+    posY=15;
   while(posX<width-50)
   {
     let s=`
       <g filter="url(#neon-glow)">
-    <polyline points="`+posX+`,15 `+(posX+22)+`,35 `+posX+`,55" fill="none" stroke="#0088bb" stroke-width="14" stroke-linecap="round"
+    <polyline points="`+posX+`,`+posY+` `+(posX+dxArrow)+`,`+(posY+20)+` `+posX+`,`+(posY+40)+`" fill="none" stroke="#0088bb" stroke-width="14" stroke-linecap="round"
      stroke-linejoin="round" opacity="0.12">
       <animate attributeName="opacity" values="0.12;0.12;0.50;0.12;0.12" keyTimes="0;0.12;0.25;0.38;1" dur="`+duration+`s" begin="`+curTim+`s" 
       repeatCount="indefinite" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/>
     </polyline>
-    <polyline points="`+posX+`,15 `+(posX+22)+`,35 `+posX+`,55" fill="none" stroke="#00e5ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.12">
+    <polyline points="`+posX+`,`+posY+` `+(posX+dxArrow)+`,`+(posY+20)+` `+posX+`,`+(posY+40)+`" fill="none" stroke="#00e5ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.12">
       <animate attributeName="opacity" values="0.12;0.12;1.0;0.12;0.12" keyTimes="0;0.12;0.25;0.38;1" dur="`+duration+`s" begin="`+curTim+`s" repeatCount="indefinite" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"/>
     </polyline>
   </g>`;
@@ -153,6 +171,17 @@ export function generateFlashingArrowSVG(width:number,height:number):string
   curTim+=dT;
   }
   posX-=45;
+  if(bDirectionLeft)
+  {
+    posY=5;
+    height-=40;
+    dT=-dT;
+    curTim=tStart;
+  }
+  else
+  {
+    posY=65;
+  }
    while(posY<height)
   { 
   svg+=`
@@ -169,5 +198,5 @@ export function generateFlashingArrowSVG(width:number,height:number):string
   }
 
   svg+="</svg>";
-  return svg;
+  return {svg:svg,duration:ret};
 }

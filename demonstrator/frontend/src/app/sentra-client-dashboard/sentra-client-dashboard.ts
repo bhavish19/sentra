@@ -9,7 +9,7 @@ import { AiWidgetComponent } from "../ai-widget.component/ai-widget.component";
 import { MatCardModule } from "@angular/material/card";
 import {MatDividerModule} from '@angular/material/divider';
 import { CommonModule } from '@angular/common';
-import { createWebSocketURLForPath, float32ArrayToImageUrl, generateBase64Image, generateFlashingArrowSVG, generateRandomFloat32Array, sleep } from '../../utils';
+import { createWebSocketURLForPath, float32ArrayToImageUrl, generateBase64Image, generateFlashingArrowSVG, generateRandomFloat32Array, IArrowAnimation, sleep } from '../../utils';
 @Component({
   selector: 'app-sentra-client-dashboard',
   imports: [CommonModule,MnistNumberSelector, MatDividerModule, MatGridListModule, MatButtonModule,
@@ -19,8 +19,10 @@ import { createWebSocketURLForPath, float32ArrayToImageUrl, generateBase64Image,
 })
 export class SentraClientDashboard implements AfterViewInit
 {
- @ViewChild('arrowRight', { static: true }) divArrowLeft! :ElementRef<HTMLDivElement>;
+ @ViewChild('arrowRight', { static: true }) divArrowRight! :ElementRef<HTMLDivElement>;
+ @ViewChild('arrowLeft', { static: true }) divArrowLeft! :ElementRef<HTMLDivElement>;
  @ViewChild('cardDigit',{ static: true }) htmlCardDigit! :ElementRef;
+ @ViewChild('cardInference',{ static: true }) htmlCardInference! :ElementRef;
 
    m_socket?:WebSocket=undefined;
 predictionProbabilities: number[]=[];
@@ -49,11 +51,18 @@ constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef)
     let divAi=document.getElementById("ai_widget") as HTMLElement;
     let rectAi=divAi.getBoundingClientRect();
     let rectDigit=this.htmlCardDigit.nativeElement.getBoundingClientRect();
+    let rectInference=this.htmlCardInference.nativeElement.getBoundingClientRect();
     let dx:number=rectAi.width/2+rectAi.left-rectDigit.right;
-    let dy:number=rectAi.top-(rectDigit.top+20);
-    this.divArrowLeft.nativeElement.innerHTML=generateFlashingArrowSVG(dx,dy);
-    this.divArrowLeft.nativeElement.style.left=rectDigit.right+20+"px";
-    this.divArrowLeft.nativeElement.style.top=rectDigit.top+20+"px";
+    let dy:number=rectAi.top-(rectDigit.top);
+    let arrow:IArrowAnimation=generateFlashingArrowSVG(dx,dy,false,0);
+    this.divArrowRight.nativeElement.innerHTML=arrow.svg;
+    this.divArrowRight.nativeElement.style.left=rectDigit.right+20+"px";
+    this.divArrowRight.nativeElement.style.top=rectDigit.top+20+"px";
+
+    arrow=generateFlashingArrowSVG(dx,dy,true,arrow.duration+1);
+    this.divArrowLeft.nativeElement.innerHTML=arrow.svg;
+    this.divArrowLeft.nativeElement.style.left=rectInference.right+20+"px";
+    this.divArrowLeft.nativeElement.style.top=rectAi.bottom-20+"px";
   }
   onDoResetSentra()
   {
