@@ -53,7 +53,7 @@ constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef)
     let rectDigit=this.htmlCardDigit.nativeElement.getBoundingClientRect();
     let rectInference=this.htmlCardInference.nativeElement.getBoundingClientRect();
     let dx:number=rectAi.width/2+rectAi.left-rectDigit.right;
-    let dy:number=rectAi.top-(rectDigit.top);
+    let dy:number=rectAi.top-(rectDigit.top+20);
     let arrow:IArrowAnimation=generateFlashingArrowSVG(dx,dy,false,0);
     this.divArrowRight.nativeElement.innerHTML=arrow.svg;
     this.divArrowRight.nativeElement.style.left=rectDigit.right+20+"px";
@@ -62,7 +62,7 @@ constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef)
     arrow=generateFlashingArrowSVG(dx,dy,true,arrow.duration+1);
     this.divArrowLeft.nativeElement.innerHTML=arrow.svg;
     this.divArrowLeft.nativeElement.style.left=rectInference.right+20+"px";
-    this.divArrowLeft.nativeElement.style.top=rectAi.bottom-20+"px";
+    this.divArrowLeft.nativeElement.style.top=rectAi.bottom+10+"px";
   }
   onDoResetSentra()
   {

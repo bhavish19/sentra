@@ -182,7 +182,7 @@ export function generateFlashingArrowSVG(width:number,height:number,bDirectionLe
   {
     posY=65;
   }
-   while(posY<height)
+   while(posY<height-20)
   { 
   svg+=`
   <g filter="url(#neon-glow)">

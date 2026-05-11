@@ -14,9 +14,9 @@
     </mat-card>
     </div>
 </div>
-<div  [ngClass]="{'disabled-card': isAIDisabled}" class="custom-elevation"  style="grid-column: 2; grid-row: 1 / span 2;  display: flex; align-items: center; justify-content: center;">
- <div id="ai_widget">
- <app-ai-widget  [m_clientDashboard]="this"/>
+<div  [ngClass]="{'disabled-card': isAIDisabled}"  style="grid-column: 2; grid-row: 1 / span 2;  display: flex; align-items: center; justify-content: center;">
+ <div id="ai_widget" style="z-index: 20;" class="custom-elevation">
+ <app-ai-widget  [m_clientDashboard]="this" />
  </div>
 </div>
 <div style="grid-column: 1; grid-row: 2; display: flex; align-items: center; justify-content: center;padding: 10px;">
@@ -39,12 +39,12 @@
 <div #arrowRight style="position: fixed;top:200px;left:200px"></div>
 <div #arrowLeft style="position: fixed;top:200px;left:200px"></div>
 
-<div id="moving-digit-image-div" class="message"  style="display: none;position: fixed;top: 50%;right:{{posRight_MovingDigitImage}}px">
- <img id="moving-digit-image-image" style="width:56px;height: 56px;"
+<div id="moving-digit-image-div" class="message"  style="z-index: 30;display: none;position: fixed;top: 50%;right:{{posRight_MovingDigitImage}}px">
+ <img id="moving-digit-image-image" style="width:56px;height: 56px;";
         [src]="selectedImage?.image_b64"/>
 </div> 
 
-<div id="moving-result-div" class="message"  style="display: none;position: fixed;top: 50%;right:{{posRight_MovingDigitImage}}px">
+<div id="moving-result-div" class="message"  style="z-index: 30;display: none;position: fixed;top: 50%;right:{{posRight_MovingDigitImage}}px">
  <img id="moving-result-image" style="width:56px;height: 56px;"
         src=""/>
 </div> 
