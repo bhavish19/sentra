@@ -1,3 +1,8 @@
+# Non-Occlum image used by the legacy demonstrator entrypoint (Rust `sentra_node` + wait-for-it backend).
+# For **Python-only reproducible benchmarks** (no SGX, no Rust attester), prefer:
+#   sentra-node/docker/benchmark/Dockerfile.nosgx
+# and the Makefile/README in that directory.
+#
 #---------------------------------------------------------------------
 # BASE IMAGE
 #---------------------------------------------------------------------

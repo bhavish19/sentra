@@ -1,5 +1,6 @@
 # Attestation using Occlum
 
+For **containerised non-SGX Python benchmarks** (secure MNIST, reproducible pins), see `docker/benchmark/README.md`.
 
 ## Running the default occlum example
 

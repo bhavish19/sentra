@@ -1,0 +1,34 @@
+# Non-SGX benchmark with client distributor + optional post-training client-side eval.
+# Matches a common demonstrator-style layout without Occlum/SGX.
+
+headless: true
+host: "127.0.0.1"
+n-nodes: 4
+t: 1
+base-port: 9300
+batch-size: 64
+num-epochs: 2
+mnist-samples: 512
+learning-rate: 0.01
+seed: 2026
+loss-mode: softmax
+scale-factor: 65536
+field-size: 2305843009213693951
+softmax-temperature: 2.0
+grad-clip: 0.5
+logit-clip: 4.0
+exp-approx: pade22
+softmax-grad-mode: secure_approx
+explode-logit-threshold: 100.0
+loss-growth-threshold: 5.0
+grad-norm-threshold: 1500.0
+debug-numerics: true
+no-abort-on-instability: true
+membership-epoch: 0
+receive-dataset-shares-from-client: true
+dataset-source-node-id: 0
+dataset-distribution-timeout: 900.0
+start-client-distributor: true
+client-eval-after-training: true
+client-eval-samples: 64
+client-test-samples: 64

@@ -1,0 +1,26 @@
+# Non-SGX benchmark stack. Build context MUST be the repository root (directory that
+# contains `sentra-node/`). From this folder:
+#   docker compose -f docker-compose.yml build
+#   docker compose -f docker-compose.yml run --rm benchmark-nosgx
+#
+# Intel SGX / Occlum: use `sentra-node/docker/SentraNode.dockerfile` (demonstrator path).
+# When SGX is ready, add a second service with `profiles: ["sgx"]` and the same benchmark
+# entrypoint pattern as `benchmark-nosgx` (shared YAML configs under `configs/`).
+
+services:
+  benchmark-nosgx:
+    build:
+      context: ../../..
+      dockerfile: sentra-node/docker/benchmark/Dockerfile.nosgx
+    image: sentra-benchmark:nosgx
+    environment:
+      TF_CPP_MIN_LOG_LEVEL: "2"
+    volumes:
+      # Per-run logs + optional XLSX results land under node `logs/` by default.
+      - benchmark_logs:/workspace/node/logs
+    # Default CMD in Dockerfile runs nosgx-quick.yaml; override examples:
+    #   docker compose run --rm benchmark-nosgx --config /workspace/benchmark-configs/nosgx-standard.yaml
+    #   docker compose run --rm benchmark-nosgx bash   # shell inside image
+
+volumes:
+  benchmark_logs:
