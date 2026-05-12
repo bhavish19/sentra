@@ -1,0 +1,2 @@
+#!/bin/sh
+docker build -f SentraMLBenchmark.dockerfile -t sentra-ml-benchmark:latest ../..
