@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""
-Load a YAML benchmark profile and invoke start_all_nodes (headless multi-node MNIST).
-
-YAML format: flat mapping of CLI-style keys (hyphens), e.g.:
-  headless: true
-  n-nodes: 3
-  num-epochs: 1
-Booleans: true -> flag present, false -> omitted.
-"""
+"""Load a YAML benchmark profile and invoke start_all_nodes (headless multi-node MNIST)."""
 from __future__ import annotations
 
 import argparse
@@ -26,9 +18,9 @@ def _resolve_node_root() -> Path:
     p = Path("/workspace/node")
     if p.is_dir():
         return p
-    # Repo checkout: .../sentra-node/docker/benchmark/this_file.py
     here = Path(__file__).resolve()
-    candidate = here.parents[2] / "python" / "node"
+    # benchmarking/ml-benchmark/run_benchmark_from_config.py -> repo root = parents[2]
+    candidate = here.parents[2] / "sentra-node" / "python" / "node"
     if candidate.is_dir():
         return candidate
     raise SystemExit(
@@ -69,16 +61,11 @@ def config_to_argv(data: Dict[str, Any]) -> List[str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run SENTRA benchmark from YAML config")
-    parser.add_argument(
-        "--config",
-        "-c",
-        required=True,
-        help="Path to YAML file (see /workspace/benchmark-configs in the image)",
-    )
+    parser.add_argument("--config", "-c", required=True, help="Path to YAML profile")
     parser.add_argument(
         "extra",
         nargs=argparse.REMAINDER,
-        help="Additional args after -- are passed through to start_all_nodes.py",
+        help="Args after -- are passed through to start_all_nodes.py",
     )
     args = parser.parse_args()
     cfg_path = Path(args.config)

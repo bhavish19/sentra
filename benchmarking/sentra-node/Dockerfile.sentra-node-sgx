@@ -1,5 +1,6 @@
-#---------------------------------------------------------------------
-# BASE IMAGE
+# Packaged Occlum / SGX Sentra node (demonstrator).
+# Build from repository root:
+#   docker build -f benchmarking/sentra-node/Dockerfile.sentra-node-sgx -t <tag> .
 #---------------------------------------------------------------------
 ARG BASE_IMAGE=occlum/occlum:0.31.0-ubuntu22.04
 ARG BASE_IMAGE_RT=occlum/occlum:0.31.0-rt-ubuntu22.04
@@ -19,16 +20,14 @@ RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.a
 RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 RUN /miniconda/bin/conda create --prefix /python-occlum -y  python==3.10.0 numpy==1.26.4 pyyaml==6.0.3 tensorflow==2.11.0
 
-COPY ./sentra-node/docker/sentra-node-sbom.yaml /
+COPY ./benchmarking/sentra-node/sentra-node-sbom.yaml /
 RUN mkdir /sentra
 RUN mkdir /sentra/ml_training
 COPY ./sentra-node/python/node/ml_training /sentra/ml_training/
-COPY ./sentra-node/docker/training_config.yaml /sentra/
+COPY ./benchmarking/sentra-node/training_config.yaml /sentra/
 COPY ./sentra-node/python/node/run_mnist_batched_secure.py /sentra/
 COPY ./sentra-node/python/node/communication_test/InterNodeCommunicationTest.py /sentra/
 
-#Build attester
-#Just update crates.io (and cache it...)
 RUN mkdir -p /sentra-node/rust/src
 COPY ./sentra-node/rust/Cargo.toml /sentra-node/rust
 COPY ./sentra-node/rust/rust-toolchain.toml /sentra-node/rust
@@ -38,19 +37,16 @@ COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /sentra-node/rust/
 
 WORKDIR /sentra-node/rust
 RUN echo 'fn main() {}' > ./src/main.rs
-#RUN cargo update -p socket2@0.6.2 --precise 0.5.10
 RUN cargo update -p getrandom@0.4.2 --precise 0.3.4
-#RUN occlum-cargo update -p prost-types@0.13.5 --precise 0.12.3
 RUN cargo build --release
 
 COPY ./sentra-node/rust/src /sentra-node/rust/src
-#RUN rm rust-toolchain.toml
 RUN rm SentraBackend-GRPC-Services.proto
 COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /sentra-node/rust/
 
 RUN cargo build --release
 COPY ./demonstrator/ci/docker/config/pebble/pebble.cer /sentra-node/rust/
-COPY ./sentra-node/docker/enclave_run_script.sh /
+COPY ./benchmarking/sentra-node/enclave_run_script_sentra_node.sh /enclave_run_script.sh
 
 WORKDIR /sentra
 
@@ -74,9 +70,6 @@ RUN new_json="$(jq '.metadata.debuggable=false \
 RUN ENABLE_EDMM=Y occlum build
 RUN occlum package --debug occlum-instance.tar.gz
 
-#---------------------------------------------------------------------
-# TARGET IMAGE
-#---------------------------------------------------------------------
 FROM $BASE_IMAGE_RT AS sentra
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Berlin
@@ -86,8 +79,9 @@ RUN echo 'deb [arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu jam
 RUN apt-get update && apt-get install -y \
 sgx-aesm-service=2.21.100.1-jammy1 wait-for-it
 
-COPY ./sentra-node/docker/entrypoint.sh /
-COPY ./sentra-node/docker/sgx_sentra_qcnl.conf /etc/sgx_default_qcnl.conf
+COPY ./benchmarking/sentra-node/entrypoint-sentra-node.sh /entrypoint.sh
+COPY ./benchmarking/sentra-node/sgx_sentra_qcnl.conf /etc/sgx_default_qcnl.conf
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 COPY --from=sentra-builder /occlum-instance/occlum-instance.tar.gz /
 
@@ -96,4 +90,4 @@ RUN tar -xf occlum-instance.tar.gz
 RUN rm occlum-instance.tar.gz
 
 WORKDIR /occlum-instance
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]

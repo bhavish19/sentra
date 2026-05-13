@@ -1,0 +1,14 @@
+# Build context = repository root (../.. from this file).
+services:
+  ml-benchmark:
+    build:
+      context: ../..
+      dockerfile: benchmarking/ml-benchmark/Dockerfile.ml-benchmark
+    image: sentra-ml-benchmark:latest
+    environment:
+      TF_CPP_MIN_LOG_LEVEL: "2"
+    volumes:
+      - ml_benchmark_logs:/workspace/node/logs
+
+volumes:
+  ml_benchmark_logs:

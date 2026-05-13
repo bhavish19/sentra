@@ -1,7 +1,0 @@
-# Pinned runtime for reproducible non-SGX Docker benchmarks (Python 3.10, Ubuntu 22.04).
-# Bump versions deliberately when re-baselining results.
-tensorflow==2.15.1
-numpy==1.26.4
-PyYAML==6.0.1
-openpyxl==3.1.2
-psutil==5.9.8

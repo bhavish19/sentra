@@ -1,5 +1,6 @@
 #!/bin/bash
-NO_SGX=true
+#/opt/occlum/start_aesm.sh
+NO_SGX=false
 args=()
 
 for arg in "$@"; do
@@ -13,10 +14,12 @@ for arg in "$@"; do
     esac
 done
 
-set -- "${args[@]}" #Restore command line args but without -no_sgx
+set -- "${args[@]}"
+
+wait-for-it -t 60 sentra-backend:8888
 
 if ! $NO_SGX; then
     occlum run /bin/enclave_run_script.sh "$@"
 else
-    /python-occlum/bin/python "$@"
+    /bin/enclave_run_script.sh "$@"
 fi

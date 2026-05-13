@@ -1,1 +1,0 @@
-docker build -f SentraNode.dockerfile -t registry.tdp.trustworthy6g.net/tdp/sentra/sentra-sgx:latest ../..

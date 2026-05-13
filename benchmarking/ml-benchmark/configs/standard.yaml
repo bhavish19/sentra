@@ -1,4 +1,4 @@
-# Heavier non-SGX benchmark (longer wall time). Tune mnist-samples / num-epochs for paper numbers.
+# Medium benchmark (longer wall time).
 
 headless: true
 host: "127.0.0.1"

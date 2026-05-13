@@ -1,6 +1,8 @@
 # Attestation using Occlum
 
-For **containerised non-SGX Python benchmarks** (secure MNIST, reproducible pins), see `docker/benchmark/README.md`.
+For **containerised Python benchmarks** (YAML, Compose), see **`benchmarking/ml-benchmark/README.md`**.
+
+For **packaged Sentra node** demonstrator Dockerfiles (Occlum/SGX + NoSGX), see **`benchmarking/sentra-node/README.md`** and the index **`benchmarking/README.md`**.
 
 ## Running the default occlum example
 

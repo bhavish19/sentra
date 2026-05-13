@@ -1,10 +1,6 @@
-# Non-Occlum image used by the legacy demonstrator entrypoint (Rust `sentra_node` + wait-for-it backend).
-# For **Python-only reproducible benchmarks** (no SGX, no Rust attester), prefer:
-#   sentra-node/docker/benchmark/Dockerfile.nosgx
-# and the Makefile/README in that directory.
-#
-#---------------------------------------------------------------------
-# BASE IMAGE
+# Legacy demonstrator node (Rust `sentra_node` + wait-for-it), no Occlum package.
+# Build from repository root:
+#   docker build -f benchmarking/sentra-node/Dockerfile.sentra-node-nosgx -t <tag> .
 #---------------------------------------------------------------------
 ARG BASE_IMAGE=ubuntu:22.04
 FROM $BASE_IMAGE AS sentra-builder
@@ -31,11 +27,9 @@ COPY ./sentra-node/python/node/ml_training /bin/sentra/ml_training/
 COPY ./sentra-node/python/node/run_mnist_batched_secure.py /bin/sentra/
 COPY ./sentra-node/python/node/communication_test/InterNodeCommunicationTest.py /bin/sentra/
 
-COPY ./sentra-node/docker/training_config.yaml /etc/training_config.yaml
+COPY ./benchmarking/sentra-node/training_config.yaml /etc/training_config.yaml
 RUN chmod 644 /etc/training_config.yaml
 
-#Build attester
-#Just update crates.io (and cache it...)
 RUN mkdir -p /sentra-node/rust/src
 COPY ./sentra-node/rust/Cargo.toml /sentra-node/rust
 COPY ./sentra-node/rust/rust-toolchain.toml /sentra-node/rust
@@ -49,15 +43,15 @@ RUN cargo update -p getrandom@0.4.2 --precise 0.3.4
 RUN cargo build --release
 
 COPY ./sentra-node/rust/src /sentra-node/rust/src
-#RUN rm rust-toolchain.toml
 RUN rm SentraBackend-GRPC-Services.proto
 COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /sentra-node/rust/
 
 RUN cargo build --release
 COPY ./demonstrator/ci/docker/config/pebble/pebble.cer /etc/
-COPY ./sentra-node/docker/enclave_run_script.sh /bin/enclave_run_script.sh
-COPY ./sentra-node/docker/entrypoint.sh /
+COPY ./benchmarking/sentra-node/enclave_run_script_sentra_node.sh /bin/enclave_run_script.sh
+COPY ./benchmarking/sentra-node/entrypoint-sentra-node.sh /entrypoint.sh
 RUN cp /sentra-node/rust/target/release/sentra_node /bin/sentra_node
 RUN ln -s /python-occlum/bin/python /bin/python3
+RUN sed -i 's/\r$//' /entrypoint.sh /bin/enclave_run_script.sh && chmod +x /entrypoint.sh /bin/enclave_run_script.sh
 WORKDIR /
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]

@@ -1,5 +1,4 @@
-# Fast smoke benchmark (reviewers / CI). All parties run in one container (127.0.0.1).
-# No Intel SGX; no external backend required when using distribute-dataset-shares.
+# Fast smoke benchmark (reviewers / CI). All parties in one container (127.0.0.1).
 
 headless: true
 host: "127.0.0.1"

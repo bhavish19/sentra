@@ -1,5 +1,4 @@
-# Non-SGX benchmark with client distributor + optional post-training client-side eval.
-# Matches a common demonstrator-style layout without Occlum/SGX.
+# Client distributor + post-training client eval.
 
 headless: true
 host: "127.0.0.1"

@@ -17,7 +17,7 @@ x-sentra-core-sgx: &x-sentra-core-sgx
     <<: *x-sentra-base
     build:
       context: ../
-      dockerfile: ./sentra-node/docker/SentraNode.dockerfile
+      dockerfile: ./benchmarking/sentra-node/Dockerfile.sentra-node-sgx
     image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-sgx:latest
     devices:
       - "/dev/sgx_enclave:/dev/sgx_enclave"
@@ -29,7 +29,7 @@ x-sentra-core-no-sgx: &x-sentra-core-no-sgx
     <<: *x-sentra-base
     build:
       context: ../
-      dockerfile: ./sentra-node/docker/SentraNodeNoSGX.dockerfile
+      dockerfile: ./benchmarking/sentra-node/Dockerfile.sentra-node-nosgx
     image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-no-sgx:latest
 
 x-sentra-multi-node: &x-sentra-multi-node
