@@ -1,0 +1,118 @@
+<!-- ai-widget.component.html -->
+<mat-card class="ai-widget-card">
+  <mat-card-header>
+    <mat-card-title>Machine Learning-based Handwritten Digits Recognition</mat-card-title>
+    <mat-card-subtitle>Select a machine learning mode and execute each stage of the pipeline</mat-card-subtitle>
+  </mat-card-header>
+
+  <mat-card-content>
+
+    <!-- Mode Toggle -->
+    <div class="toggle-container">
+      <mat-button-toggle-group
+      hideSingleSelectionIndicator="true"
+        [(ngModel)]="mode"
+        (change)="onModeChange($event.value)"
+        aria-label="AI Mode"
+        class="mode-toggle">
+        <mat-button-toggle value="normal">
+          <mat-icon>memory</mat-icon>
+          Normal AI
+        </mat-button-toggle>
+        <mat-button-toggle value="privacy">
+          <mat-icon>lock</mat-icon>
+          Privacy-Preserving AI
+        </mat-button-toggle>
+      </mat-button-toggle-group>
+    </div>
+
+    <!-- ── Normal AI Pipeline ── -->
+    <ng-container *ngIf="mode === 'normal'">
+      <mat-stepper linear orientation="vertical" [selectedIndex]="selectedIndex" #normalStepper>
+
+        <!-- Custom icon for completed steps -->
+        <ng-template matStepperIcon="done">
+          <mat-icon class="step-done-icon">check</mat-icon>
+        </ng-template>
+
+        <mat-step
+          *ngFor="let step of normalSteps; let i = index"
+          [label]="step.label"
+          [completed]="isStepCompleted(i)"
+          editable="false">
+
+          <div class="step-info">
+            <mat-icon class="info-icon">info_outline</mat-icon>
+            <p>{{ step.info }}</p>
+          </div>
+
+          <div class="step-actions">
+            <button
+              mat-raised-button matStepperNext
+              color="primary"
+              class="pulse-btn"
+              *ngIf="!isStepCompleted(i)"
+              (click)="completeStep(i)">
+              {{ i === normalSteps.length - 1 ? 'Execute' : 'Next' }}
+              <mat-icon>arrow_forward</mat-icon>
+            </button>
+
+            <span class="done-badge" *ngIf="isStepCompleted(i)">
+              <mat-icon>check_circle</mat-icon> Done
+            </span>
+
+            <button mat-button *ngIf="isStepCompleted(2)" (click)="onRestart()">
+              Restart
+            </button>
+          </div>
+        </mat-step>
+
+      </mat-stepper>
+    </ng-container>
+
+    <!-- ── Privacy-Preserving AI Pipeline ── -->
+    <ng-container *ngIf="mode === 'privacy'">
+      <mat-stepper linear orientation="vertical" [selectedIndex]="selectedIndex" #privacyStepper>
+
+        <!-- Custom icon for completed steps -->
+        <ng-template matStepperIcon="done">
+          <mat-icon class="step-done-icon">check</mat-icon>
+        </ng-template>
+
+        <mat-step
+          *ngFor="let step of privacySteps; let i = index"
+          [label]="step.label"
+          [completed]="isStepCompleted(i)"
+          editable="false">
+
+          <div class="step-info">
+            <mat-icon class="info-icon">security</mat-icon>
+            <p>{{ step.info }}</p>
+          </div>
+
+          <div class="step-actions">
+            <button
+              mat-raised-button
+              color="accent"
+              class="pulse-btn"
+              *ngIf="!isStepCompleted(i)"
+              (click)="completeStep(i)">
+              {{ i === privacySteps.length - 1 ? 'Execute' : 'Next' }}
+              <mat-icon>arrow_forward</mat-icon>
+            </button>
+
+            <span class="done-badge" *ngIf="isStepCompleted(i)">
+              <mat-icon>check_circle</mat-icon> Done
+            </span>
+
+            <button mat-button *ngIf="isStepCompleted(3)" (click)="onRestart()">
+              Restart
+            </button>
+          </div>
+        </mat-step>
+
+      </mat-stepper>
+    </ng-container>
+
+  </mat-card-content>
+</mat-card>

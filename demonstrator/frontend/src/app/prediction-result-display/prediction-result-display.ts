@@ -49,14 +49,13 @@ export class PredictionResultDisplay implements OnInit {
   // Initialize the chart options
   initializeChart(): void {
     this.chartOptions = {
-      title: {
-        text: 'Prediction Probabilities',
-        left: 'center'
-      },
-      tooltip: {
-        trigger: 'item',
-        formatter: '{b}: {c}'
-      },
+      title: null, // Ensure no title is set
+    grid: {
+        top: 0,    // Remove space at the top
+        left: 0,   // Optional: Remove space on the left
+        right: 0,  // Optional: Remove space on the right
+        bottom: 0  // Optional: Remove space at the bottom
+    },
       yAxis: {
         type: 'category',
         data: ['9', '8', '7', '6', '5', '4', '3', '2', '1', '0'], // Digits 0-9

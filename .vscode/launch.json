@@ -11,8 +11,9 @@
             "program": "${workspaceFolder}/demonstrator/backend/sentra-backend.py",
             "args": ["-s","-c"],
             "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/demonstrator/backend",
             "env": {
-                    "PYTHONPATH": "${workspaceFolder}/sentra-node/python"
+                    "PYTHONPATH": "${workspaceFolder}/sentra-node/python/node"
                 }
         },
         {

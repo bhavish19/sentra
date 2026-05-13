@@ -69,9 +69,88 @@ export class RestService {
     return this.m_HttpClient.post('api/v1/postReset',null);
    }
 
+   doRemoteAttestation():Observable<Object>
+   {
+    return this.m_HttpClient.post('api/v1/postRemoteAttestation',null);
+   }
+
+    doCommitteeSelection():Observable<SentraNode[]>
+   {
+    return this.m_HttpClient.post<SentraNode[]>('api/v1/postCommitteeSelection',null);
+   }
+
+  internal_runMPC(bRunMPC:boolean):Observable<Object>
+   {
+    const payload = { doRunMPC: bRunMPC,
+      };
+    return this.m_HttpClient.post<Object>('api/v1/postRunMPC',payload);
+   }
+
+  doExecuteMPC():Observable<Object>
+   {
+    return this.internal_runMPC(true);
+   }
+
+  doStopMPC():Observable<Object>
+   {
+    return this.internal_runMPC(false);
+   }
+
+
+
+   doNodeSelection(node_id:string):Observable<Object>
+   {
+    return this.m_HttpClient.post('api/v1/postNodeSelection/'+node_id,null);
+   }
+
+   doImageUpload(img_b64:string,nodeID:string|null):Observable<Object>
+   {
+    if(nodeID===null)
+      {
+        nodeID="";
+      }
+    const payload = { image: img_b64,
+      node_id:nodeID
+      };
+    console.log("REST doImageUpload(): ",payload);  
+    return this.m_HttpClient.post<Object>('/api/v1/postImageUpload',payload);
+
+   }
+
+  doReceiveResult(img_b64:string,nodeID:string|null):Observable<Object>
+   {
+    if(nodeID===null)
+      {
+        nodeID="";
+      }
+    const payload = { 
+      result: img_b64,
+      node_id:nodeID
+      };
+    console.log("REST doReceiveResult(): ",payload);  
+    return this.m_HttpClient.post<Object>('/api/v1/postReceiveResult',payload);
+   }
+
+   doReceiveResultOnClient(img_b64:string,nodeID:string):Observable<Object>
+   {
+    const payload = { result: img_b64,
+      node_id:nodeID
+      };
+    return this.m_HttpClient.post<Object>('/api/v1/postReceiveResultOnClient',payload);
+   }
+
    doPrediction(index:number):Observable<InferenceResult>
    {
     return this.m_HttpClient.get<InferenceResult>('/api/v1/getPrediction/'+index);
+
+   }
+
+
+
+   doPredictionPixel(pixels:Float32Array):Observable<InferenceResult>
+   {
+     const payload = { pixels: Array.from(pixels) };
+    return this.m_HttpClient.post<InferenceResult>('/api/v1/postPredictionForPixel',payload);
 
    }
 

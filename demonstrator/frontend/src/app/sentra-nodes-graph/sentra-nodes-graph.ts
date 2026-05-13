@@ -26,11 +26,12 @@
  * this.graph.fitView();
  */
 
-import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, inject } from '@angular/core';
-import cytoscape, { Core, StylesheetCSS, NodeSingular } from 'cytoscape';
+import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
+import cytoscape, { Core, StylesheetCSS, NodeSingular, Position } from 'cytoscape';
 //import fcose from 'cytoscape-fcose';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import { NgZone } from '@angular/core';
+import { RestService } from '../../rest.service';
 
 @Component({
   selector: 'sentra-node-graph',
@@ -50,10 +51,13 @@ export class SentraNodeGraph implements AfterViewInit, OnDestroy {
   private existingServers = new Set<string>();
   private processCounter = 0;
 
+  uploadedImage:string|null=null;
+
+
   private static CLOUD_ICON="/images/icons/cloud.png";
-  private static  SERVER_ARM_ICON="/images/icons/cloud.svg";
-  private static  SERVER_INTEL_ICON="/images/icons/cloud.svg";
-  private static  SERVER_AMD_ICON="/images/icons/cloud.svg";
+  private static  SERVER_ARM_ICON="/images/icons/host-arm.png";
+  private static  SERVER_INTEL_ICON="/images/icons/host-intel.png";
+  private static  SERVER_AMD_ICON="/images/icons/host-amd.png";
   private static  PROCESS_ICON="/images/icons/sentra.png";
   private static layoutOptionsClouds={
           name: 'grid',
@@ -105,41 +109,7 @@ private static layoutOptions={
     cytoscape.use(coseBilkent);
       this.cy = cytoscape({
         container: this.cyContainer.nativeElement,
-        elements: [/*
-          {
-            data:
-            {
-              id: "A"
-            }
-          },
-          {
-          data:
-            {
-              id: "A1",
-              parent: "A"
-            }
-          },
-          {
-          data:
-            {
-              id: "A2",
-              parent: "A"
-            }
-          },
-          {
-            data:
-            {
-              id: "B"
-            }
-          },
-          {
-            data:
-            {
-              id: "B1",
-              parent: "B"
-            }
-          },*/
-        ],
+        elements: [],
         style: this.getStylesheet(),
         
       });
@@ -203,6 +173,8 @@ private static layoutOptions={
     this.cy.nodes("[type=='server'").layout(SentraNodeGraph.layoutOptions).run();
     this.cy.nodes("[type=='cloud'").layout(SentraNodeGraph.layoutOptionsClouds).run();*/
     this.cy.layout(SentraNodeGraph.layoutOptions).run();
+    this.cy.resize();
+    this.cy.style().update();
 //    this.cy.layout(SentraNodeGraph.layoutOptionsGrid).run();
   }
 
@@ -212,6 +184,22 @@ private static layoutOptions={
     }
   }
 
+  constructor(private m_RestService: RestService,private cdr: ChangeDetectorRef)
+  {
+  }
+  public clear():void
+  {
+    this.cy.destroy();
+    this.cy = cytoscape({
+        container: this.cyContainer.nativeElement,
+        elements: [],
+        style: this.getStylesheet(),
+        
+      });
+
+ //   this.cy.remove(this.cy.elements());
+
+  }
   /**
    * Add a process to the topology.
    * @param processName Name of the process (e.g., 'nginx')
@@ -333,6 +321,224 @@ private static layoutOptions={
     }
   }
 
+
+  stopPulseBorder(node_id: string): void {
+  const node = this.cy.getElementById(node_id);
+    node.stop();
+    node.removeClass('pulse-border');
+  }
+  // Function to create a pulsing border effect
+  internal_pulseBorder(node:NodeSingular):void
+  {
+  node.animate(
+    {
+      style: { 'overlay-padding': 6 } // Increase overlay padding
+    },
+    {
+      duration: 500, // Animation duration in milliseconds
+      complete: () => {
+        node.animate(
+          {
+            style: { 'overlay-padding': 2 } // Reset overlay padding
+          },
+          {
+            duration: 500, // Animation duration in milliseconds
+            complete: () => {
+              this.internal_pulseBorder(node); // Recursively call to continue pulsing
+            }
+          }
+        );
+      }
+    }
+  );
+
+  }
+ pulseBorder(node_id: string): void {
+  const node = this.cy.getElementById(node_id);
+    node.addClass('pulse-border');
+    this.internal_pulseBorder(node);
+    
+}
+
+addEdge(nodeid1:string,nodeid2:string)
+{
+  let edgeID:string='edge-'+nodeid1+"-"+nodeid2;
+this.cy.add({
+  group: 'edges', // Specify that this is an edge
+  data: {
+    id: edgeID, // Unique ID for the edge
+    source: nodeid1, // ID of the source node
+    target: nodeid2  // ID of the target node
+  }
+});
+}
+
+
+
+getPositionForNode(node_id:string):Position
+{
+  const node=this.cy.$(`#${node_id}`);
+  return node.renderedPosition();
+}
+
+animateCircle(nodeid1:string,nodeid2:string,bAnimate:boolean) {
+    let edgeID:string='edge-'+nodeid1+"-"+nodeid2;
+    let circleID="moving-circle-"+edgeID;
+if(!bAnimate)
+{
+  const mcircle = document.getElementById(circleID);
+  mcircle?.parentNode?.removeChild(mcircle);
+  return;
+}
+  const edge = this.cy.$(`#${edgeID}`);
+  const mcircle = document.getElementById('moving-circle');
+  if(mcircle===null)
+    return;
+  const circle=mcircle.cloneNode(false) as HTMLElement;
+  circle.id=circleID;
+  mcircle.insertAdjacentElement('afterend', circle);
+
+  // Get the edge's source and target positions
+  const sourcePos = edge.renderedSourceEndpoint();
+  const targetPos = edge.renderedTargetEndpoint();
+
+  // Show the circle
+  circle.style.display = 'block';
+
+  // Animate the circle along the edge
+  let forward = true;
+
+  console.log("Start:",sourcePos);
+  console.log("End:",targetPos);
+  circle.style.left=(sourcePos.x-5)+"px";
+  circle.style.top=(sourcePos.y-5)+"px";
+  let dx:number=targetPos.x-sourcePos.x;
+  let dy:number=targetPos.y-sourcePos.y;
+  function move() {
+      if(circle===null)
+    return;
+
+  const animation = circle.animate(
+      [
+        { transform: 'translate(0px,0px)' },
+        { transform: 'translate('+dx+'px,'+dy+'px)' },
+
+      ],
+      {
+        duration: 2000,
+        easing: 'linear',
+        iterations:Infinity,
+        direction:'alternate'
+      }
+    );
+    animation.addEventListener('animationiteration',
+     (event) =>  {
+console.log("loop");
+    });
+  
+  }
+  move();
+}
+
+
+ doImageUpload(image:string,selectedNode:string)
+  {
+    console.log("Graph - doImageUpload() for node: ",selectedNode);
+    this.uploadedImage=image;
+  const divImgOrig = document.getElementById('moving-digit-image-div');
+  if(divImgOrig===null)
+    return;
+ const hmtlImgOrig:HTMLImageElement|null = document.getElementById('moving-digit-image-image') as HTMLImageElement;
+  if(hmtlImgOrig===null)
+    return;
+  const divImg=divImgOrig.cloneNode(false) as HTMLElement;
+  
+  divImgOrig.insertAdjacentElement('afterend', divImg);
+  const hmtlImg=hmtlImgOrig.cloneNode(false) as HTMLIFrameElement
+  divImg.appendChild(hmtlImg);
+
+  hmtlImg.src=image;
+  divImg.style.display = 'block';
+
+
+    this.cdr.detectChanges();
+   
+    let pos:Position=this.getPositionForNode(selectedNode);
+    console.log("Node posistion: ",pos);
+    let dx:number=pos.x-28;
+    let dy:number=pos.y-(divImg.getBoundingClientRect().top-56);
+
+
+
+
+  const animation:Animation = divImg.animate(
+      [
+        { transform: 'translate(0px,0px)' },
+        { transform: 'translate('+(dx)+'px,'+dy+'px)' },
+
+      ],
+      {
+        duration: 2000,
+        easing: 'linear',
+        iterations:1,
+      }
+    );
+  animation.onfinish=(e)=>
+  {
+ if(divImg.parentNode)
+      divImg.parentNode.removeChild(divImg);  };
+    
+}
+
+
+
+ doResultDownload(image:string,selectedNode:string,bPlain:boolean)
+  {
+    console.log("Graph - doResultDownload() for node: ",selectedNode);
+    const divImgOrig = document.getElementById('moving-result-div');
+    if(divImgOrig===null)
+      return;
+    const hmtlImgOrig:HTMLImageElement|null = document.getElementById('moving-result-image') as HTMLImageElement;
+    if(hmtlImgOrig===null)
+      return;
+    const divImg=divImgOrig.cloneNode(false) as HTMLElement;
+  
+    divImgOrig.insertAdjacentElement('afterend', divImg);
+    const hmtlImg=hmtlImgOrig.cloneNode(false) as HTMLIFrameElement
+    divImg.appendChild(hmtlImg);
+
+    hmtlImg.src=image;
+    divImg.style.display = 'block';
+    this.cdr.detectChanges();
+   
+    let pos:Position=this.getPositionForNode(selectedNode);
+    let dx:number=pos.x-28;
+    let dy:number=pos.y-(divImg.getBoundingClientRect().top-56);
+
+    const animation:Animation = divImg.animate(
+      [
+        { transform: 'translate('+(dx)+'px,'+dy+'px)' },
+        { transform: 'translate(0px,0px)' },
+
+      ],
+      {
+        duration: 2000,
+        easing: 'linear',
+        iterations:1,
+      }
+    );
+    animation.onfinish=(e)=>
+    {
+      if(divImg.parentNode)
+            divImg.parentNode.removeChild(divImg);
+      if(bPlain) 
+        selectedNode="";   
+      this.m_RestService.doReceiveResultOnClient(image,selectedNode).subscribe();  
+    };   
+  }
+
+
+
   /**
    * Cytoscape stylesheet for all node types and overlays.
    */
@@ -361,7 +567,7 @@ private static layoutOptions={
           'padding': '40px',
           'z-index': 1,
                     'compound-sizing-wrt-labels':'include',
-                    'text-margin-y':-20,
+                    'text-margin-y':-25,
 
         }
       },
@@ -373,6 +579,9 @@ private static layoutOptions={
           'background-color': '#e8f5e9',
           'border-width': 3,
           'border-color': '#388e3c',
+          'background-image': SentraNodeGraph.SERVER_ARM_ICON,
+          'background-fit': 'cover',
+          'background-opacity': 1,
           'label': 'data(label)',
           'font-size': 16,
           'font-weight': 'bold',
@@ -392,13 +601,16 @@ private static layoutOptions={
           'shape': 'roundrectangle',
           'background-color': '#e3f2fd',
           'border-width': 3,
-          'border-color': '#1976d2',
+          'border-color': '#04407f',
+          'background-image': SentraNodeGraph.SERVER_INTEL_ICON,
+          'background-fit': 'cover',
+          'background-opacity': 1,
           'label': 'data(label)',
           'font-size': 16,
           'font-weight': 'bold',
           'text-valign': 'bottom',
           'text-halign': 'center',
-          'color': '#1976d2',
+          'color': '#04407f',
           'padding': '24px',
           'z-index': 2,
                     'text-margin-y':5,
@@ -412,6 +624,9 @@ private static layoutOptions={
           'background-color': '#fff3e0',
           'border-width': 3,
           'border-color': '#f57c00',
+          'background-image': SentraNodeGraph.SERVER_AMD_ICON,
+          'background-fit': 'cover',
+          'background-opacity': 1,
           'label': 'data(label)',
           'font-size': 16,
           'font-weight': 'bold',
@@ -432,8 +647,9 @@ private static layoutOptions={
           'width': 48,
           'height': 48,
           'background-color': '#fffde7',
-          'border-width': 2,
+          'border-width': 4,
           'border-color': '#fbc02d',
+          
           'background-image': SentraNodeGraph.PROCESS_ICON,
           'background-fit': 'cover',
           'background-opacity': 1,
@@ -461,7 +677,7 @@ private static layoutOptions={
         css: {
 //          'box-shadow': '0 0 16px 8px #1976d2',
           'border-color': '#0ee232',
-          'border-width': 6
+          'border-width': 4
         }
       },
       {
@@ -469,7 +685,7 @@ private static layoutOptions={
         css: {
 //          'box-shadow': '0 0 16px 8px #1976d2',
           'border-color': '#e11013',
-          'border-width': 6
+          'border-width': 4
         }
 
       },
@@ -482,6 +698,15 @@ private static layoutOptions={
           'text-background-padding':'2px'
         }
       },
+      {
+        selector: '.pulse-border',
+        css:{
+          'overlay-color': '#08deff', // Color of the pulsing effect
+          'overlay-shape':'ellipse',
+          'overlay-opacity': 0.5, // Transparency of the overlay
+          'overlay-padding': 0 ,// Initial overlay padding
+        }
+      }
 
     ];
   }
