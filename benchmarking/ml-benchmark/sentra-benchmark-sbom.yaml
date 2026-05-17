@@ -1,0 +1,27 @@
+includes:
+  - base.yaml
+targets:
+  - target: /bin
+    createlinks:
+      - src: /opt/python-occlum/bin/python
+        linkname: python3
+  - target: /opt
+    copy:
+      - dirs:
+          - /python-occlum
+  - target: /bin
+    copy:
+      - dirs:
+          - /workspace
+
+  - target: /bin
+    copy:
+     - files:
+        - /bin/enclave_run_script.sh
+
+  - target: /bin
+    copy:
+     - files:
+        - /opt/occlum/toolchains/bash/glibc/bash
+        - /opt/occlum/toolchains/busybox/glibc/busybox
+

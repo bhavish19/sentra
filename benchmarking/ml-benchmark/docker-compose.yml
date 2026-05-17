@@ -10,5 +10,15 @@ services:
     volumes:
       - ml_benchmark_logs:/workspace/node/logs
 
+  ml-benchmark-sgx:
+    build:
+      context: ../..
+      dockerfile: benchmarking/ml-benchmark/Dockerfile.ml-benchmark.sgx
+    image: sentra-ml-benchmark-sgx:latest
+    environment:
+      TF_CPP_MIN_LOG_LEVEL: "2"
+    volumes:
+      - ml_benchmark_logs:/workspace/node/logs
+
 volumes:
   ml_benchmark_logs:
