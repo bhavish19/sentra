@@ -47,8 +47,11 @@ RUN new_json="$(jq '.metadata.debuggable=false \
     |.resource_limits.kernel_space_heap_size = "1MB" \
     |.resource_limits.kernel_space_heap_max_size = "512MB" \
     |.resource_limits.max_num_of_threads = 64 \
+    |.mount +=[{"target":"/workspace/node/logs","type":"hostfs","source":"/workspace/node/logs"}] \
     |.env.default += ["PYTHONHOME=/opt/python-occlum", "OMP_NUM_THREADS=1",  "PATH=/opt/python-occlum/bin:/bin:/usr/bin"]' Occlum.json)" \
     && echo "${new_json}" > Occlum.json
+
+#    
 
 RUN ENABLE_EDMM=Y occlum build
 RUN occlum package --debug occlum-instance.tar.gz

@@ -13,7 +13,9 @@ targets:
     copy:
       - dirs:
           - /workspace
-
+  - target: /workspace/node
+    mkdirs:
+      - logs
   - target: /usr/local/bin
     copy:
      - files:
@@ -22,10 +24,6 @@ targets:
     copy:
      - files:
         - /bin/enclave_run_script.sh
-
-  - target: /bin
-    copy:
-     - files:
         - /opt/occlum/toolchains/bash/glibc/bash
         - /opt/occlum/toolchains/busybox/glibc/busybox
 
