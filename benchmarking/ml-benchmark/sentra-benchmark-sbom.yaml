@@ -9,11 +9,15 @@ targets:
     copy:
       - dirs:
           - /python-occlum
-  - target: /bin
+  - target: /
     copy:
       - dirs:
           - /workspace
 
+  - target: /usr/local/bin
+    copy:
+     - files:
+        - /usr/local/bin/run_benchmark_from_config.py
   - target: /bin
     copy:
      - files:

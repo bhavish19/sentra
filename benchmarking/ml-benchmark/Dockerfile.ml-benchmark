@@ -40,6 +40,8 @@ COPY benchmarking/ml-benchmark/run_benchmark_from_config.py /usr/local/bin/run_b
 COPY benchmarking/ml-benchmark/configs/ /workspace/benchmark-configs/
 COPY benchmarking/ml-benchmark/entrypoint-ml-benchmark.sh /entrypoint.sh
 COPY benchmarking/ml-benchmark/enclave_run_script_ml_benchmark.sh /bin/enclave_run_script.sh
+
+RUN ln -s /python-occlum/bin/python /bin/python3
 RUN chmod +x /usr/local/bin/run_benchmark_from_config.py /entrypoint.sh /bin/enclave_run_script.sh \
     && sed -i 's/\r$//' /entrypoint.sh /bin/enclave_run_script.sh /usr/local/bin/run_benchmark_from_config.py
 

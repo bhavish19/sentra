@@ -9,8 +9,9 @@ if [[ "${1:-}" == "bash" || "${1:-}" == "sh" ]]; then
   exec "$@"
 fi
 
-if [[ "${SENTRA_OCCLUM_RUN:-}" == "1" ]]; then
-  exec occlum run /bin/enclave_run_script.sh "$@"
+if [[ "${1:-}" == "sgx" ]]; then
+  cd /occlum-instance
+  exec occlum run /bin/enclave_run_script.sh $2 $3
 fi
 
 if [[ "${1:-}" == *.py ]]; then

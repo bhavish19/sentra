@@ -10,6 +10,7 @@ help:
 	@echo "  make build-ml          - sentra-ml-benchmark:latest"
 	@echo "  make build-ml-sgx          - sentra-ml-benchmark-sgx:latest"
 	@echo "  make run-quick|run-standard|run-with-client"
+	@echo "  make sgx-run-quick|sgx-run-standard|sgx-run-with-client"
 	@echo "  make shell-ml"
 	@echo "  make shell-ml-sgx"
 	@echo "  make build-sentra-sgx  - ../sentra-node/ Occlum image (long build)"
@@ -28,6 +29,15 @@ run-standard:
 
 run-with-client:
 	$(COMPOSE) run --rm ml-benchmark --config /workspace/benchmark-configs/with-client.yaml
+
+sgx-run-quick:
+	$(COMPOSE) run --rm ml-benchmark-sgx sgx --config /workspace/benchmark-configs/quick.yaml
+
+sgx-run-standard:
+	$(COMPOSE) run --rm ml-benchmark-sgx sgx  --config /workspace/benchmark-configs/standard.yaml
+
+sgx-run-with-client:
+	$(COMPOSE) run --rm ml-benchmark-sgx sgx --config /workspace/benchmark-configs/with-client.yaml
 
 shell-ml:
 	$(COMPOSE) run --rm ml-benchmark bash

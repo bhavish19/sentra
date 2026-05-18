@@ -10,6 +10,9 @@ from typing import Any, Dict, List
 
 import yaml
 
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
 
 def _resolve_node_root() -> Path:
     env = (os.environ.get("SENTRA_NODE_ROOT") or "").strip()
@@ -60,6 +63,7 @@ def config_to_argv(data: Dict[str, Any]) -> List[str]:
 
 
 def main() -> None:
+    print("Starting SENTRA Benchmark...",flush=True)
     parser = argparse.ArgumentParser(description="Run SENTRA benchmark from YAML config")
     parser.add_argument("--config", "-c", required=True, help="Path to YAML profile")
     parser.add_argument(
@@ -68,15 +72,17 @@ def main() -> None:
         help="Args after -- are passed through to start_all_nodes.py",
     )
     args = parser.parse_args()
+    print("Will use config:",args.config,flush=True)
     cfg_path = Path(args.config)
     if not cfg_path.is_file():
         raise SystemExit(f"Config not found: {cfg_path}")
 
+    print("Try to load config:",args.config)
     with cfg_path.open("r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
     if not isinstance(raw, dict):
         raise SystemExit("YAML root must be a mapping")
-
+    print("Loaded config...")
     argv = config_to_argv(raw)
     extra = list(args.extra)
     if extra and extra[0] == "--":
@@ -88,6 +94,7 @@ def main() -> None:
     old = sys.argv
     try:
         sys.argv = [str(Path(start_all_nodes.__file__).resolve())] + argv
+        print("Will start all nodes...",flush=True)
         start_all_nodes.main()
     finally:
         sys.argv = old

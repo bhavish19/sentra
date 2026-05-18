@@ -62,9 +62,7 @@ RUN echo 'deb [arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu jam
 RUN apt-get update && apt-get install -y \
 sgx-aesm-service=2.21.100.1-jammy1
 
-COPY ./benchmarking/sentra-node/entrypoint-sentra-node.sh /entrypoint.sh
-COPY ./benchmarking/sentra-node/sgx_sentra_qcnl.conf /etc/sgx_default_qcnl.conf
-RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
+COPY --from=sentra-builder /entrypoint.sh /
 
 COPY --from=sentra-builder /occlum-instance/occlum-instance.tar.gz /
 
