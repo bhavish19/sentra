@@ -111,7 +111,7 @@ getFileNameWithoutExtension(path: string): string {
 
 showInferenceResult(inferenceResult:InferenceResult)
 {
-      console.log(inferenceResult);
+    console.log(inferenceResult);
     this.predictionResult=inferenceResult.predictedValue;
     this.predictionProbabilities=this.getClassificationLikelihoods(inferenceResult.classificationResults);
     this.cdr.detectChanges();
@@ -146,9 +146,20 @@ if(this.selectedImage.index!=null)
 }
 else if(this.selectedImage.image_data!=null)
 {
+  console.log("Do Inference for Handwritten Image");
   this.m_RestService.doPredictionPixel(this.selectedImage.image_data).subscribe((inferenceResult)=>
   {
-   this.showInferenceResult(inferenceResult);
+    this.m_InferenceResult=inferenceResult;
+    console.log("Inference result is now: ",this.m_InferenceResult);
+    if(bPlain)
+    {
+      let imgResult:string|null=generateBase64Image(inferenceResult.predictedValue);
+      if(imgResult!=null)
+        this.m_RestService.doReceiveResult(imgResult,"").subscribe();
+      else
+        this.showInferenceResult(inferenceResult);
+    }else{
+   this.showInferenceResult(inferenceResult);}
   });
 }
 }
