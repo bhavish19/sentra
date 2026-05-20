@@ -13,6 +13,9 @@ targets:
     copy:
       - dirs:
           - /workspace
+      - files:
+        - /mnist.npz
+
   - target: /workspace/node
     mkdirs:
       - logs
@@ -30,3 +33,7 @@ targets:
     copy:
      - files:
         - /mnist.npz
+  - target: /etc/ssl
+    copy:
+     - dirs:
+        - /etc/ssl/certs

@@ -42,6 +42,7 @@ COPY benchmarking/ml-benchmark/entrypoint-ml-benchmark.sh /entrypoint.sh
 COPY benchmarking/ml-benchmark/enclave_run_script_ml_benchmark.sh /bin/enclave_run_script.sh
 
 COPY ./demonstrator/backend/resources/mnist.npz /root/.keras/datasets/mnist.npz
+COPY ./demonstrator/backend/resources/mnist.npz /mnist.npz
 
 
 #RUN ln -s /python-occlum/bin/python /bin/python3
