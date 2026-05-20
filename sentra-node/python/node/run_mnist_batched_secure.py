@@ -43,9 +43,12 @@ from ml_training.batched_runtime_helpers import (
 from ml_training.sentra_kvs import put as kvs_put, get_batch as kvs_get_batch, key_data_sample_split
 from ml_training.weight_versioning import put_weights_versioned
 from ml_training.kvs import KVSCluster
+
+from ml_training.util import loadMNISTDataset
+
 from tensorflow import keras
 def load_mnist_data(max_samples=None):
-    (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
+    (x_train, y_train), (x_test, y_test) = loadMNISTDataset()  #keras.datasets.mnist.load_data()
     x_train = x_train.reshape(-1, 784).astype("float32") / 255.0
     x_test = x_test.reshape(-1, 784).astype("float32") / 255.0
     if max_samples:
