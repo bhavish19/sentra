@@ -26,4 +26,7 @@ targets:
         - /bin/enclave_run_script.sh
         - /opt/occlum/toolchains/bash/glibc/bash
         - /opt/occlum/toolchains/busybox/glibc/busybox
-
+  - target: /root/.keras/datasets
+    copy:
+     - files:
+        - /mnist.npz

@@ -21,6 +21,7 @@ RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.a
 RUN /miniconda/bin/conda create --prefix /python-occlum -y  python==3.10.0 numpy==1.26.4 pyyaml==6.0.3 tensorflow==2.11.0
 
 COPY ./benchmarking/ml-benchmark/sentra-benchmark-sbom.yaml /
+COPY ./demonstrator/backend/resources/mnist.npz /mnist.npz
 
 RUN mkdir -p /workspace/node /workspace/client
 COPY sentra-node/python/node/ /workspace/node/
@@ -51,7 +52,7 @@ RUN new_json="$(jq '.metadata.debuggable=false \
     |.env.default += ["PYTHONHOME=/opt/python-occlum", "OMP_NUM_THREADS=1",  "PATH=/opt/python-occlum/bin:/bin:/usr/bin"]' Occlum.json)" \
     && echo "${new_json}" > Occlum.json
 
-#    
+
 
 RUN ENABLE_EDMM=Y occlum build
 RUN occlum package --debug occlum-instance.tar.gz
