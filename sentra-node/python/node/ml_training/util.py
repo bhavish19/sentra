@@ -9,7 +9,15 @@ from typing import Tuple
 import numpy as np
 
 _DOCKER_PATH = Path("/mnist.npz")
-_KERAS_CACHE_PATH = Path.home() / ".keras" / "datasets" / "mnist.npz"
+_OCCLUM_KERAS_PATH = Path("/root/.keras/datasets/mnist.npz")
+
+
+def _optional_home_keras_path() -> Path | None:
+    """Keras cache under $HOME; skipped when HOME is unset (e.g. some Occlum runs)."""
+    try:
+        return Path.home() / ".keras" / "datasets" / "mnist.npz"
+    except RuntimeError:
+        return None
 
 
 def _repo_resource_paths() -> list[Path]:
@@ -21,6 +29,15 @@ def _repo_resource_paths() -> list[Path]:
     return []
 
 
+def _search_paths() -> list[Path]:
+    paths = [_DOCKER_PATH, _OCCLUM_KERAS_PATH]
+    home_keras = _optional_home_keras_path()
+    if home_keras is not None:
+        paths.append(home_keras)
+    paths.extend(_repo_resource_paths())
+    return paths
+
+
 def resolve_mnist_npz_path() -> Path:
     override = os.environ.get("MNIST_NPZ_PATH", "").strip()
     if override:
@@ -29,16 +46,16 @@ def resolve_mnist_npz_path() -> Path:
             raise FileNotFoundError(f"MNIST_NPZ_PATH is set but file not found: {p}")
         return p
 
-    for p in (_DOCKER_PATH, _KERAS_CACHE_PATH, *_repo_resource_paths()):
+    for p in _search_paths():
         if p.is_file():
             return p
 
-    searched = ", ".join(str(c) for c in (_DOCKER_PATH, _KERAS_CACHE_PATH, *_repo_resource_paths()))
+    searched = ", ".join(str(c) for c in _search_paths())
     raise FileNotFoundError(
         "Local MNIST not found (downloads are disabled). "
         "Use Docker (mnist.npz baked at /mnist.npz), set MNIST_NPZ_PATH, "
-        "copy demonstrator/backend/resources/mnist.npz to ~/.keras/datasets/mnist.npz, "
-        f"or place it under demonstrator/backend/resources/. Searched: {searched}"
+        "or place demonstrator/backend/resources/mnist.npz in the image. "
+        f"Searched: {searched}"
     )
 
 
