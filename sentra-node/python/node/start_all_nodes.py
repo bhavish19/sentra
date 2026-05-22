@@ -380,12 +380,50 @@ def _run_headless(args) -> None:
     if m_client:
         client_acc = float(m_client[-1])
 
+    client_eval = bool(getattr(args, "client_eval_after_training", False)) and client_proc is not None
+
+    node_logs: Dict[int, str] = {}
+    for nid in return_codes:
+        node_logs[int(nid)] = _safe_read_log(run_dir / f"node_{nid}.log")
+
+    from ml_training.benchmark_stats import summarize_run_logs
+
+    bench = summarize_run_logs(
+        node_logs=node_logs,
+        client_log=client_text,
+        wall_sec=duration,
+    )
+    timings: Dict[str, float] = bench.get("timings") or {}
+
     print("\nRun summary:")
     print(f"  status: {status}")
-    print(f"  final_epoch_acc_pct: {m1.get('final_epoch_acc_pct', 0.0)}")
-    print(f"  final_epoch_loss: {m1.get('final_epoch_loss', 0.0)}")
-    print(f"  reconstructed_acc: {client_acc if client_acc is not None else ''}")
-    print(f"  duration_sec: {duration:.2f}")
+    if client_eval:
+        if client_acc is not None:
+            print(f"  final_accuracy_pct: {client_acc:.2f}")
+        else:
+            print("  final_accuracy_pct: (not found in client_distributor.log)")
+        if m1.get("final_epoch_acc_pct") is not None:
+            print(f"  node_1_epoch_acc_pct: {m1.get('final_epoch_acc_pct')}")
+            if m1.get("final_epoch_loss") is not None:
+                print(f"  node_1_epoch_loss: {m1.get('final_epoch_loss')}")
+    else:
+        print(f"  final_accuracy_pct: {m1.get('final_epoch_acc_pct', 0.0)}")
+        if m1.get("final_epoch_loss") is not None:
+            print(f"  final_epoch_loss: {m1.get('final_epoch_loss')}")
+    print(f"  wall_clock_sec: {duration:.2f}")
+    if bench.get("peak_rss_mb") is not None:
+        print(f"  peak_rss_mb: {float(bench['peak_rss_mb']):.2f}")
+    for key in sorted(timings.keys()):
+        print(f"  {key}: {float(timings[key]):.2f}")
+    train_parts = [
+        float(v)
+        for k, v in timings.items()
+        if k.endswith("_training_sec") or k.endswith("_training") or k == "training_sec"
+    ]
+    if train_parts and duration > 0:
+        train_s = max(train_parts)
+        overhead_pct = max(0.0, 100.0 * (float(duration) - train_s) / float(duration))
+        print(f"  orchestration_overhead_pct: {overhead_pct:.1f}")
     print(f"  logs: {run_dir}")
 
     if bool(getattr(args, "record_results_xlsx", "")):
@@ -405,7 +443,9 @@ def _run_headless(args) -> None:
             "scale_factor": int(args.scale_factor),
             "softmax_temperature": float(args.softmax_temperature),
             "seed": int(args.seed),
-            "final_epoch_acc_pct": m1.get("final_epoch_acc_pct", ""),
+            "final_epoch_acc_pct": (
+                client_acc if client_eval and client_acc is not None else m1.get("final_epoch_acc_pct", "")
+            ),
             "final_epoch_loss": m1.get("final_epoch_loss", ""),
             "reconstructed_acc": client_acc if client_acc is not None else "",
             "log_dir": str(run_dir),

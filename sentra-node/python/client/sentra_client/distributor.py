@@ -203,6 +203,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    from ml_training.benchmark_stats import PeakMemoryTracker, log_benchmark
+
+    _mem = PeakMemoryTracker()
+    _mem.sample()
+    _client_run_t0 = time.time()
+
     me = MembershipEpochScope(int(args.membership_epoch))
 
     random.seed(args.seed)
@@ -333,7 +339,15 @@ def main() -> None:
                 print(f"Client {client_node_id}: distributed {split_name} sample {idx + 1}/{n_split}")
 
     print("Client distribution complete: dataset shares sent to all nodes.")
-    print(f"Client Distribution Time: {time.time() - _t_dist0:.6f}s")
+    _dist_sec = float(time.time() - _t_dist0)
+    print(f"Client Distribution Time: {_dist_sec:.6f}s")
+    log_benchmark(
+        role="client",
+        phase="distribution",
+        wall_sec=_dist_sec,
+        memory=_mem,
+        extra={"train_samples": n_train, "test_samples": n_test},
+    )
 
     if args.collect_client_eval:
         _t_eval0 = time.time()
@@ -388,9 +402,23 @@ def main() -> None:
         else:
             acc = float(correct) / float(max(1, n_eval))
             print(f"Client Final Accuracy ({n_eval} samples): {acc*100:.2f}%")
-        print(f"Client Eval Time: {time.time() - _t_eval0:.6f}s")
+        _eval_sec = float(time.time() - _t_eval0)
+        print(f"Client Eval Time: {_eval_sec:.6f}s")
+        log_benchmark(
+            role="client",
+            phase="eval",
+            wall_sec=_eval_sec,
+            memory=_mem,
+            extra={"eval_samples": n_eval},
+        )
 
         network.barrier(me.barrier_tag("client_eval_final_done"), timeout=_barrier_timeout(float(args.eval_timeout)))
 
+    log_benchmark(
+        role="client",
+        phase="total",
+        wall_sec=float(time.time() - _client_run_t0),
+        memory=_mem,
+    )
     time.sleep(0.5)
     network.stop()

@@ -1681,7 +1681,14 @@ def main():
         raise ValueError("--accum-steps must be >= 1")
     if bool(args.packed_forward_native) and not bool(args.packed_end2end):
         raise ValueError("--packed-forward-native requires --packed-end2end")
-    
+
+    from ml_training.benchmark_stats import PeakMemoryTracker, log_benchmark
+
+    _mem = PeakMemoryTracker()
+    _mem.sample()
+    _node_run_t0 = time.time()
+    _dataset_prep_sec = 0.0
+
     print(f"Node {args.node_id} starting. Dataset: MNIST. Model: BATCHED MLP (784-128-10)")
     print(f"Membership epoch e={me.e} (MPC/barrier prefix m{me.e}_)")
     print(f"Fixed-point scale: {SCALE}, softmax temperature: {args.softmax_temperature}, grad clip: {args.grad_clip}, logit clip: {args.logit_clip}, grad mode: {args.softmax_grad_mode}")
@@ -1830,7 +1837,8 @@ def main():
             )
         )
         print(f"Node {args.node_id}: dataset shares ready (train={len(train_x_shares)}, test={len(test_x_shares)}).")
-        print(f"Dataset Share Prep Time: {time.time() - _t_dataset0:.6f}s")
+        _dataset_prep_sec = float(time.time() - _t_dataset0)
+        print(f"Dataset Share Prep Time: {_dataset_prep_sec:.6f}s")
     elif use_client_distributed_dataset:
         _t_dataset0 = time.time()
         print(
@@ -1846,7 +1854,8 @@ def main():
         x_test_plain = None
         y_test_plain = None
         print(f"Node {args.node_id}: dataset shares received (train={len(train_x_shares)}, test={len(test_x_shares)}).")
-        print(f"Dataset Share Prep Time: {time.time() - _t_dataset0:.6f}s")
+        _dataset_prep_sec = float(time.time() - _t_dataset0)
+        print(f"Dataset Share Prep Time: {_dataset_prep_sec:.6f}s")
     else:
         (x_train, y_train), (x_test, y_test) = load_mnist_data(args.mnist_samples)
         train_x_shares = None
@@ -2299,7 +2308,15 @@ def main():
             training_aborted = True
             break
     # Emit explicit prover timing summary for post-run parsers/exporters.
-    print(f"Training Time: {time.time() - _t_train0:.6f}s")
+    _training_sec = float(time.time() - _t_train0)
+    print(f"Training Time: {_training_sec:.6f}s")
+    log_benchmark(
+        role=f"node{int(args.node_id)}",
+        phase="training",
+        wall_sec=_training_sec,
+        memory=_mem,
+    )
+    prover_total = 0.0
     try:
         stats = multiplier.prover_time_snapshot(reset=False)
         prover_total = float(stats.get("total_sec", 0.0))
@@ -2383,6 +2400,25 @@ def main():
             f"eval_x[h={tev['hits']},m={tev['misses']},rows={tev['rows_unpacked']},batches={tev['batch_calls']},s={tev['unpack_s']:.3f}] "
             f"client_x[h={tcl['hits']},m={tcl['misses']},rows={tcl['rows_unpacked']},batches={tcl['batch_calls']},s={tcl['unpack_s']:.3f}]"
         )
+
+    _extra: dict = {}
+    if _dataset_prep_sec > 0:
+        _extra["dataset_prep_sec"] = f"{_dataset_prep_sec:.6f}"
+    if prover_total > 0:
+        _extra["prover_sec"] = f"{prover_total:.6f}"
+    log_benchmark(
+        role=f"node{int(args.node_id)}",
+        phase="dataset",
+        wall_sec=_dataset_prep_sec if _dataset_prep_sec > 0 else None,
+        memory=_mem,
+    )
+    log_benchmark(
+        role=f"node{int(args.node_id)}",
+        phase="total",
+        wall_sec=float(time.time() - _node_run_t0),
+        memory=_mem,
+        extra=_extra or None,
+    )
 
 if __name__ == '__main__':
     main()
