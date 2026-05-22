@@ -48,7 +48,7 @@ from ml_training.util import loadMNISTDataset
 
 from tensorflow import keras
 def load_mnist_data(max_samples=None):
-    (x_train, y_train), (x_test, y_test) = loadMNISTDataset()  #keras.datasets.mnist.load_data()
+    (x_train, y_train), (x_test, y_test) = loadMNISTDataset()
     x_train = x_train.reshape(-1, 784).astype("float32") / 255.0
     x_test = x_test.reshape(-1, 784).astype("float32") / 255.0
     if max_samples:
@@ -1709,7 +1709,8 @@ def main():
             f"(2*(t+s-1) < n_active={n_active})"
         )
     triple_gen = BeaverTripleGenerator(FIELD_SIZE)
-    pool_size = 50000 
+    default_pool = 8000 if os.environ.get("SENTRA_IN_OCCLUM") == "1" else 50000
+    pool_size = int(os.environ.get("SENTRA_BEAVER_POOL_SIZE", str(default_pool)))
     triple_pool = BeaverTriplePool(triple_gen, initial_size=pool_size)
     
     network = None

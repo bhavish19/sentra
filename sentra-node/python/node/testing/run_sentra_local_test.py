@@ -81,7 +81,9 @@ def seed_local_kvs(
     # MNIST training batches (one-hot labels) as stand-in "shares".
     from tensorflow import keras
 
-    (x_train, y_train), _ = keras.datasets.mnist.load_data()
+    from ml_training.util import loadMNISTDataset
+
+    (x_train, y_train), _ = loadMNISTDataset()
     x_train = x_train.astype("float32") / 255.0
     x_train = x_train.reshape(len(x_train), -1)[:, :input_dim]
     y_train_oh = np.eye(10, dtype=np.float64)[y_train.astype(np.int32)]
@@ -180,9 +182,9 @@ def main() -> None:
     node.train()
 
     # Evaluate on MNIST test subset and report classification accuracy locally.
-    from tensorflow import keras
+    from ml_training.util import loadMNISTDataset
 
-    _, (x_test, y_test) = keras.datasets.mnist.load_data()
+    _, (x_test, y_test) = loadMNISTDataset()
     x_test = x_test.astype("float32") / 255.0
     x_test = x_test.reshape(len(x_test), -1)[:, :args.input_dim]
     y_test = y_test.astype(np.int32)

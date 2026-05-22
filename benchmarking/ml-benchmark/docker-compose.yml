@@ -7,6 +7,7 @@ services:
     image: sentra-ml-benchmark:latest
     environment:
       TF_CPP_MIN_LOG_LEVEL: "2"
+      MNIST_NPZ_PATH: "/mnist.npz"
     volumes:
       - ml_benchmark_logs:/workspace/node/logs
 
@@ -17,6 +18,8 @@ services:
     image: sentra-ml-benchmark-sgx:latest
     environment:
       TF_CPP_MIN_LOG_LEVEL: "2"
+      MNIST_NPZ_PATH: "/mnist.npz"
+      SENTRA_BEAVER_POOL_SIZE: "8000"
     devices:
       - "/dev/sgx_enclave:/dev/sgx_enclave"
       - "/dev/sgx_provision:/dev/sgx_provision"

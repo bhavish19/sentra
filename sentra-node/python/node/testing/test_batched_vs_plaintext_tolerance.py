@@ -8,13 +8,14 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from tensorflow.keras.datasets import mnist
 from testing.integration_harness import integration_timeout_seconds, wait_all_processes
 
 
 def _run_plaintext_reference(*, seed: int, epochs: int, batch_size: int, n_train: int, n_test: int, lr: float) -> float:
     np.random.seed(seed)
-    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+    from ml_training.util import loadMNISTDataset
+
+    (x_train, y_train), (x_test, y_test) = loadMNISTDataset()
     x_train = x_train.reshape(-1, 784).astype(np.float64) / 255.0
     x_test = x_test.reshape(-1, 784).astype(np.float64) / 255.0
     x_train = x_train[:n_train]

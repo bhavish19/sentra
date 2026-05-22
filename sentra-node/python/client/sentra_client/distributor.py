@@ -19,10 +19,16 @@ from ml_training.packing_safety import get_max_safe_packing_factor
 from ml_training.secret_sharing import PackedShamirSecretSharing, ShamirSecretSharing, Share
 from ml_training.secure_comm import create_mpc_network
 from ml_training.topology import load_client_topology
+from ml_training.util import loadMNISTDataset
 
 
 def load_mnist_data(train_samples=None, test_samples=None):
-    (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
+    """Load MNIST on the client only (local mnist.npz; never keras download)."""
+    from ml_training.util import resolve_mnist_npz_path
+
+    mnist_path = resolve_mnist_npz_path()
+    print(f"Client: loading MNIST from local file {mnist_path} (no network download)", flush=True)
+    (x_train, y_train), (x_test, y_test) = loadMNISTDataset()
     x_train = x_train.reshape(-1, 784).astype("float32") / 255.0
     x_test = x_test.reshape(-1, 784).astype("float32") / 255.0
 

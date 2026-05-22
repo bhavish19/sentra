@@ -17,6 +17,7 @@ import numpy as np
 from tensorflow import keras
 
 from ml_training.membership_epoch import MembershipEpochScope
+from ml_training.util import loadMNISTDataset
 from ml_training.packing_safety import get_max_safe_packing_factor
 from ml_training.secret_sharing import PackedShamirSecretSharing, ShamirSecretSharing, Share
 from ml_training.secure_comm import create_mpc_network
@@ -107,7 +108,7 @@ class SentraInferenceClient:
         if idx < 0:
             raise ValueError("input_image_index must be >= 0")
 
-        (_, _), (x_test, _) = keras.datasets.mnist.load_data()
+        (_, _), (x_test, _) = loadMNISTDataset()
         if idx >= int(len(x_test)):
             raise ValueError(f"input_image_index out of range: {idx} >= {len(x_test)}")
 

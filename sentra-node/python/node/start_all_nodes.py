@@ -45,6 +45,32 @@ def _quiet_tf_env(base: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     return e
 
 
+def _logs_root() -> Path:
+    return _NODE_ROOT / "logs"
+
+
+def _safe_read_log(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="ignore")
+    except OSError as e:
+        print(f"[headless] warning: could not read log {path}: {e}")
+        return ""
+
+
+def _print_log_tail(path: Path, *, label: str, max_lines: int = 40) -> None:
+    text = _safe_read_log(path)
+    if not text.strip():
+        print(f"[headless] {label}: (no log at {path})")
+        return
+    lines = text.splitlines()
+    tail = lines[-max_lines:] if len(lines) > max_lines else lines
+    print(f"[headless] --- {label} (last {len(tail)} lines) ---")
+    for line in tail:
+        print(line)
+
+
 def _env_with_node_on_pythonpath() -> Dict[str, str]:
     """Allow ``python -m sentra_client`` from ``client/`` to import ``ml_training`` from ``node/``."""
     e = _quiet_tf_env()
@@ -225,8 +251,16 @@ def _append_run_to_xlsx(path: str, row: Dict[str, Any]) -> str:
 
 
 def _run_headless(args) -> None:
+    in_occlum = os.environ.get("SENTRA_IN_OCCLUM") == "1"
+    if in_occlum and int(args.n_nodes) > 3:
+        print(
+            "[headless] WARNING: SGX/Occlum all-in-one runs are limited to ~3 node processes "
+            "plus a client inside one enclave (~5.4GB). Use configs/with-client-sgx.yaml "
+            "(n-nodes: 3) or sentra-deployment multi-node SGX for 4+ parties."
+        )
+
     run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = Path("logs") / f"run_{run_id}"
+    run_dir = _logs_root() / f"run_{run_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     procs: List[ProcEntry] = []
@@ -244,11 +278,14 @@ def _run_headless(args) -> None:
         )
         procs.append((nid, p))
         print(f"[headless] started node {nid} -> {out_path}")
-        time.sleep(0.4)
+        time.sleep(1.0 if in_occlum else 0.4)
 
     client_proc: Optional[subprocess.Popen] = None
     client_log = run_dir / "client_distributor.log"
     if bool(getattr(args, "start_client_distributor", False)):
+        if in_occlum:
+            print("[headless] waiting for nodes to bind before starting client...")
+            time.sleep(8.0)
         cf = open(client_log, "w", encoding="utf-8")
         open_files.append(cf)
         cmd = [
@@ -299,8 +336,11 @@ def _run_headless(args) -> None:
                     str(float(args.client_eval_timeout)),
                 ]
             )
+        client_env = _env_with_node_on_pythonpath()
+        if in_occlum:
+            client_env["SENTRA_IN_OCCLUM"] = "1"
         client_proc = subprocess.Popen(
-            cmd, cwd=str(_CLIENT_ROOT), env=_env_with_node_on_pythonpath(), stdout=cf, stderr=cf
+            cmd, cwd=str(_CLIENT_ROOT), env=client_env, stdout=cf, stderr=cf
         )
         print(f"[headless] started client distributor -> {client_log}")
 
@@ -310,6 +350,8 @@ def _run_headless(args) -> None:
         p.wait()
         return_codes[nid] = int(p.returncode or 0)
         print(f"[headless] node {nid} exited with code {return_codes[nid]}")
+        if return_codes[nid] != 0:
+            _print_log_tail(run_dir / f"node_{nid}.log", label=f"node {nid} log")
     if client_proc is not None:
         try:
             client_proc.wait(timeout=15.0)
@@ -325,9 +367,14 @@ def _run_headless(args) -> None:
     duration = float(time.time() - t0)
     status = "success" if all(c == 0 for c in return_codes.values()) else "failed"
 
-    node1_text = (run_dir / "node_1.log").read_text(encoding="utf-8", errors="ignore")
+    node1_text = _safe_read_log(run_dir / "node_1.log")
     m1 = _extract_metrics_from_log(node1_text)
-    client_text = client_log.read_text(encoding="utf-8", errors="ignore") if client_log.exists() else ""
+    client_text = _safe_read_log(client_log)
+    if status != "success" and not node1_text.strip():
+        print(
+            f"[headless] Log files may be on the Docker volume at "
+            f"{(_logs_root()).resolve()} (host mount: /workspace/node/logs)."
+        )
     client_acc = None
     m_client = re.findall(r"Client Final Accuracy \(\d+ samples\):\s*([0-9eE+.\-]+)%", client_text)
     if m_client:

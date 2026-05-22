@@ -14,7 +14,9 @@ from tensorflow import keras
 
 
 def load_mnist(split: str, max_samples: int | None):
-    (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
+    from ml_training.util import loadMNISTDataset
+
+    (x_train, y_train), (x_test, y_test) = loadMNISTDataset()
     if split == "train":
         x = x_train
         y = y_train

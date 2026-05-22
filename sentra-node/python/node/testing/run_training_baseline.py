@@ -54,7 +54,9 @@ def main() -> None:
     print("=" * 70)
 
     # 1. Load dataset
-    (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
+    from ml_training.util import loadMNISTDataset
+
+    (x_train, y_train), (x_test, y_test) = loadMNISTDataset()
 
     # 2. Normalize images to [0, 1]
     x_train = x_train.astype("float32") / 255.0
