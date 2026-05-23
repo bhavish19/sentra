@@ -39,16 +39,13 @@ python benchmarking/ml-benchmark/run_benchmark_from_config.py \
 
 ## SGX with client (`make sgx-run-with-client`)
 
-**Non-SGX:** `make run-with-client` uses `with-client.yaml` (4 nodes).
-
-**SGX and non-SGX** both use **`with-client.yaml`** (3 nodes, client-side MNIST):
+**Non-SGX and SGX all-in-one** both use **`with-client.yaml`** (default 3 nodes, client-side MNIST):
 
 ```bash
 make run-with-client          # non-SGX
 make sgx-run-with-client      # SGX (same config)
 ```
 
-For **4+ parties in SGX**, use `sentra-deployment` multi-node (one container per party).
 
 Logs: `/workspace/node/logs/run_<timestamp>/` (Docker volume `ml_benchmark_logs`). On failure, tail `node_*.log` and `client_distributor.log` there.
 

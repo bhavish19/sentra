@@ -252,11 +252,11 @@ def _append_run_to_xlsx(path: str, row: Dict[str, Any]) -> str:
 
 def _run_headless(args) -> None:
     in_occlum = os.environ.get("SENTRA_IN_OCCLUM") == "1"
-    if in_occlum and int(args.n_nodes) > 3:
+    if in_occlum and int(args.n_nodes) > 5:
         print(
-            "[headless] WARNING: SGX/Occlum all-in-one runs are limited to ~3 node processes "
-            "plus a client inside one enclave (~5.4GB). Use configs/with-client.yaml "
-            "(n-nodes: 3) or sentra-deployment multi-node SGX for 4+ parties."
+            "[headless] NOTE: SGX/Occlum all-in-one runs many party processes inside one "
+            "enclave (~5.4GB EPC). If startup fails, reduce n-nodes or use sentra-deployment "
+            "multi-node SGX (one container per party)."
         )
 
     run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -413,15 +413,6 @@ def _run_headless(args) -> None:
     print(f"  wall_clock_sec: {duration:.2f}")
     for key in sorted(timings.keys()):
         print(f"  {key}: {float(timings[key]):.2f}")
-    train_parts = [
-        float(v)
-        for k, v in timings.items()
-        if k.endswith("_training_sec") or k.endswith("_training") or k == "training_sec"
-    ]
-    if train_parts and duration > 0:
-        train_s = max(train_parts)
-        overhead_pct = max(0.0, 100.0 * (float(duration) - train_s) / float(duration))
-        print(f"  orchestration_overhead_pct: {overhead_pct:.1f}")
     print(f"  logs: {run_dir}")
 
     if bool(getattr(args, "record_results_xlsx", "")):

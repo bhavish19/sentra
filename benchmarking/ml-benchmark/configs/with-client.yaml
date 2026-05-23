@@ -1,13 +1,12 @@
 # Client distributor + post-training client eval (non-SGX and SGX all-in-one).
 # MNIST is loaded only by the client (local /mnist.npz in Docker); nodes receive shares.
-# 3 parties fits one Occlum enclave; use sentra-deployment multi-node for 4+ SGX parties.
 #
 #   make run-with-client       (non-SGX)
 #   make sgx-run-with-client   (SGX)
 
 headless: true
 host: "127.0.0.1"
-n-nodes: 4
+n-nodes: 3
 t: 1
 base-port: 9310
 batch-size: 32
