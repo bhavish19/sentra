@@ -68,6 +68,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--client-test-samples", type=int, default=-1, help="Number of test shares to distribute from client (-1: auto; with client eval uses client-eval-samples).")
     parser.add_argument("--client-eval-timeout", type=float, default=0.0, help="Timeout for client-side evaluation share collection and barrier in seconds (0 = no timeout).")
     parser.add_argument(
+        "--client-eval-batched-receive",
+        action="store_true",
+        help="Send/receive all eval logit shares in one vector (single client wait + batched Shamir reconstruct).",
+    )
+    parser.add_argument(
         "--init-weights-from-npz",
         type=str,
         default="",

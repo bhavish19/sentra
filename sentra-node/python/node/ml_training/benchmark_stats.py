@@ -48,6 +48,8 @@ def parse_legacy_timings(log_text: str) -> Dict[str, float]:
         (r"Dataset Share Prep Time:\s*([0-9.]+)s", "dataset_prep_sec"),
         (r"Client Distribution Time:\s*([0-9.]+)s", "client_distribution_sec"),
         (r"Client Eval Time:\s*([0-9.]+)s", "client_eval_sec"),
+        (r"Client Eval Share Wait Time:\s*([0-9.]+)s", "client_eval_share_wait_sec"),
+        (r"Client Eval Reconstruct Time:\s*([0-9.]+)s", "client_eval_reconstruct_sec"),
         (r"Client Eval Upload Time:\s*([0-9.]+)s", "client_eval_upload_sec"),
         (r"Prover Time:\s*([0-9.]+)s", "prover_sec"),
     ]

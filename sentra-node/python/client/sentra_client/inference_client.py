@@ -19,15 +19,18 @@ from tensorflow import keras
 from ml_training.membership_epoch import MembershipEpochScope
 from ml_training.util import loadMNISTDataset
 from ml_training.packing_safety import get_max_safe_packing_factor
-from ml_training.secret_sharing import PackedShamirSecretSharing, ShamirSecretSharing, Share
+from ml_training.secret_sharing import PackedShamirSecretSharing, ShamirSecretSharing
 from ml_training.secure_comm import create_mpc_network
 from ml_training.topology import load_client_topology
 
 from .distributor import (
     flatten_plain_weights_to_fixed_ints,
     load_plain_weights_from_npz,
-    mod_p_to_signed,
+    party_vectors_to_share_vectors,
+    reconstruct_batched_logits_from_parties,
+    reconstruct_logits_from_parties,
     share_vector_for_all_nodes_pss,
+    wait_for_party_vectors,
     wait_for_vector_from_sender,
 )
 
@@ -80,6 +83,7 @@ class SentraInferenceClientConfig:
     seed: int = 42
     membership_epoch: int = 0
     eval_timeout: float = 0.0
+    client_eval_batched_receive: bool = True
     barrier_timeout: float = 900.0
     topology_path: str = ""
 
@@ -214,32 +218,24 @@ class SentraInferenceClient:
         n_eval = int(eval_indices.size)
 
         p = int(field_size)
-        logits: List[float] = []
-        for slot in range(n_eval):
-            ctx = me.ctx(f"client_eval_final/logits/{slot}")
-            by_sender = {}
-            start = time.time()
-            while True:
-                by_sender = network.channel.get_received_vector(ctx)
-                if len(by_sender) >= int(cfg.t) + 1:
-                    break
-                if float(cfg.eval_timeout) > 0 and (time.time() - start > float(cfg.eval_timeout)):
-                    raise TimeoutError(f"Timed out waiting for client eval shares at {ctx}")
-                time.sleep(0.01)
+        n_classes = 10
+        batched_receive = bool(getattr(cfg, "client_eval_batched_receive", True))
+        if batched_receive:
+            ctx = me.ctx("client_eval_final/logits/batched")
+            by_sender = wait_for_party_vectors(network, ctx, int(cfg.t) + 1, float(cfg.eval_timeout))
             network.channel.clear_vector(ctx)
-
-            share_vectors = []
-            for sender_id in sorted(by_sender.keys()):
-                vals = [int(v) for v in by_sender[sender_id]["values"]]
-                x_coord = int(by_sender[sender_id]["x"])
-                share_vectors.append((x_coord, vals))
-
-            slot_logits: List[float] = []
-            for j in range(10):
-                shares_j = [Share(x=x, y=vals[j], node_id=x) for (x, vals) in share_vectors]
-                rec = shamir.reconstruct(shares_j)
-                slot_logits.append(float(mod_p_to_signed(rec, p)))
-            logits = slot_logits
+            share_vectors = party_vectors_to_share_vectors(by_sender)
+            all_logits = reconstruct_batched_logits_from_parties(
+                share_vectors, n_eval, n_classes, shamir, p
+            )
+            logits = all_logits[0] if all_logits else []
+        else:
+            for slot in range(n_eval):
+                ctx = me.ctx(f"client_eval_final/logits/{slot}")
+                by_sender = wait_for_party_vectors(network, ctx, int(cfg.t) + 1, float(cfg.eval_timeout))
+                network.channel.clear_vector(ctx)
+                share_vectors = party_vectors_to_share_vectors(by_sender)
+                logits = reconstruct_logits_from_parties(share_vectors, n_classes, shamir, p)
 
         logits_np = np.asarray(logits, dtype=np.float64)
         probs = _stable_softmax(logits_np)

@@ -127,7 +127,7 @@ def _print_run_timing_tables(
         print(_format_timing_table(node_headers, node_rows))
 
     if client_present:
-        client_headers = ["role", "cold_start", "distribution", "eval", "total"]
+        client_headers = ["role", "cold_start", "distribution", "eval", "eval_wait", "eval_reconstruct", "total"]
         client_row = [
             "client",
             _first_timing(timings, "client_cold_start_sec"),
@@ -137,6 +137,8 @@ def _print_run_timing_tables(
                 "client_client_distribution_sec",
             ),
             _first_timing(timings, "client_eval_sec", "client_client_eval_sec"),
+            _first_timing(timings, "client_eval_share_wait_sec", "client_client_eval_share_wait_sec"),
+            _first_timing(timings, "client_eval_reconstruct_sec", "client_client_eval_reconstruct_sec"),
             _first_timing(timings, "client_total_sec"),
         ]
         if any(v is not None for v in client_row[1:]):
@@ -287,6 +289,8 @@ def _build_node_command(args, node_id: int) -> List[str]:
                     str(int(args.client_eval_samples)),
                 ]
             )
+            if bool(getattr(args, "client_eval_batched_receive", False)):
+                cmd.append("--client-eval-batched-receive")
 
     if bool(args.export_reconstructed_model):
         cmd.extend(
@@ -440,6 +444,8 @@ def _run_headless(args) -> None:
                     str(float(args.client_eval_timeout)),
                 ]
             )
+            if bool(getattr(args, "client_eval_batched_receive", False)):
+                cmd.append("--client-eval-batched-receive")
         client_env = _env_with_node_on_pythonpath()
         if in_occlum:
             client_env["SENTRA_IN_OCCLUM"] = "1"
@@ -529,10 +535,6 @@ def _run_headless(args) -> None:
             print(f"  final_accuracy_pct: {client_acc:.2f}")
         else:
             print("  final_accuracy_pct: (not found in client_distributor.log)")
-        if m1.get("final_epoch_acc_pct") is not None:
-            print(f"  node_1_epoch_acc_pct: {m1.get('final_epoch_acc_pct')}")
-            if m1.get("final_epoch_loss") is not None:
-                print(f"  node_1_epoch_loss: {m1.get('final_epoch_loss')}")
     else:
         print(f"  final_accuracy_pct: {m1.get('final_epoch_acc_pct', 0.0)}")
         if m1.get("final_epoch_loss") is not None:

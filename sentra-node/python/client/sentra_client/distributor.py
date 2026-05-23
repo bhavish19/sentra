@@ -40,6 +40,7 @@ def load_mnist_data(train_samples=None, test_samples=None):
     if test_samples is not None:
         x_test = x_test[: int(test_samples)]
         y_test = y_test[: int(test_samples)]
+    # Benchmark subset = first N rows (see benchmarking/shared/mnist_benchmark_subset.py)
 
     y_train_oh = keras.utils.to_categorical(y_train, 10)
     y_test_oh = keras.utils.to_categorical(y_test, 10)
@@ -129,6 +130,53 @@ def _barrier_timeout(timeout_s: float) -> float:
     return 1e9
 
 
+def wait_for_party_vectors(network, context: str, min_parties: int, timeout_s: float) -> dict:
+    start = time.time()
+    while True:
+        by_sender = network.channel.get_received_vector(context)
+        if len(by_sender) >= int(min_parties):
+            return by_sender
+        if float(timeout_s) > 0 and (time.time() - start > float(timeout_s)):
+            raise TimeoutError(
+                f"Timed out waiting for context '{context}' from {min_parties} parties (have {len(by_sender)})"
+            )
+        time.sleep(0.01)
+
+
+def party_vectors_to_share_vectors(by_sender: dict) -> list:
+    share_vectors = []
+    for sender_id in sorted(by_sender.keys()):
+        vals = [int(v) for v in by_sender[sender_id]["values"]]
+        x_coord = int(by_sender[sender_id]["x"])
+        share_vectors.append((x_coord, vals))
+    return share_vectors
+
+
+def reconstruct_logits_from_parties(share_vectors, n_classes: int, shamir, p: int) -> list:
+    logits = []
+    for j in range(int(n_classes)):
+        shares_j = [Share(x=x, y=vals[j], node_id=x) for (x, vals) in share_vectors]
+        rec = shamir.reconstruct(shares_j)
+        logits.append(float(mod_p_to_signed(rec, p)))
+    return logits
+
+
+def reconstruct_batched_logits_from_parties(
+    share_vectors, n_samples: int, n_classes: int, shamir, p: int
+) -> list[list[float]]:
+    all_logits: list[list[float]] = []
+    for slot in range(int(n_samples)):
+        logits = []
+        base = slot * int(n_classes)
+        for j in range(int(n_classes)):
+            idx = base + j
+            shares_j = [Share(x=x, y=vals[idx], node_id=x) for (x, vals) in share_vectors]
+            rec = shamir.reconstruct(shares_j)
+            logits.append(float(mod_p_to_signed(rec, p)))
+        all_logits.append(logits)
+    return all_logits
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Distribute secret-shared MNIST from client to training nodes")
     parser.add_argument(
@@ -196,6 +244,11 @@ def main() -> None:
         type=float,
         default=0.0,
         help="Timeout in seconds for client-side eval waits (0 = no timeout).",
+    )
+    parser.add_argument(
+        "--client-eval-batched-receive",
+        action="store_true",
+        help="Receive all eval logit shares in one vector (single wait + batched reconstruct).",
     )
     parser.add_argument(
         "--membership-epoch",
@@ -366,40 +419,55 @@ def main() -> None:
 
         correct = 0
         p = int(field_size)
-        for slot in range(n_eval):
-            ctx = me.ctx(f"client_eval_final/logits/{slot}")
-            by_sender = {}
-            start = time.time()
-            while True:
-                by_sender = network.channel.get_received_vector(ctx)
-                if len(by_sender) >= int(args.t) + 1:
-                    break
-                if float(args.eval_timeout) > 0 and (time.time() - start > float(args.eval_timeout)):
-                    raise TimeoutError(f"Timed out waiting for client eval shares at {ctx}")
-                time.sleep(0.01)
+        n_classes = 10
+        batched_receive = bool(getattr(args, "client_eval_batched_receive", False))
+        _t_share_wait0 = time.time()
+
+        if batched_receive:
+            ctx = me.ctx("client_eval_final/logits/batched")
+            by_sender = wait_for_party_vectors(
+                network, ctx, int(args.t) + 1, float(args.eval_timeout)
+            )
             network.channel.clear_vector(ctx)
+            _share_wait_sec = float(time.time() - _t_share_wait0)
+            _t_reconstruct0 = time.time()
+            share_vectors = party_vectors_to_share_vectors(by_sender)
+            all_logits = reconstruct_batched_logits_from_parties(
+                share_vectors, n_eval, n_classes, shamir, p
+            )
+            _reconstruct_sec = float(time.time() - _t_reconstruct0)
+            for slot, logits in enumerate(all_logits):
+                logits_np = np.asarray(logits, dtype=np.float64)
+                pred = int(np.argmax(logits_np))
+                if infer_path:
+                    print(f"Client predicted digit: {pred}")
+                    print(f"Client logits (10 classes): {logits_np.tolist()}")
+                else:
+                    true_label = int(np.argmax(np.asarray(y_test[int(eval_indices[slot])], dtype=np.float64)))
+                    if pred == true_label:
+                        correct += 1
+        else:
+            for slot in range(n_eval):
+                ctx = me.ctx(f"client_eval_final/logits/{slot}")
+                by_sender = wait_for_party_vectors(
+                    network, ctx, int(args.t) + 1, float(args.eval_timeout)
+                )
+                network.channel.clear_vector(ctx)
 
-            logits = []
-            share_vectors = []
-            for sender_id in sorted(by_sender.keys()):
-                vals = [int(v) for v in by_sender[sender_id]["values"]]
-                x_coord = int(by_sender[sender_id]["x"])
-                share_vectors.append((x_coord, vals))
+                share_vectors = party_vectors_to_share_vectors(by_sender)
+                logits = reconstruct_logits_from_parties(share_vectors, n_classes, shamir, p)
 
-            for j in range(10):
-                shares_j = [Share(x=x, y=vals[j], node_id=x) for (x, vals) in share_vectors]
-                rec = shamir.reconstruct(shares_j)
-                logits.append(float(mod_p_to_signed(rec, p)))
-
-            pred = int(np.argmax(np.asarray(logits, dtype=np.float64)))
-            logits_np = np.asarray(logits, dtype=np.float64)
-            if infer_path:
-                print(f"Client predicted digit: {pred}")
-                print(f"Client logits (10 classes): {logits_np.tolist()}")
-            else:
-                true_label = int(np.argmax(np.asarray(y_test[int(eval_indices[slot])], dtype=np.float64)))
-                if pred == true_label:
-                    correct += 1
+                pred = int(np.argmax(np.asarray(logits, dtype=np.float64)))
+                logits_np = np.asarray(logits, dtype=np.float64)
+                if infer_path:
+                    print(f"Client predicted digit: {pred}")
+                    print(f"Client logits (10 classes): {logits_np.tolist()}")
+                else:
+                    true_label = int(np.argmax(np.asarray(y_test[int(eval_indices[slot])], dtype=np.float64)))
+                    if pred == true_label:
+                        correct += 1
+            _share_wait_sec = float(time.time() - _t_share_wait0)
+            _reconstruct_sec = 0.0
 
         if infer_path:
             print("Client Final Accuracy: N/A (infer-image mode; label is a dummy placeholder)")
@@ -408,11 +476,19 @@ def main() -> None:
             print(f"Client Final Accuracy ({n_eval} samples): {acc*100:.2f}%")
         _eval_sec = float(time.time() - _t_eval0)
         print(f"Client Eval Time: {_eval_sec:.6f}s")
+        if batched_receive:
+            print(f"Client Eval Share Wait Time: {_share_wait_sec:.6f}s")
+            print(f"Client Eval Reconstruct Time: {_reconstruct_sec:.6f}s")
         log_benchmark(
             role="client",
             phase="eval",
             wall_sec=_eval_sec,
-            extra={"eval_samples": n_eval},
+            extra={
+                "eval_samples": n_eval,
+                "batched_receive": int(batched_receive),
+                "share_wait_sec": f"{_share_wait_sec:.6f}",
+                "reconstruct_sec": f"{_reconstruct_sec:.6f}",
+            },
         )
 
         network.barrier(me.barrier_tag("client_eval_final_done"), timeout=_barrier_timeout(float(args.eval_timeout)))

@@ -33,5 +33,6 @@ dataset-source-node-id: 0
 dataset-distribution-timeout: 900.0
 start-client-distributor: true
 client-eval-after-training: true
+client-eval-batched-receive: true
 client-eval-samples: 64
 client-test-samples: 64

@@ -803,6 +803,7 @@ def send_inference_shares_to_client(
     seed: int,
     context_prefix: str = "client_eval_final",
     eval_sync_tag: str = "client_eval_final_done",
+    batched_receive: bool = False,
     dataset_meta: Optional[dict] = None,
     packed_ops: Optional[PackedMPCOps] = None,
     test_x_lane_cache: Optional[dict] = None,
@@ -871,14 +872,23 @@ def send_inference_shares_to_client(
         x_shares_cols, weights, node_id, context=context_prefix, open_relu=True, reconstruction_manager=None
     )
 
-    for slot_idx, col in enumerate(logits_cols):
-        vec = [int(s.y) for s in col]
+    if bool(batched_receive):
+        flat = [int(s.y) for col in logits_cols for s in col]
         network.channel.send_vector(
             int(client_node_id),
-            f"{context_prefix}/logits/{slot_idx}",
+            f"{context_prefix}/logits/batched",
             x=int(node_id),
-            values=vec,
+            values=flat,
         )
+    else:
+        for slot_idx, col in enumerate(logits_cols):
+            vec = [int(s.y) for s in col]
+            network.channel.send_vector(
+                int(client_node_id),
+                f"{context_prefix}/logits/{slot_idx}",
+                x=int(node_id),
+                values=vec,
+            )
 
     # Notify client that this node finished uploading final eval logits.
     network.channel.send_message(
@@ -1616,6 +1626,11 @@ def main():
                         help='After training, send output-share logits to client so client can reconstruct accuracy.')
     parser.add_argument('--client-eval-samples', type=int, default=100,
                         help='Number of test samples to use for client-side final accuracy reconstruction.')
+    parser.add_argument(
+        '--client-eval-batched-receive',
+        action='store_true',
+        help='Send all eval logit shares in one vector for single client receive/reconstruct.',
+    )
     parser.add_argument(
         '--membership-epoch',
         type=int,
@@ -2384,6 +2399,7 @@ def main():
                 seed=int(args.seed),
                 context_prefix=me.ctx("client_eval_final"),
                 eval_sync_tag=me.barrier_tag("client_eval_final_done"),
+                batched_receive=bool(getattr(args, "client_eval_batched_receive", False)),
                 dataset_meta=dataset_meta,
                 packed_ops=packed_ops,
                 test_x_lane_cache=test_x_lane_cache,
