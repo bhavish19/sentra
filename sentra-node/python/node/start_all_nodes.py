@@ -59,6 +59,109 @@ def _safe_read_log(path: Path) -> str:
         return ""
 
 
+def _first_timing(timings: Dict[str, float], *keys: str) -> Optional[float]:
+    for key in keys:
+        if key in timings:
+            return float(timings[key])
+    return None
+
+
+def _format_timing_table(headers: List[str], rows: List[List[Any]]) -> str:
+    def _cell(value: Any) -> str:
+        if value is None:
+            return "-"
+        if isinstance(value, float):
+            return f"{value:.2f}"
+        return str(value)
+
+    str_rows = [[_cell(c) for c in row] for row in rows]
+    widths = [
+        max(len(headers[i]), *(len(r[i]) for r in str_rows), 3)
+        for i in range(len(headers))
+    ]
+    lines = [
+        "  "
+        + "  ".join(headers[i].ljust(widths[i]) for i in range(len(headers))),
+        "  "
+        + "  ".join("-" * widths[i] for i in range(len(headers))),
+    ]
+    for row in str_rows:
+        lines.append(
+            "  " + "  ".join(row[i].rjust(widths[i]) for i in range(len(headers)))
+        )
+    return "\n".join(lines)
+
+
+def _print_run_timing_tables(
+    timings: Dict[str, float], *, n_nodes: int, client_present: bool
+) -> None:
+    node_headers = [
+        "node",
+        "cold_start",
+        "dataset",
+        "training",
+        "prover",
+        "eval_upload",
+        "total",
+    ]
+    node_rows: List[List[Any]] = []
+    for nid in range(1, int(n_nodes) + 1):
+        prefix = f"node{nid}_"
+        node_rows.append(
+            [
+                nid,
+                _first_timing(timings, f"{prefix}cold_start_sec"),
+                _first_timing(
+                    timings,
+                    f"{prefix}dataset_prep_sec",
+                    f"{prefix}dataset_sec",
+                ),
+                _first_timing(timings, f"{prefix}training_sec"),
+                _first_timing(timings, f"{prefix}prover_sec"),
+                _first_timing(timings, f"{prefix}client_eval_upload_sec"),
+                _first_timing(timings, f"{prefix}total_sec"),
+            ]
+        )
+    if any(any(v is not None for v in row[1:]) for row in node_rows):
+        print("\n  Node timings (sec):")
+        print(_format_timing_table(node_headers, node_rows))
+
+    if client_present:
+        client_headers = ["role", "cold_start", "distribution", "eval", "total"]
+        client_row = [
+            "client",
+            _first_timing(timings, "client_cold_start_sec"),
+            _first_timing(
+                timings,
+                "client_distribution_sec",
+                "client_client_distribution_sec",
+            ),
+            _first_timing(timings, "client_eval_sec", "client_client_eval_sec"),
+            _first_timing(timings, "client_total_sec"),
+        ]
+        if any(v is not None for v in client_row[1:]):
+            print("\n  Client timings (sec):")
+            print(_format_timing_table(client_headers, [client_row]))
+
+
+def _print_run_overhead_summary(overhead: Dict[str, float]) -> None:
+    print("\n  Orchestrator timing (sec):")
+    labels = [
+        ("end_to_end_sec", "end_to_end"),
+        ("pre_spawn_orchestration_sec", "pre_spawn_orchestration"),
+        ("parallel_run_sec", "parallel_run"),
+        ("spawn_to_last_node_exit_sec", "spawn_to_last_node_exit"),
+        ("max_cold_start_sec", "max_cold_start"),
+        ("max_mpc_work_sec", "max_mpc_work"),
+        ("critical_path_logged_sec", "critical_path_logged"),
+        ("post_log_process_exit_sec", "post_log_process_exit"),
+        ("unaccounted_orchestrator_sec", "unaccounted_orchestrator"),
+    ]
+    for key, label in labels:
+        if key in overhead:
+            print(f"    {label}: {float(overhead[key]):.2f}")
+
+
 def _print_log_tail(path: Path, *, label: str, max_lines: int = 40) -> None:
     text = _safe_read_log(path)
     if not text.strip():
@@ -263,6 +366,7 @@ def _run_headless(args) -> None:
     run_dir = _logs_root() / f"run_{run_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
+    t_run_start = time.time()
     procs: List[ProcEntry] = []
     open_files = []
     for nid in range(1, int(args.n_nodes) + 1):
@@ -344,19 +448,34 @@ def _run_headless(args) -> None:
         )
         print(f"[headless] started client distributor -> {client_log}")
 
-    t0 = time.time()
+    t_parallel_start = time.time()
+    pre_spawn_orchestration_sec = float(t_parallel_start - t_run_start)
     return_codes: Dict[int, int] = {}
+    t_last_node_exit: Optional[float] = None
     for nid, p in procs:
         p.wait()
         return_codes[nid] = int(p.returncode or 0)
+        t_last_node_exit = time.time()
         print(f"[headless] node {nid} exited with code {return_codes[nid]}")
         if return_codes[nid] != 0:
             _print_log_tail(run_dir / f"node_{nid}.log", label=f"node {nid} log")
+    spawn_to_last_node_exit_sec = float(
+        (t_last_node_exit or t_parallel_start) - t_parallel_start
+    )
     if client_proc is not None:
+        client_timeout = float(getattr(args, "client_eval_timeout", 0.0) or 0.0)
+        if client_timeout <= 0:
+            client_timeout = float(getattr(args, "dataset_distribution_timeout", 900.0))
         try:
-            client_proc.wait(timeout=15.0)
+            client_proc.wait(timeout=max(client_timeout + 60.0, 900.0))
+        except subprocess.TimeoutExpired:
+            print("[headless] warning: client distributor did not exit before timeout")
+            client_proc.kill()
         except Exception:
             pass
+    t_run_end = time.time()
+    end_to_end_sec = float(t_run_end - t_run_start)
+    parallel_run_sec = float(t_run_end - t_parallel_start)
 
     for f in open_files:
         try:
@@ -364,7 +483,6 @@ def _run_headless(args) -> None:
         except Exception:
             pass
 
-    duration = float(time.time() - t0)
     status = "success" if all(c == 0 for c in return_codes.values()) else "failed"
 
     node1_text = _safe_read_log(run_dir / "node_1.log")
@@ -386,14 +504,23 @@ def _run_headless(args) -> None:
     for nid in return_codes:
         node_logs[int(nid)] = _safe_read_log(run_dir / f"node_{nid}.log")
 
-    from ml_training.benchmark_stats import summarize_run_logs
+    from ml_training.benchmark_stats import build_run_overhead_metrics, summarize_run_logs
 
     bench = summarize_run_logs(
         node_logs=node_logs,
         client_log=client_text,
-        wall_sec=duration,
+        wall_sec=end_to_end_sec,
     )
     timings: Dict[str, float] = bench.get("timings") or {}
+    overhead = build_run_overhead_metrics(
+        timings,
+        end_to_end_sec=end_to_end_sec,
+        pre_spawn_orchestration_sec=pre_spawn_orchestration_sec,
+        spawn_to_last_node_exit_sec=spawn_to_last_node_exit_sec,
+        parallel_run_sec=parallel_run_sec,
+        n_nodes=int(args.n_nodes),
+        client_present=client_proc is not None,
+    )
 
     print("\nRun summary:")
     print(f"  status: {status}")
@@ -410,16 +537,24 @@ def _run_headless(args) -> None:
         print(f"  final_accuracy_pct: {m1.get('final_epoch_acc_pct', 0.0)}")
         if m1.get("final_epoch_loss") is not None:
             print(f"  final_epoch_loss: {m1.get('final_epoch_loss')}")
-    print(f"  wall_clock_sec: {duration:.2f}")
-    for key in sorted(timings.keys()):
-        print(f"  {key}: {float(timings[key]):.2f}")
+    print(f"  end_to_end_sec: {end_to_end_sec:.2f}")
+    print(f"  wall_clock_sec: {spawn_to_last_node_exit_sec:.2f}  (spawn -> last node exit)")
+    _print_run_overhead_summary(overhead)
+    _print_run_timing_tables(
+        timings,
+        n_nodes=int(args.n_nodes),
+        client_present=client_proc is not None,
+    )
     print(f"  logs: {run_dir}")
 
     if bool(getattr(args, "record_results_xlsx", "")):
         row = {
             "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
             "status": status,
-            "duration_sec": duration,
+            "duration_sec": end_to_end_sec,
+            "spawn_to_last_node_exit_sec": spawn_to_last_node_exit_sec,
+            "max_cold_start_sec": overhead.get("max_cold_start_sec", ""),
+            "critical_path_logged_sec": overhead.get("critical_path_logged_sec", ""),
             "n_nodes": int(args.n_nodes),
             "dataset": str(args.dataset),
             "train_mode": "secure",

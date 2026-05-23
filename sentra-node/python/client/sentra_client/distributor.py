@@ -11,6 +11,8 @@ import argparse
 import random
 import time
 
+_PROCESS_T0 = time.time()
+
 import numpy as np
 from tensorflow import keras
 
@@ -205,6 +207,11 @@ def main() -> None:
 
     from ml_training.benchmark_stats import log_benchmark
 
+    log_benchmark(
+        role="client",
+        phase="cold_start",
+        wall_sec=float(time.time() - _PROCESS_T0),
+    )
     _client_run_t0 = time.time()
 
     me = MembershipEpochScope(int(args.membership_epoch))

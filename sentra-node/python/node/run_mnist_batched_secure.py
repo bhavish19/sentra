@@ -9,6 +9,9 @@ import argparse
 import numpy as np
 import random
 import time
+
+_PROCESS_T0 = time.time()
+
 from pathlib import Path
 import json
 from typing import Optional, Tuple, List
@@ -1684,6 +1687,11 @@ def main():
 
     from ml_training.benchmark_stats import log_benchmark
 
+    log_benchmark(
+        role=f"node{int(args.node_id)}",
+        phase="cold_start",
+        wall_sec=float(time.time() - _PROCESS_T0),
+    )
     _node_run_t0 = time.time()
     _dataset_prep_sec = 0.0
 

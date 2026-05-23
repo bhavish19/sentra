@@ -72,19 +72,77 @@ def summarize_run_logs(
         for row in parse_benchmark_lines(text):
             phase = row.get("phase", f"node{nid}")
             if "wall_sec" in row:
-                timings[f"node{nid}_{phase}_sec"] = float(row["wall_sec"])
+                timings.setdefault(f"node{nid}_{phase}_sec", float(row["wall_sec"]))
         legacy = parse_legacy_timings(text)
         for k, v in legacy.items():
-            timings[f"node{nid}_{k}"] = v
+            timings.setdefault(f"node{nid}_{k}", v)
             if k == "training_sec":
                 timings.setdefault("training_sec", v)
 
     for row in parse_benchmark_lines(client_log):
         phase = row.get("phase", "client")
         if "wall_sec" in row:
-            timings[f"client_{phase}_sec"] = float(row["wall_sec"])
+            timings.setdefault(f"client_{phase}_sec", float(row["wall_sec"]))
     for k, v in parse_legacy_timings(client_log).items():
-        timings[f"client_{k}"] = v
+        ck = k if k.startswith("client_") else f"client_{k}"
+        timings.setdefault(ck, v)
 
     summary["timings"] = timings
     return summary
+
+
+def build_run_overhead_metrics(
+    timings: Dict[str, float],
+    *,
+    end_to_end_sec: float,
+    pre_spawn_orchestration_sec: float,
+    spawn_to_last_node_exit_sec: float,
+    parallel_run_sec: float,
+    n_nodes: int,
+    client_present: bool,
+) -> Dict[str, float]:
+    """Orchestrator vs per-process logged timings (cold start + MPC work)."""
+    role_paths: list[float] = []
+    cold_starts: list[float] = []
+    mpc_totals: list[float] = []
+
+    for nid in range(1, int(n_nodes) + 1):
+        cold = timings.get(f"node{nid}_cold_start_sec")
+        total = timings.get(f"node{nid}_total_sec")
+        if cold is not None:
+            cold_starts.append(float(cold))
+        if total is not None:
+            mpc_totals.append(float(total))
+        if cold is not None and total is not None:
+            role_paths.append(float(cold) + float(total))
+
+    if client_present:
+        cold = timings.get("client_cold_start_sec")
+        total = timings.get("client_total_sec")
+        if cold is not None:
+            cold_starts.append(float(cold))
+        if total is not None:
+            mpc_totals.append(float(total))
+        if cold is not None and total is not None:
+            role_paths.append(float(cold) + float(total))
+
+    critical_path = max(role_paths) if role_paths else 0.0
+    max_cold = max(cold_starts) if cold_starts else 0.0
+    max_mpc = max(mpc_totals) if mpc_totals else 0.0
+    expected_end_to_end = float(pre_spawn_orchestration_sec) + critical_path
+
+    return {
+        "end_to_end_sec": float(end_to_end_sec),
+        "pre_spawn_orchestration_sec": float(pre_spawn_orchestration_sec),
+        "parallel_run_sec": float(parallel_run_sec),
+        "spawn_to_last_node_exit_sec": float(spawn_to_last_node_exit_sec),
+        "max_cold_start_sec": max_cold,
+        "max_mpc_work_sec": max_mpc,
+        "critical_path_logged_sec": critical_path,
+        "post_log_process_exit_sec": max(
+            0.0, float(spawn_to_last_node_exit_sec) - critical_path
+        ),
+        "unaccounted_orchestrator_sec": max(
+            0.0, float(end_to_end_sec) - expected_end_to_end
+        ),
+    }
