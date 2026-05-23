@@ -20,5 +20,7 @@ tmp_bench/
 logs/
 *.egg-info/
 venv/
+.venv/
+benchmarking/crypten-benchmark/.venv/
 
 /sentra-node/rust/Cargo.lock
