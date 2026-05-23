@@ -203,10 +203,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from ml_training.benchmark_stats import PeakMemoryTracker, log_benchmark
+    from ml_training.benchmark_stats import log_benchmark
 
-    _mem = PeakMemoryTracker()
-    _mem.sample()
     _client_run_t0 = time.time()
 
     me = MembershipEpochScope(int(args.membership_epoch))
@@ -345,7 +343,6 @@ def main() -> None:
         role="client",
         phase="distribution",
         wall_sec=_dist_sec,
-        memory=_mem,
         extra={"train_samples": n_train, "test_samples": n_test},
     )
 
@@ -408,7 +405,6 @@ def main() -> None:
             role="client",
             phase="eval",
             wall_sec=_eval_sec,
-            memory=_mem,
             extra={"eval_samples": n_eval},
         )
 
@@ -418,7 +414,6 @@ def main() -> None:
         role="client",
         phase="total",
         wall_sec=float(time.time() - _client_run_t0),
-        memory=_mem,
     )
     time.sleep(0.5)
     network.stop()

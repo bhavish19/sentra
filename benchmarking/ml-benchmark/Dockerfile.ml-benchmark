@@ -24,7 +24,6 @@ RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.s
 RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main \
     && /miniconda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 RUN /miniconda/bin/conda create --prefix /python-occlum -y python=3.10.0 numpy==1.26.4 pyyaml==6.0.3 tensorflow==2.11.0
-RUN /python-occlum/bin/pip install --no-cache-dir psutil==5.9.8
 
 #COPY benchmarking/ml-benchmark/requirements-benchmark.txt /tmp/requirements-benchmark.txt
 #RUN /python-occlum/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \

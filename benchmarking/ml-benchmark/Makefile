@@ -37,7 +37,7 @@ sgx-run-standard:
 	$(COMPOSE) run --rm ml-benchmark-sgx sgx  --config /workspace/benchmark-configs/standard.yaml
 
 sgx-run-with-client:
-	$(COMPOSE) run --rm ml-benchmark-sgx sgx --config /workspace/benchmark-configs/with-client-sgx.yaml
+	$(COMPOSE) run --rm ml-benchmark-sgx sgx --config /workspace/benchmark-configs/with-client.yaml
 
 shell-ml:
 	$(COMPOSE) run --rm ml-benchmark bash

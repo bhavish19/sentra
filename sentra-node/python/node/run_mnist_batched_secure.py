@@ -1682,10 +1682,8 @@ def main():
     if bool(args.packed_forward_native) and not bool(args.packed_end2end):
         raise ValueError("--packed-forward-native requires --packed-end2end")
 
-    from ml_training.benchmark_stats import PeakMemoryTracker, log_benchmark
+    from ml_training.benchmark_stats import log_benchmark
 
-    _mem = PeakMemoryTracker()
-    _mem.sample()
     _node_run_t0 = time.time()
     _dataset_prep_sec = 0.0
 
@@ -2314,7 +2312,6 @@ def main():
         role=f"node{int(args.node_id)}",
         phase="training",
         wall_sec=_training_sec,
-        memory=_mem,
     )
     prover_total = 0.0
     try:
@@ -2410,13 +2407,11 @@ def main():
         role=f"node{int(args.node_id)}",
         phase="dataset",
         wall_sec=_dataset_prep_sec if _dataset_prep_sec > 0 else None,
-        memory=_mem,
     )
     log_benchmark(
         role=f"node{int(args.node_id)}",
         phase="total",
         wall_sec=float(time.time() - _node_run_t0),
-        memory=_mem,
         extra=_extra or None,
     )
 

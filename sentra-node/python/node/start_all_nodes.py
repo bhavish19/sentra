@@ -255,7 +255,7 @@ def _run_headless(args) -> None:
     if in_occlum and int(args.n_nodes) > 3:
         print(
             "[headless] WARNING: SGX/Occlum all-in-one runs are limited to ~3 node processes "
-            "plus a client inside one enclave (~5.4GB). Use configs/with-client-sgx.yaml "
+            "plus a client inside one enclave (~5.4GB). Use configs/with-client.yaml "
             "(n-nodes: 3) or sentra-deployment multi-node SGX for 4+ parties."
         )
 
@@ -411,8 +411,6 @@ def _run_headless(args) -> None:
         if m1.get("final_epoch_loss") is not None:
             print(f"  final_epoch_loss: {m1.get('final_epoch_loss')}")
     print(f"  wall_clock_sec: {duration:.2f}")
-    if bench.get("peak_rss_mb") is not None:
-        print(f"  peak_rss_mb: {float(bench['peak_rss_mb']):.2f}")
     for key in sorted(timings.keys()):
         print(f"  {key}: {float(timings[key]):.2f}")
     train_parts = [
