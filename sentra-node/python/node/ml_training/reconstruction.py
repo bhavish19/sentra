@@ -147,6 +147,10 @@ class MPCReconstructionManager:
         self.reconstructor = SecureReconstruction(network, t, field_size)
         self.reconstruction_cache: Dict[str, int] = {}
 
+    def _required_peer_ids(self) -> List[int]:
+        """Deterministic Shamir peer set (lowest node ids); do not use arbitrary recv.keys()."""
+        return sorted(int(nid) for nid in self.network.node_configs.keys())[: self.t + 1]
+
     def get_reconstructed_values_batch(
         self,
         local_shares: List[Share],
@@ -292,6 +296,7 @@ class MPCReconstructionManager:
 
         d_ctx = f"{context_prefix}_d_vec"
         e_ctx = f"{context_prefix}_e_vec"
+        required_peers = self._required_peer_ids()
 
         # Broadcast d and e in one message per peer (one round-trip instead of two)
         self.network.broadcast_vector_pair(
@@ -299,9 +304,6 @@ class MPCReconstructionManager:
         )
 
         start = time.time()
-        # Collect vectors from peers
-        expected_peers = [nid for nid in self.network.node_configs.keys()]
-        # We'll consider a vector "ready" when we have >= t+1 node vectors (including ours).
         # Helper: Lagrange coefficients at x=0 for the chosen x-points
         def _lagrange_coeffs_at_zero(xs: List[int], p: int) -> List[int]:
             coeffs: List[int] = []
@@ -326,16 +328,15 @@ class MPCReconstructionManager:
             d_recv[self.network.node_id] = {"x": x, "values": d_vals_local}
             e_recv[self.network.node_id] = {"x": x, "values": e_vals_local}
 
-            if len(d_recv) >= self.t + 1 and len(e_recv) >= self.t + 1:
+            if all(nid in d_recv for nid in required_peers) and all(nid in e_recv for nid in required_peers):
                 # Ensure all vectors have correct length
                 ok = True
-                # Choose a deterministic subset of nodes (lowest node_ids) for stable reconstruction cost
-                chosen_nodes = sorted(d_recv.keys())[: self.t + 1]
+                chosen_nodes = list(required_peers)
+                chosen_nodes_e = list(required_peers)
                 for nid in chosen_nodes:
                     v = d_recv[nid]
                     if len(v["values"]) != len(d_vals_local):
                         ok = False
-                chosen_nodes_e = sorted(e_recv.keys())[: self.t + 1]
                 for nid in chosen_nodes_e:
                     v = e_recv[nid]
                     if len(v["values"]) != len(e_vals_local):
@@ -426,6 +427,8 @@ class MPCReconstructionManager:
         if len(values_local) == 0:
             return np.zeros((0,), dtype=np.uint64)
 
+        required_peers = self._required_peer_ids()
+
         start = time.time()
 
         # Helper: Lagrange coefficients at x=0 for the chosen x-points
@@ -448,8 +451,8 @@ class MPCReconstructionManager:
             # Add our own vector (so we don't depend on loopback)
             recv[self.network.node_id] = {"x": x, "values": values_local}
 
-            if len(recv) >= self.t + 1:
-                chosen_nodes = sorted(recv.keys())[: self.t + 1]
+            if all(nid in recv for nid in required_peers):
+                chosen_nodes = list(required_peers)
                 # Validate lengths
                 ok = True
                 for nid in chosen_nodes:

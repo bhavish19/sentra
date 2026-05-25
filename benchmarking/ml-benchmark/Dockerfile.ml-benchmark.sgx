@@ -50,7 +50,7 @@ RUN new_json="$(jq '.metadata.debuggable=false \
     |.resource_limits.kernel_space_heap_max_size = "512MB" \
     |.resource_limits.max_num_of_threads = 64 \
     |.mount +=[{"target":"/workspace/node/logs","type":"hostfs","source":"/workspace/node/logs"}] \
-    |.env.default += ["PYTHONHOME=/opt/python-occlum", "OMP_NUM_THREADS=1",  "PATH=/opt/python-occlum/bin:/bin:/usr/bin"]' Occlum.json)" \
+    |.env.default += ["PYTHONHOME=/opt/python-occlum", "OMP_NUM_THREADS=1", "OPENBLAS_NUM_THREADS=1", "MKL_NUM_THREADS=1", "NUMEXPR_NUM_THREADS=1", "SENTRA_PREWARM_TRAIN_UNPACK=1", "SENTRA_BARRIER_RESEND_S=2", "SENTRA_STRICT_UNPACK_BARRIER=1", "PATH=/opt/python-occlum/bin:/bin:/usr/bin"]' Occlum.json)" \
     && echo "${new_json}" > Occlum.json
 
 

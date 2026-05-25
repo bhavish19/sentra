@@ -316,6 +316,89 @@ def _lazy_metrics_delta(metrics: Optional[dict], key: str, before: dict) -> dict
         "unpack_s": float(after["unpack_s"] - float(before.get("unpack_s", 0.0))),
     }
 
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+
+
+def _prewarm_train_pss_unpack_cache(
+    *,
+    train_len: int,
+    test_len: int = 0,
+    args,
+    network,
+    me: MembershipEpochScope,
+    train_x_shares,
+    train_y_shares,
+    test_x_shares=None,
+    dataset_meta: dict,
+    packed_ops: PackedMPCOps,
+    train_x_lane_cache: dict,
+    train_y_lane_cache: dict,
+    test_x_lane_cache: Optional[dict] = None,
+    lazy_unpack_metrics: dict,
+    timeout_s: float = 900.0,
+) -> None:
+    """Unpack all train (and test X) PSS rows once before eval/training (avoids unpack races in Docker)."""
+    original_len = int(dataset_meta.get("feat_dim", int(train_x_shares.shape[1])))
+    cls_len = int(dataset_meta.get("cls_dim", int(train_y_shares.shape[1])))
+    pss_k = int(dataset_meta.get("packing_factor", 1))
+    all_train_idx = list(range(int(train_len)))
+    if int(args.node_id) == 1:
+        print(f"Pre-warming train PSS unpack cache ({train_len} samples)...")
+    _get_or_unpack_cached_rows(
+        cache=train_x_lane_cache,
+        indices=all_train_idx,
+        packed_rows=train_x_shares,
+        node_id=int(args.node_id),
+        original_len=original_len,
+        packing_factor=pss_k,
+        packed_ops=packed_ops,
+        context_prefix=me.ctx("prewarm_train_x"),
+        timeout_s=float(timeout_s),
+        metrics=lazy_unpack_metrics,
+        metrics_key="train_x",
+    )
+    _get_or_unpack_cached_rows(
+        cache=train_y_lane_cache,
+        indices=all_train_idx,
+        packed_rows=train_y_shares,
+        node_id=int(args.node_id),
+        original_len=cls_len,
+        packing_factor=pss_k,
+        packed_ops=packed_ops,
+        context_prefix=me.ctx("prewarm_train_y"),
+        timeout_s=float(timeout_s),
+        metrics=lazy_unpack_metrics,
+        metrics_key="train_y",
+    )
+    if (
+        int(test_len) > 0
+        and test_x_shares is not None
+        and test_x_lane_cache is not None
+    ):
+        all_test_idx = list(range(int(test_len)))
+        if int(args.node_id) == 1:
+            print(f"Pre-warming test PSS unpack cache ({test_len} samples)...")
+        _get_or_unpack_cached_rows(
+            cache=test_x_lane_cache,
+            indices=all_test_idx,
+            packed_rows=test_x_shares,
+            node_id=int(args.node_id),
+            original_len=original_len,
+            packing_factor=pss_k,
+            packed_ops=packed_ops,
+            context_prefix=me.ctx("prewarm_test_x"),
+            timeout_s=float(timeout_s),
+            metrics=lazy_unpack_metrics,
+            metrics_key="eval_x",
+        )
+    if network is not None:
+        network.barrier(me.ctx("prewarm_train_unpack_done"), timeout=float(timeout_s))
+    if int(args.node_id) == 1:
+        print("Train/test PSS pre-warm complete.")
+
+
 def _share_vector_for_all_nodes_pss(values, n_nodes, t, field_size, pss, scale, packing_factor):
     secrets = [int(v * scale) % field_size for v in values]
     chunks = pss.share_vector(secrets, n_nodes, t, packing_factor=int(packing_factor))
@@ -995,6 +1078,8 @@ def evaluate_model(
                 x_shares_cols.append(image_to_shares(x_test[i], n_nodes, t, node_id, field_size, shamir, scale))
         
     # Forward Pass Batched
+    if reconstruction is not None and int(n_nodes) > 1:
+        reconstruction.network.barrier(f"{context_prefix}_fwd_ready", timeout=120.0)
     logits_cols, _ = model.forward_pass_batched(
         x_shares_cols,
         weights,
@@ -1003,6 +1088,8 @@ def evaluate_model(
         open_relu=True,
         reconstruction_manager=reconstruction,
     )
+    if reconstruction is not None and int(n_nodes) > 1:
+        reconstruction.network.barrier(f"{context_prefix}_fwd_done", timeout=120.0)
     correct = 0
     loss_sum = 0.0
     max_abs_logit = 0.0
@@ -1998,6 +2085,24 @@ def main():
         train_y_lane_cache = {}
         test_x_lane_cache = {}
         print("Lazy PSS unpack cache enabled (train/test).")
+        if _env_truthy("SENTRA_PREWARM_TRAIN_UNPACK"):
+            _prewarm_train_pss_unpack_cache(
+                train_len=train_len,
+                test_len=test_len,
+                args=args,
+                network=network,
+                me=me,
+                train_x_shares=train_x_shares,
+                train_y_shares=train_y_shares,
+                test_x_shares=test_x_shares,
+                dataset_meta=dataset_meta,
+                packed_ops=packed_ops,
+                train_x_lane_cache=train_x_lane_cache,
+                train_y_lane_cache=train_y_lane_cache,
+                test_x_lane_cache=test_x_lane_cache,
+                lazy_unpack_metrics=lazy_unpack_metrics,
+                timeout_s=float(args.dataset_distribution_timeout),
+            )
 
     rng_eval = np.random.default_rng(args.seed + 777)
     eval_n = planned_eval_n
@@ -2008,6 +2113,8 @@ def main():
     # / MPC). Non-owners have y_test_plain is None but still must enter the same round as the owner.
     if y_test_plain is not None or test_x_shares is not None:
         print("\nStarting PRE-TRAIN Evaluation Check...")
+        if reconstruction is not None:
+            reconstruction.clear_cache()
         acc_pre, loss_pre, diag_pre = evaluate_model(model, weights, x_test_plain, y_test_plain, args.node_id, 
                                                      args.n_nodes, args.t, shamir, FIELD_SIZE, SCALE, 
                                                      reconstruction, n_test_samples=1, context_prefix=me.ctx("eval_pre"),
@@ -2205,6 +2312,16 @@ def main():
                     )
                 else:
                     print(f"Epoch {epoch+1} Batch {n_batches+1} completed in {wall_s:.2f}s", end="\n")
+
+                if os.environ.get("SENTRA_STRICT_TRAIN_BARRIER", "").strip().lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                ):
+                    network.barrier(
+                        me.ctx(f"train_batch_e{epoch}_b{start_idx}_done"),
+                        timeout=600.0,
+                    )
 
                 n_batches += 1
                 batch_done = True

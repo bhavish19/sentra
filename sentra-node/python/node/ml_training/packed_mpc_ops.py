@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Tuple
 
+import os
 import time
 import random
 import hashlib
@@ -292,6 +293,14 @@ class PackedMPCOps:
                 self.network.channel.clear_vector(ctx)
             except Exception:
                 pass
+
+            if os.environ.get("SENTRA_STRICT_UNPACK_BARRIER", "").strip().lower() in (
+                "1",
+                "true",
+                "yes",
+            ):
+                barrier_tag = f"pss_up_{ctx}"
+                self.network.barrier(barrier_tag, timeout=float(min(timeout, 600.0)))
 
             remaining -= k_cur
 

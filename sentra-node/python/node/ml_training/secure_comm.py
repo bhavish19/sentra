@@ -3,6 +3,7 @@ Secure Communication Protocol for Multi-Node MPC
 Enables secure channels between nodes and share reconstruction
 """
 
+import os
 from typing import List, Dict, Optional, Callable, Any, Union
 from ml_training.secret_sharing import Share, ShamirSecretSharing
 import socket
@@ -80,6 +81,30 @@ class SecureChannel:
         self.message_counter = 0
         # Optional callback(peer_id) when a send to peer_id fails (e.g. connection reset).
         self.on_send_failure: Optional[Callable[[int], None]] = None
+
+    @staticmethod
+    def _socket_recv_timeout_s() -> float:
+        raw = os.environ.get("SENTRA_SOCKET_RECV_TIMEOUT", "120")
+        try:
+            return max(1.0, float(raw))
+        except ValueError:
+            return 120.0
+
+    def _recv_exact(self, sock: socket.socket, nbytes: int, deadline: float) -> bytes:
+        """Read exactly nbytes before deadline (large MPC vector payloads)."""
+        buf = b""
+        while len(buf) < nbytes:
+            if time.time() >= deadline:
+                raise socket.timeout(f"timed out reading {nbytes} bytes (got {len(buf)})")
+            try:
+                sock.settimeout(max(0.1, deadline - time.time()))
+                chunk = sock.recv(nbytes - len(buf))
+            except socket.timeout:
+                continue
+            if not chunk:
+                raise ConnectionError("peer closed connection during recv")
+            buf += chunk
+        return buf
 
     def start_server(self):
         """Start listening server for incoming connections"""
@@ -320,14 +345,22 @@ class SecureChannel:
         This is the SIMD-style primitive: open many secrets in one round.
         """
         # Accept lists/arrays/numpy without materializing Python int lists.
-        # Use u64 transport whenever any value exceeds uint32.
+        # Use u64 transport whenever any value exceeds uint32 (or SENTRA_FORCE_U64_VECTORS=1).
+        force_u64 = os.environ.get("SENTRA_FORCE_U64_VECTORS", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
         buf: bytes
         enc = "u32le"
         try:
             import numpy as _np  # local import
             if isinstance(values, _np.ndarray):
                 arr_i64 = _np.asarray(values, dtype=_np.int64)
-                if arr_i64.size > 0 and ((_np.max(arr_i64) > 0xFFFFFFFF) or (_np.min(arr_i64) < 0)):
+                if force_u64 or (
+                    arr_i64.size > 0
+                    and ((_np.max(arr_i64) > 0xFFFFFFFF) or (_np.min(arr_i64) < 0))
+                ):
                     arr_u64 = _np.asarray(values, dtype=_np.uint64)
                     buf = arr_u64.tobytes(order="C")
                     enc = "u64le"
@@ -340,7 +373,7 @@ class SecureChannel:
                 buf = values.tobytes()
             else:
                 vals = [int(v) for v in values]
-                need_u64 = any((v < 0 or v > 0xFFFFFFFF) for v in vals)
+                need_u64 = force_u64 or any((v < 0 or v > 0xFFFFFFFF) for v in vals)
                 if need_u64:
                     buf = array("Q", (v & 0xFFFFFFFFFFFFFFFF for v in vals)).tobytes()
                     enc = "u64le"
@@ -348,7 +381,7 @@ class SecureChannel:
                     buf = array("I", (v & 0xFFFFFFFF for v in vals)).tobytes()
         except Exception:
             vals = [int(v) for v in values]
-            need_u64 = any((v < 0 or v > 0xFFFFFFFF) for v in vals)
+            need_u64 = force_u64 or any((v < 0 or v > 0xFFFFFFFF) for v in vals)
             if need_u64:
                 buf = array("Q", (v & 0xFFFFFFFFFFFFFFFF for v in vals)).tobytes()
                 enc = "u64le"
@@ -434,97 +467,59 @@ class SecureChannel:
                 print(f"Error: Invalid socket object received")
                 return
             
-            client_socket.settimeout(1.0)
+            recv_timeout = self._socket_recv_timeout_s()
+            client_socket.settimeout(recv_timeout)
             print(f"DEBUG: Node {self.node_id} accepted connection from {client_socket.getpeername()}")
             
             while self.running:
                 try:
-                    # Read message length (4 bytes) - Handle partial reads
-                    length_data = b''
-                    while len(length_data) < 4 and self.running:
-                        try:
-                            chunk = client_socket.recv(4 - len(length_data))
-                            if not chunk:
-                                break
-                            length_data += chunk
-                        except socket.timeout:
-                            continue
-                        except (socket.error, OSError) as e:
-                            if e.errno in (10035, 10037, 11): # EWOULDBLOCK (Windows & Linux)
-                                continue
-                            raise e
+                    deadline = time.time() + recv_timeout
+                    length_data = self._recv_exact(client_socket, 4, deadline)
+                    length = struct.unpack(">I", length_data)[0]
+                    if length <= 0 or length > 64 * 1024 * 1024:
+                        print(f"DEBUG: Node {self.node_id} invalid message length {length}")
+                        break
+                    message_data = self._recv_exact(client_socket, length, deadline)
+                    msg_dict = json.loads(message_data.decode("utf-8"))
+                    msg_type = msg_dict.get("msg_type")
+                    if msg_type == "sync":
+                        print(f"DEBUG: Node {self.node_id} received SYNC packet from {msg_dict.get('sender_id')}")
 
-                    if len(length_data) < 4:
-                        print(f"DEBUG: Node {self.node_id} client disconnected (no length data).")
-                        break # Connection closed or invalid
-                        
-                    length = struct.unpack('>I', length_data)[0]
+                    try:
+                        if msg_dict.get("msg_type") == MessageType.VECTOR_SHARE_EXCHANGE_BIN.value:
+                            payload_len = int(msg_dict.get("data", {}).get("payload_len", 0))
+                            if payload_len > 0:
+                                payload = self._recv_exact(client_socket, payload_len, deadline)
+                                if len(payload) != payload_len:
+                                    raise ValueError(
+                                        f"vector payload size mismatch: want {payload_len}, got {len(payload)}"
+                                    )
+                                msg_dict.setdefault("data", {})["payload_bytes"] = payload
+                        elif msg_dict.get("msg_type") == MessageType.VECTOR_PAIR_EXCHANGE_BIN.value:
+                            payload_len = int(msg_dict.get("data", {}).get("payload_len", 0))
+                            if payload_len > 0:
+                                payload = self._recv_exact(client_socket, payload_len, deadline)
+                                if len(payload) != payload_len:
+                                    raise ValueError(
+                                        f"vector_pair payload size mismatch: want {payload_len}, got {len(payload)}"
+                                    )
+                                msg_dict.setdefault("data", {})["payload_bytes"] = payload
+                    except Exception as e:
+                        print(f"Error reading binary payload: {e}")
+                        break
+
+                    self._process_message(msg_dict, client_socket)
                 except socket.timeout:
                     continue
+                except ConnectionError:
+                    print(f"DEBUG: Node {self.node_id} client disconnected (no length data).")
+                    break
                 except (socket.error, OSError) as e:
-                    if e.errno in (10035, 10037, 11): # EWOULDBLOCK
+                    if e.errno in (10035, 10037, 11):
                         continue
                     if self.running:
-                         print(f"Error reading length: {e}")
+                        print(f"Error handling client: {e}")
                     break
-                
-                try:
-                    # Read message
-                    message_data = b''
-                    while len(message_data) < length and self.running:
-                        try:
-                            chunk = client_socket.recv(length - len(message_data))
-                            if not chunk:
-                                break
-                            message_data += chunk
-                        except socket.timeout:
-                            continue
-                        except (socket.error, OSError) as e:
-                             if e.errno in (10035, 10037, 11): continue
-                             raise e
-                    
-                    if len(message_data) == length:
-                        msg_dict = json.loads(message_data.decode('utf-8'))
-                        msg_type = msg_dict.get("msg_type")
-                        if msg_type == "sync":
-                             print(f"DEBUG: Node {self.node_id} received SYNC packet from {msg_dict.get('sender_id')}")
-                        
-                        # Handle binary payloads...
-                        # If this is a binary vector message, read the raw payload now
-                        try:
-                            if msg_dict.get("msg_type") == MessageType.VECTOR_SHARE_EXCHANGE_BIN.value:
-                                payload_len = int(msg_dict.get("data", {}).get("payload_len", 0))
-                                if payload_len > 0:
-                                    payload = b""
-                                    while len(payload) < payload_len and self.running:
-                                        try:
-                                            chunk = client_socket.recv(payload_len - len(payload))
-                                            if not chunk:
-                                                break
-                                            payload += chunk
-                                        except socket.timeout:
-                                            continue
-                                    msg_dict.setdefault("data", {})["payload_bytes"] = payload
-                            elif msg_dict.get("msg_type") == MessageType.VECTOR_PAIR_EXCHANGE_BIN.value:
-                                payload_len = int(msg_dict.get("data", {}).get("payload_len", 0))
-                                if payload_len > 0:
-                                    payload = b""
-                                    while len(payload) < payload_len and self.running:
-                                        try:
-                                            chunk = client_socket.recv(payload_len - len(payload))
-                                            if not chunk:
-                                                break
-                                            payload += chunk
-                                        except socket.timeout:
-                                            continue
-                                    msg_dict.setdefault("data", {})["payload_bytes"] = payload
-                        except Exception as e:
-                            print(f"Error reading binary payload: {e}")
-                        
-                        self._process_message(msg_dict, client_socket)
-                    else:
-                        print(f"DEBUG: Node {self.node_id} incomplete message. Wanted {length}, got {len(message_data)}")
-                        
                 except Exception as e:
                     print(f"DEBUG: Node {self.node_id} error processing content: {e}")
                     break
@@ -960,14 +955,30 @@ class SecureMPCNetwork:
 
         start = time.time()
         expected_peers = {i for i in self.node_configs.keys() if i != self.node_id}
+        resend_s = float(os.environ.get("SENTRA_BARRIER_RESEND_S", "0") or "0")
+        last_resend = start
+        last_wait_log = start
         while time.time() - start < timeout:
             got = self.channel.get_received_sync(tag)
             if expected_peers.issubset(got):
                 self.channel.clear_sync(tag)
                 print(f"DEBUG: Node {self.node_id} barrier '{tag}' passed. Got: {got}")
                 return
-            if int(time.time()) % 5 == 0:
-                 print(f"DEBUG: Node {self.node_id} barrier '{tag}' waiting. Got: {got}, Expected: {expected_peers}")
+            now = time.time()
+            if resend_s > 0.0 and (now - last_resend) >= resend_s:
+                for other_id in self.node_configs.keys():
+                    if other_id != self.node_id:
+                        try:
+                            self.channel.send_message(other_id, MessageType.SYNC, payload)
+                        except Exception as e:
+                            raise RuntimeError(f"Failed to re-send SYNC to node {other_id}: {e}") from e
+                last_resend = now
+            if (now - last_wait_log) >= 30.0:
+                print(
+                    f"DEBUG: Node {self.node_id} barrier '{tag}' waiting. "
+                    f"Got: {got}, Expected: {expected_peers}"
+                )
+                last_wait_log = now
             time.sleep(0.05)
 
         print(f"DEBUG: Node {self.node_id} barrier '{tag}' TIMED OUT. Got: {got}, Expected: {expected_peers}")

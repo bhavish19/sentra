@@ -382,9 +382,9 @@ class PackedMPCEngine:
             if target_id == local_node_id:
                 continue # Handle self later
             ctx_send = f"{context}_to_{target_id}"
-            # cast to uint32 for network (assuming standard ring 2**31-1 fits in u32? yes, or u64)
-            # field_size is 2**31-1, fits in u32.
-            network.channel.send_vector(target_id, ctx_send, x=local_node_id, values=np.asarray(values, dtype=np.uint32))
+            network.channel.send_vector(
+                target_id, ctx_send, x=local_node_id, values=np.asarray(values, dtype=np.uint64)
+            )
 
         # Receive and Sum phase
         # Init sum with self-values
