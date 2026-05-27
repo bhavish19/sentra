@@ -90,7 +90,25 @@ def summarize_run_logs(
         timings.setdefault(ck, v)
 
     summary["timings"] = timings
+    summary["runtime_metrics"] = summarize_runtime_metrics_from_logs(node_logs, client_log)
     return summary
+
+
+def summarize_runtime_metrics_from_logs(
+    node_logs: Dict[int, str],
+    client_log: str,
+) -> Dict[str, Any]:
+    """Aggregate [BENCHMARK] phase=runtime_metrics* lines across roles."""
+    out: Dict[str, Any] = {"nodes": {}, "client": {}}
+    for nid, text in sorted(node_logs.items()):
+        for row in parse_benchmark_lines(text):
+            phase = row.get("phase", "")
+            if phase == "runtime_metrics":
+                out["nodes"][nid] = dict(row)
+    for row in parse_benchmark_lines(client_log):
+        if row.get("phase") == "runtime_metrics":
+            out["client"] = dict(row)
+    return out
 
 
 def build_run_overhead_metrics(

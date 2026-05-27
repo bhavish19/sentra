@@ -2136,6 +2136,16 @@ def main():
 
     print("\nStarting BATCHED Training...")
     _t_train0 = time.time()
+    _resource_sampler_stop = None
+    try:
+        from ml_training.runtime_metrics import metrics_enabled, start_resource_sampler
+        import threading
+
+        if metrics_enabled():
+            _resource_sampler_stop = threading.Event()
+            start_resource_sampler(stop_event=_resource_sampler_stop)
+    except Exception:
+        _resource_sampler_stop = None
     prev_epoch_loss = None
     instability_detected = False
     training_aborted = False
@@ -2313,6 +2323,13 @@ def main():
                 else:
                     print(f"Epoch {epoch+1} Batch {n_batches+1} completed in {wall_s:.2f}s", end="\n")
 
+                try:
+                    from ml_training.runtime_metrics import inc_training_iteration
+
+                    inc_training_iteration()
+                except Exception:
+                    pass
+
                 if os.environ.get("SENTRA_STRICT_TRAIN_BARRIER", "").strip().lower() in (
                     "1",
                     "true",
@@ -2339,7 +2356,14 @@ def main():
 
         if use_weight_versioning and local_kvs is not None:
             v_theta = epoch + 1
+            _t_ver0 = time.time()
             put_weights_versioned(local_kvs, weights, v_theta, quorum_size=1)
+            try:
+                from ml_training.runtime_metrics import add_versioning_sec
+
+                add_versioning_sec(time.time() - _t_ver0)
+            except Exception:
+                pass
             if args.node_id == 1:
                 print(f"Epoch {epoch+1}: Weights persisted to KVS (v_theta={v_theta}).")
 
@@ -2544,6 +2568,14 @@ def main():
         _extra["dataset_prep_sec"] = f"{_dataset_prep_sec:.6f}"
     if prover_total > 0:
         _extra["prover_sec"] = f"{prover_total:.6f}"
+    try:
+        if _resource_sampler_stop is not None:
+            _resource_sampler_stop.set()
+        from ml_training.runtime_metrics import emit_summary
+
+        emit_summary(role=f"node{int(args.node_id)}")
+    except Exception:
+        pass
     log_benchmark(
         role=f"node{int(args.node_id)}",
         phase="dataset",
