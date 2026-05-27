@@ -20,6 +20,8 @@ services:
       SENTRA_SOCKET_RECV_TIMEOUT: "300"
       # Set to 1 to barrier after each train batch (slow; isolates MPC desync during training).
       SENTRA_STRICT_TRAIN_BARRIER: "0"
+      SENTRA_RUNTIME_METRICS: "1"
+      SENTRA_RESOURCE_SAMPLE_INTERVAL_S: "30"
     volumes:
       - ml_benchmark_logs:/workspace/node/logs
 
@@ -42,6 +44,8 @@ services:
       SENTRA_FORCE_U64_VECTORS: "1"
       SENTRA_SOCKET_RECV_TIMEOUT: "300"
       SENTRA_STRICT_TRAIN_BARRIER: "0"
+      SENTRA_RUNTIME_METRICS: "1"
+      SENTRA_RESOURCE_SAMPLE_INTERVAL_S: "30"
     devices:
       - "/dev/sgx_enclave:/dev/sgx_enclave"
       - "/dev/sgx_provision:/dev/sgx_provision"

@@ -146,6 +146,39 @@ def _print_run_timing_tables(
             print(_format_timing_table(client_headers, [client_row]))
 
 
+def _print_runtime_metrics_summary(runtime: Dict[str, Any]) -> None:
+    if not runtime:
+        return
+    nodes = runtime.get("nodes") or {}
+    if not nodes:
+        return
+    print("\n  Runtime metrics (enable SENTRA_RUNTIME_METRICS=1):")
+    headers = [
+        "node",
+        "comm_mb_per_iter",
+        "bytes_total",
+        "cpu_avg_pct",
+        "cpu_peak_pct",
+        "rss_mb_peak",
+        "versioning_sec",
+    ]
+    rows: List[List[Any]] = []
+    for nid in sorted(nodes, key=lambda x: int(x)):
+        row = nodes[nid]
+        rows.append(
+            [
+                nid,
+                row.get("comm_mb_per_iter", ""),
+                row.get("bytes_total", ""),
+                row.get("cpu_avg_pct", ""),
+                row.get("cpu_peak_pct", ""),
+                row.get("rss_mb_peak", ""),
+                row.get("versioning_sec_total", ""),
+            ]
+        )
+    print(_format_timing_table(headers, rows))
+
+
 def _print_run_overhead_summary(overhead: Dict[str, float]) -> None:
     print("\n  Orchestrator timing (sec):")
     labels = [
@@ -547,6 +580,7 @@ def _run_headless(args) -> None:
         n_nodes=int(args.n_nodes),
         client_present=client_proc is not None,
     )
+    _print_runtime_metrics_summary(bench.get("runtime_metrics") or {})
     print(f"  logs: {run_dir}")
 
     if bool(getattr(args, "record_results_xlsx", "")):
