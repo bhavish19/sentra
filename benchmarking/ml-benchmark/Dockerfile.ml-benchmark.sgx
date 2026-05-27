@@ -45,7 +45,7 @@ RUN copy_bom -f /sentra-benchmark-sbom.yaml --root image --include-dir /opt/occl
 RUN new_json="$(jq '.metadata.debuggable=false \
     |.feature.enable_edmm=true \
     |.resource_limits.user_space_size = "1MB" \
-    |.resource_limits.user_space_max_size = "5400MB" \
+    |.resource_limits.user_space_max_size = "32000MB" \
     |.resource_limits.kernel_space_heap_size = "1MB" \
     |.resource_limits.kernel_space_heap_max_size = "512MB" \
     |.resource_limits.max_num_of_threads = 64 \
