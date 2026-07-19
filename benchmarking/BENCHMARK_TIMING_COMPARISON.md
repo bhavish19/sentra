@@ -351,7 +351,7 @@ grep -E '\[BENCHMARK\]|Run summary' crypten_run.log
 
 - SENTRA: `benchmarking/ml-benchmark/configs/with-client.yaml`
 - CrypTen: `benchmarking/crypten-benchmark/configs/sentra-with-client.yaml`
-- Shared indices: `benchmarking/ml-benchmark/assets/with-client/` (10,000 train + 100 test row indices)
+- Shared indices: `benchmarking/ml-benchmark/assets/train_indices.npy` and `benchmarking/ml-benchmark/assets/test_indices.npy` (10,000 train + 100 test row indices)
 
 ---
 
@@ -395,7 +395,7 @@ CrypTen does not yet emit the same `runtime_metrics` line; compare comm/CPU/memo
 
 **Purpose:** Stacked-bar / pipeline figures for the dissertation.  
 **Profile:** same as §1 (`with-client`, 10k train, 10 epochs, batch 64).  
-**Machine-readable exports:** `benchmarking/PAPER_WORKFLOW_TIMING.csv` (workflow stages) · `benchmarking/MEASURED_SYSTEMS_METRICS.csv` (§15 systems table)
+The authoritative workflow values are the tables in §§13.1–13.2; no machine-readable CSV export is currently maintained.
 
 ### 13.1 Canonical pipeline (what each system actually does)
 
@@ -449,7 +449,7 @@ Use these four buckets so bars sum to a **comparable pipeline** without double-c
 
 | Figure idea | X-axis | Y-axis / series | Data source |
 |-------------|--------|-----------------|-------------|
-| **Stacked runtime pipeline** | SENTRA non-SGX · SENTRA SGX · CrypTen | Init · Data · Training · Eval (§13.2) | `PAPER_WORKFLOW_TIMING.csv` |
+| **Stacked runtime pipeline** | SENTRA non-SGX · SENTRA SGX · CrypTen | Init · Data · Training · Eval (§13.2) | Table in §13.2 |
 | **Training-only bar** | Same three systems | `secure_training` only | Emphasises MPC cost without client/distribution debate |
 | **TEE overhead** | non-SGX vs SGX | Training ratio 1.41×; optional +251 s init | §7 ratios |
 | **Accuracy vs time** | Final accuracy (%) | Total hours (logged) | Table in §13.1 last rows |
@@ -507,7 +507,7 @@ Profiles below differ from §1. Log volume: Docker `ml-benchmark_ml_benchmark_lo
 | `run_20260527_041355` | `with-client-fault-5node.yaml` | Docker non-SGX | **Partial** — recovery OK; epoch-1 eval crashed (`No connection to node 3`) |
 | `run_20260527_033821` | 5-node, 512 train, 5 epochs (no fault) | Docker non-SGX | **Success** — scaling reference (no `recovery_*`) |
 | `run_20260527_022635` | 5-node fault-like (SGX) | SGX / Occlum | **Failed recovery** — `recovery_dropout success=0`, training paused after 7 iters |
-| `run_20260526_234840` | `with-client-fault-smoke.yaml` | Docker non-SGX | **Success** — 3-node, 512/64, 2 epochs, failure detection |
+| `run_20260526_234840` | Legacy 3-node fault-smoke profile (config no longer present) | Docker non-SGX | **Success** — 512/64, 2 epochs, failure detection |
 | *(worker terminal)* | `with-client-versioned.yaml` | Docker non-SGX | **Success** — 10k/10 epochs; see §14.5 (run ID not yet in local volume) |
 
 ### 14.2 Five-node dropout recovery (`run_20260527_042846`)
@@ -607,7 +607,7 @@ Epoch 10 batch stage average (node 1): **fwd=3.78 s, dw1=2.07 s, upd=0.74 s, tot
 
 ## 15. Dissertation measured systems metrics table (`with-client`, 10k / 10 epochs)
 
-**Aligned with §3.** CSV export: `benchmarking/MEASURED_SYSTEMS_METRICS.csv`.
+**Aligned with §3.** This section is the maintained source for the measured systems metrics table.
 
 | System | Run ID / source |
 |--------|-----------------|

@@ -42,7 +42,7 @@ SENTRA is implemented as a multi-party secure training stack in which a **data-o
 | SENTRA (SGX) | Intel SGX via Occlum inside Docker |
 | CrypTen | MPC baseline, aligned config (`sentra-with-client.yaml`) |
 
-**Optional extensions:** per-epoch weight versioning (`with-client-versioned.yaml`), failure detection / dropout recovery (`with-client-fault-smoke.yaml`), runtime metrics (`SENTRA_RUNTIME_METRICS=1`).
+**Optional extensions:** per-epoch weight versioning (`with-client-versioned.yaml`), failure detection / dropout recovery (`with-client-fault-5node.yaml`), runtime metrics (`SENTRA_RUNTIME_METRICS=1`).
 
 ### 1.2 Models and workloads
 
@@ -70,10 +70,11 @@ SENTRA is implemented as a multi-party secure training stack in which a **data-o
 
 | Profile | Train samples | Epochs | Purpose |
 |---------|---------------|--------|---------|
-| Quick / fault-smoke | 512 | 2 | Recovery and metrics smoke tests |
+| Quick | 256 | 1 | Fast node-owned-data smoke test |
+| Fault 5-node | 512 | 5 | Dropout recovery and runtime metrics |
 | Sweep default | 10,000 | 8 | Cross-framework sweep (lr 0.003) |
 
-Shared train/test row indices: `benchmarking/ml-benchmark/assets/with-client/`.
+Shared train/test row indices: `benchmarking/ml-benchmark/assets/train_indices.npy` and `benchmarking/ml-benchmark/assets/test_indices.npy`.
 
 ### 1.3 Hardware
 
@@ -209,7 +210,7 @@ We evaluate SENTRA along four axes: (1) end-to-end training time and accuracy ve
 
 ## 5. Scalability analysis
 
-**Sample and epoch scaling.** Quick-benchmark (512 samples, 2 epochs) completes training in ~229 s (~4.5 samples/s), suitable for fault-recovery smoke tests but not representative of full-subset learning.
+**Sample and epoch scaling.** A historical 3-node recovery smoke workload (512 samples, 2 epochs) completed training in ~229 s (~4.5 samples/s), but its configuration is no longer included. The current `quick.yaml` profile uses 256 samples for 1 epoch; the current `with-client-fault-5node.yaml` profile uses 512 samples for 5 epochs.
 
 **Party geometry.** SENTRA uses 3 MPC nodes plus an out-of-band client; CrypTen uses 4 world-size ranks with MNIST on rank 0. Party counts are comparable, but trust and data placement differ: SENTRA never ships plaintext training data to nodes.
 
@@ -251,8 +252,9 @@ with approximately \textbf{0.10M} trainable parameters ($784{\times}128 + 128 + 
 
 We additionally report:
 \begin{enumerate}[leftmargin = *]
-    \item \textbf{Quick smoke:} $512$ samples, $2$ epochs (fault-recovery and metrics experiments).
-    \item \textbf{Sweep default:} $10{,}000$ samples, $8$ epochs, learning rate $0.003$ (cross-framework comparison on the worker host).
+    \item \textbf{Quick smoke:} $256$ samples, $1$ epoch (node-owned-data sanity check).
+    \item \textbf{Fault recovery:} $512$ samples, $5$ epochs, $5$ nodes (dropout and runtime-metrics experiment).
+    \item \textbf{Sweep default:} $10{,}000$ samples, $8$ epochs, learning rate $0.003$ (historical cross-framework comparison on the worker host).
 \end{enumerate}
 
 \subsubsection{Hardware}
@@ -337,7 +339,7 @@ On WSL, node~3 records $\approx 1{,}447$\,s prover work ($\approx 9.8\%$ of trai
 
 
 \subsubsection{Scalability Analysis}
-The quick-benchmark profile ($512$ samples, $2$ epochs) completes secure training in $\approx 229$\,s on the worker, useful for fault-recovery smoke tests but not representative of full MNIST subset learning. SENTRA uses $3$ MPC nodes plus an out-of-band client; CrypTen runs $4$ world-size ranks with MNIST resident on rank~0. Peak RSS and per-iteration communication are exported via \texttt{runtime\_metrics}. SGX provides memory-isolated execution at the cost of $\approx 1.41\times$ training time vs.\ Docker non-SGX and $\approx 4.2$\,minutes cold start per node.
+The current quick-benchmark profile uses $256$ samples for $1$ epoch and is intended only as a node-owned-data sanity check. The current fault-recovery profile uses $512$ samples for $5$ epochs across $5$ nodes and is likewise not representative of full MNIST subset learning. SENTRA uses $3$ MPC nodes plus an out-of-band client; CrypTen runs $4$ world-size ranks with MNIST resident on rank~0. Peak RSS and per-iteration communication are exported via \texttt{runtime\_metrics}. SGX provides memory-isolated execution at the cost of $\approx 1.41\times$ training time vs.\ Docker non-SGX and $\approx 4.2$\,minutes cold start per node.
 
 
 \subsubsection{Limitations}
@@ -464,13 +466,7 @@ Report **`versioning_sec_total / training_wall_sec × 100`** for instrumented KV
 
 ### 3 — Dynamic node join time (sec)
 
-**SENTRA-only** — use `with-client-join-5node.yaml` (dropout + join). Procedure: **`benchmarking/ml-benchmark/JOIN_BENCHMARK.md`**.
-
-1. Kill node 3 after Epoch 1 Batch 2 (dropout recovery to 4 parties).  
-2. Restart node 3 process inside the container.  
-3. Measure **`recovery_join` `wall_sec`** or time from `Join recovery seq=1` to `Join weight reshare complete`.
-
-Evidence run for dropout (not join): `run_20260527_042846`. Join run ID: *pending one successful join benchmark*.
+Dynamic join remains unmeasured. The repository currently contains neither a join benchmark profile nor a join-specific reproduction procedure. The dropout evidence in `run_20260527_042846` must not be reported as a join result; add a maintained join configuration and capture a successful `recovery_join` run before filling this metric.
 
 ---
 
@@ -494,9 +490,7 @@ grep -E '\[BENCHMARK\]|Run summary' crypten_run.log
 
 - SENTRA: `benchmarking/ml-benchmark/configs/with-client.yaml`
 - Versioned: `benchmarking/ml-benchmark/configs/with-client-versioned.yaml`
-- Fault smoke (3-node): `benchmarking/ml-benchmark/configs/with-client-fault-smoke.yaml`
 - Fault 5-node recovery: `benchmarking/ml-benchmark/configs/with-client-fault-5node.yaml`
-- Join 5-node recovery: `benchmarking/ml-benchmark/configs/with-client-join-5node.yaml`
 - CrypTen: `benchmarking/crypten-benchmark/configs/sentra-with-client.yaml`
 
 ---

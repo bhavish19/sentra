@@ -1,44 +1,55 @@
-# Overview of using SENTRA with SGX
+# SENTRA deployment manifests
 
-## General architecture
+This directory contains the backend-assisted deployment manifests. It is
+separate from the self-contained MPC benchmark workflow under
+`benchmarking/ml-benchmark/`.
 
-SENTRA is exeucted in SGX by using the Occlum framework (https://occlum.io/). Therefore a Docker image will be created which contains the Occlum framework and an occlum instance of the SENTRA code/environment.
+## Important backend dependency
+
+The Compose and Kubernetes manifests require:
+
+```text
+registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest
+```
+
+The backend source and local Dockerfile are not included in this repository.
+You must have permission to pull that private image (or replace it with a
+compatible image) before using these manifests. The node images still build
+locally from `benchmarking/sentra-node/`.
 
 ## Files
 
-- `docker-compose.yaml` 
-Docker compose file which can be used to build and execute SENTRA
-- `SentraSGX.dockerfile`
-Build file for the docker image. It is based on the Occlum docker images and extend them with the SENTRA code. Thereby the needed Python runtime environment is installed using `miniconda`.
-- `entrypoint.sh`
-Script which is executed at start of the container. It acually executes SENTRA.
-- `sentra-sbom.yaml`
-Declarative configuration file which describes which files should be copied into the Occlum instance, e.g. be available in the enclave. This is basically the needed Python runtime environment and the SENTRA code itself.
+- `docker-compose.yaml` — SGX and NoSGX node profiles plus the external backend.
+- `sentra-kubernetes.yaml` — SGX Kubernetes deployment.
+- `sentra-kubernetes-no-sgx.yaml` — NoSGX Kubernetes deployment.
 
-## Runing SENTRA in SGX
+The obsolete Swarm example was removed because Docker Swarm does not build
+images from a Compose `build` section and its referenced Dockerfile no longer
+exists.
 
-### Requirements
+## Requirements
 
-- machine with Intel-SGX enabled 
-- recent Linux distribution, which proviedes access to SGX
-- recent Docker version installed
+- Linux host with a recent Docker Engine and Compose plugin.
+- Intel SGX devices and Occlum prerequisites for SGX profiles.
+- Access to the private backend image listed above.
+- Repository root as the Docker build context.
 
-### Running SENTRA
+## Compose profiles
 
-Execute:
+From this directory:
 
-``docker compose up --profile <name>``
+```bash
+docker login registry.tdp.trustworthy6g.net
+docker compose --profile <profile> up
+```
 
-This will automatically build the Docker image (if it does not exist) and execute it afterwards. You should see relevant output on the terminal. Note that you need to specify the profile you want to execute:
+Available profiles:
 
-- ``docker compose up --profile test``  
-  Runs: ``run_training.py`` (simple training path in the container).
+- `test` — simple training using the SGX node image.
+- `test-no-sgx` — simple training using the NoSGX node image.
+- `mnist_batched_secure` — secure MNIST using the SGX node image.
+- `mnist_batched_secure-no-sgx` — secure MNIST using the NoSGX node image.
+- `multi-node` — five SGX node workers.
 
-- ``docker compose up --profile mnist_batched_secure``  
-  Runs: ``run_mnist_batched_secure.py`` (batched secure MNIST; SGX image).
-
-- ``docker compose up --profile mnist_batched_secure-no-sgx``  
-  Same MNIST runner on the no-SGX image.
-
-- ``docker compose up --profile multi-node``  
-  Multi-node scenario with five ``run_mnist_batched_secure.py`` workers.
+For secure training without the external backend, use the local Python or
+`benchmarking/ml-benchmark/` instructions in the root README.

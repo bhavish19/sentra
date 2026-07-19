@@ -1,111 +1,96 @@
 # SENTRA Usage Guide
 
-This guide is the practical runbook for the current SENTRA codebase.
-For project overview and design notes, see `README.md`.
+SENTRA is research and benchmarking software for secure multi-party MNIST training. Use `README.md` for the repository overview, `sentra-node/python/README.md` for detailed launcher flags, and `benchmarking/README.md` for benchmark workflows.
 
-## 1. Environment
+## Install
 
-Install dependencies:
+From the repository root:
 
-```bash
-pip install -r requirements.txt
+```powershell
+python -m pip install -r sentra-node/python/node/requirements.txt
 ```
 
-## 2. Recommended Run Modes
+Linux or WSL is the supported environment for local multi-process runs. Docker is used for packaged non-SGX and SGX benchmarks.
 
-### A) SENTRA-compliant mode (`secure_approx`)
+## Local multi-node training
 
-Use this when you need protocol-faithful results.
+The canonical launcher is `sentra-node/python/node/start_all_nodes.py`. It starts one `run_mnist_batched_secure.py` process per node.
 
-```bash
-python3 start_all_nodes.py --n-nodes 3 --base-port 9600 --batched \
-  --num-epochs 8 --batch-size 64 --mnist-samples 10000 \
-  --learning-rate 0.002 --loss-mode softmax \
-  --field-size 2305843009213693951 \
-  --scale-factor 65536 --softmax-temperature 2 \
-  --exp-approx pade22 --softmax-grad-mode secure_approx \
-  --grad-clip 0.50 --logit-clip 4.0 \
-  --explode-logit-threshold 100 --loss-growth-threshold 5 \
-  --grad-norm-threshold 1500 --no-abort-on-instability \
+From the repository root, run the client-owned-data workflow:
+
+```powershell
+python sentra-node/python/node/start_all_nodes.py `
+  --n-nodes 3 --base-port 9600 --headless `
+  --receive-dataset-shares-from-client --start-client-distributor `
+  --client-eval-after-training --client-eval-samples 100 --client-test-samples 100 `
+  --num-epochs 8 --batch-size 64 --mnist-samples 10000 `
+  --learning-rate 0.002 --loss-mode softmax `
+  --field-size 2305843009213693951 --scale-factor 65536 `
+  --softmax-temperature 2 --exp-approx pade22 `
+  --softmax-grad-mode secure_approx `
+  --grad-clip 0.50 --logit-clip 4.0 `
+  --explode-logit-threshold 100 --loss-growth-threshold 5 `
+  --grad-norm-threshold 1500 --no-abort-on-instability `
   --debug-numerics --seed 2026
 ```
 
-### B) Accelerated comparison mode (`opened_exact`)
+Use backslashes instead of PowerShell backticks on bash.
 
-Use this for benchmarking/ablation against the compliant mode.
+For a short owner-node simulation:
 
-```bash
-python3 start_all_nodes.py --n-nodes 3 --base-port 9700 --batched \
-  --num-epochs 8 --batch-size 64 --mnist-samples 10000 \
-  --learning-rate 0.002 --loss-mode softmax \
-  --field-size 2305843009213693951 \
-  --scale-factor 65536 --softmax-temperature 2 \
-  --exp-approx pade22 --softmax-grad-mode opened_exact \
-  --grad-clip 0.50 --logit-clip 4.0 \
-  --explode-logit-threshold 100 --loss-growth-threshold 5 \
-  --grad-norm-threshold 1500 --no-abort-on-instability \
-  --debug-numerics --seed 2026
+```powershell
+python sentra-node/python/node/start_all_nodes.py --n-nodes 3 --base-port 9600 --headless --distribute-dataset-shares --dataset-owner-node 1 --num-epochs 1 --batch-size 8 --mnist-samples 128
 ```
 
-## 3. How to Read Logs
+`--distribute-dataset-shares` means one training node initially loads the raw dataset. Use the client distributor workflow when evaluating separation between the data owner and compute nodes.
 
-Enable `--debug-numerics` for useful diagnostics.
+## Training modes
 
-Key lines:
-- `Epoch X Test Accuracy`
-- `Epoch X Test Loss`
-- `Epoch X Diagnostics: mean|logit|, max|logit|, mean_entropy`
-- `Epoch X Probe probs_est stats`
+- `--softmax-grad-mode secure_approx` uses the fixed-point secure approximation path and is the mode to use for SENTRA protocol experiments.
+- `--softmax-grad-mode opened_exact` is an accelerated comparison/ablation path. Label results accordingly; it is not equivalent to the secure approximation.
 
-Healthy run indicators:
-- `probs_est stats sum` near `1.0`
-- `probs_est min >= 0`
-- no rapid explosion in `max|logit|`
-- loss trending down across epochs
+The launcher is always batched. The legacy `--batched` flag is accepted but deprecated and has no effect.
 
-## 4. Common Problems
+## Data and logs
 
-### Port already in use
+Set `MNIST_NPZ_PATH` to the MNIST `.npz` location when it is not found automatically.
 
-```bash
-pkill -f "start_all_nodes.py|run_mnist_batched_secure.py" || true
+Headless runs write logs below:
+
+```text
+sentra-node/python/node/logs/run_<timestamp>/
 ```
 
-Then re-run with a fresh `--base-port`.
+With `--debug-numerics`, inspect epoch accuracy/loss, logit magnitude, probability estimates, entropy, and instability warnings. Completion alone does not establish useful accuracy or protocol security.
 
-### Broken pipe / reset by peer
+## Tests
 
-One or more nodes exited early. Ensure all nodes run with identical arguments and check per-node logs.
+The active pytest configuration is `sentra-node/python/pytest.ini`. Run tests from `sentra-node/python`:
 
-### Non-integer softmax temperature
-
-Fixed-point path currently expects integer temperature. Use values like `1` or `2`.
-
-## 5. Tests
-
-Quick sanity tests:
-
-```bash
-python -m pytest -q testing/test_forward_scaling.py testing/test_gradient_scaling.py
+```powershell
+Set-Location sentra-node/python
+python -m pytest -q node/testing/test_forward_scaling.py node/testing/test_gradient_scaling.py
+python -m pytest -q node/testing/test_batched_stage_invariants.py -s
 ```
 
-Stage invariant integration test:
+The configured suites are under `node/testing/` and `node/tests/`. Integration tests can require free ports, MNIST data, and substantially more time than unit tests.
 
-```bash
-python -m pytest -q testing/test_batched_stage_invariants.py -s
-```
+## Common problems
 
-## 6. Reproducibility Checklist
+- **Port already in use:** terminate stale node processes or choose a new `--base-port`.
+- **Broken pipe/reset by peer:** inspect all per-node logs and find the first process to fail.
+- **Non-integer softmax temperature:** the fixed-point path currently expects an integer-valued temperature such as `1` or `2`.
+- **Missing MNIST:** set `MNIST_NPZ_PATH` explicitly.
+- **Unstable metrics:** use `--debug-numerics`, reduce the run size while diagnosing, and record all numerical parameters.
 
-Always record:
-- full command line
-- seed
-- field size and scale factor
-- softmax gradient mode
-- epoch-wise metrics (accuracy, loss, diagnostics)
+## Benchmark and deployment boundaries
 
-## 7. Notes
+For reproducible dissertation benchmarks, use the profiles and instructions in `benchmarking/README.md` and `benchmarking/ml-benchmark/README.md`.
 
-- `secure_approx` is the SENTRA-compliant run mode.
-- `opened_exact` should be labeled as a comparison/accelerated variant.
-- Older scripts in this repository may still exist for legacy experiments.
+SGX is optional and is not used by local Python runs. SGX/Occlum execution requires compatible Intel SGX hardware, drivers, Occlum, and the dedicated Docker build/run targets.
+
+The manifests in `sentra-deployment/` are a separate backend-assisted workflow that requires a private backend image. They are not a self-contained public deployment path. No workflow in this guide should be described as production ready without an independent security review, operational hardening, and validation in the target environment.
+
+## Reproducibility
+
+Record the full command, source revision, seed, dataset/profile, node count, threshold, field size, scale factor, softmax mode, hardware/runtime environment, and per-epoch metrics for every reported result.

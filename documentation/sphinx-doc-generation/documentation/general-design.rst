@@ -4,6 +4,14 @@ General Design of Sentra
 Overview
 ========
 
+.. warning::
+
+   This section documents the legacy backend-assisted deployment architecture.
+   The backend implementation and web demonstrator are not part of this
+   repository. Current standalone MPC training and benchmark workflows run
+   without this backend; the deployment manifests require an externally
+   supplied ``sentra-backend`` image.
+
 .. plantuml::
 
     skinparam BackgroundColor #FFFFFF00
@@ -77,21 +85,21 @@ Overview
 
 
 Architecture Overview
-========
+=====================
 
 .. image:: figures/sentra_demonstrator.svg
    :class: with-border
-   :alt: Architecture diagram
+   :alt: Legacy backend-assisted SENTRA architecture
 
 Network Communication
-========
+=====================
 
 .. image:: figures/sentra_network_comm.svg
    :class: with-border
    :alt: Network Communication in Sentra
 
-The communication of the Python-based ML part of each Sentra node and the Sentra client happens through proxies. These proxies are part of the Backend code and the Rust-based Sentra Node client. 
-Thereby each Sentra node which is part of the committee gets a dedicate port on the proxy assigned.
-The port number is assigned starting from a configurable base port value. This value is incremented for every Sentra node which is part of the committee. 
-To make the port assignment deterministic on each Sentra node, the committee list is sorted in ascending order.
-Thereby the node_id is used a sorting criteria.
+In the legacy backend-assisted architecture, communication between the
+Python ML component and the Sentra client passes through proxies in the
+external backend and the Rust Sentra node. Each committee node receives a
+dedicated proxy port, allocated from a configurable base port. Committee nodes
+are sorted by ``node_id`` so every node derives the same port assignment.

@@ -1,4 +1,3 @@
-import sys
 import os
 # Configuration file for the Sphinx documentation builder.
 #
@@ -8,14 +7,9 @@ import os
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-#sys.path.insert(0, os.path.abspath('../src'))
-#sys.path.insert(0, os.path.abspath('../test'))
-
-sys.path.insert(0, os.path.abspath("."))
-
 project = 'SENTRA'
 copyright = '2026, Barkhausen Institute gGmbH, Dresden'
-author = 'Trustworthy Data Procxessing Group,  Barkhausen Institute gGmbH, Dresden'
+author = 'Trustworthy Data Processing Group, Barkhausen Institute gGmbH, Dresden'
 release = 'V0.00.002'
 
 # -- General configuration ---------------------------------------------------
@@ -54,11 +48,11 @@ html_css_files = [
 
 autoapi_type = "python"
 autoapi_dirs = [
-    "../../sentra-node/python/node",
-    "../../sentra-node/python/client",
+    "../../sentra-node/python/node/ml_training",
+    "../../sentra-node/python/client/sentra_client",
 ]
 autoapi_root = "_autoapi"
-autoapi_add_toctree_entry = False 
+autoapi_add_toctree_entry = False
 
 source_suffix = {
     '.rst': 'restructuredtext',

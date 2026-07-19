@@ -9,7 +9,7 @@ Packaged **Occlum/SGX** node image and legacy **NoSGX** node image used with `se
 | `sentra-node-sbom.yaml` | Occlum BOM for SGX image. |
 | `entrypoint-sentra-node.sh` | Waits for `sentra-backend`, `occlum run` or host script. |
 | `enclave_run_script_sentra_node.sh` | Starts `sentra_node`. |
-| `training_config.yaml` | Copied into node image; backend copies from same path via CI Dockerfile. |
+| `training_config.yaml` | Copied into the packaged node image. |
 | `sgx_sentra_qcnl.conf` | DCAP / QCNL defaults. |
 
 **ML benchmark** (YAML, full Python tree): `../ml-benchmark/`.
@@ -27,3 +27,7 @@ Or from this directory:
 ```bash
 sh ./buildSentraNodeDockerImage.sh
 ```
+
+These node images are used by the backend-assisted manifests in
+`sentra-deployment/`. Running those manifests also requires access to the
+external `sentra-backend` registry image; it is not built by these Dockerfiles.

@@ -1,167 +1,96 @@
-# SENTRA - Final System Status
+# SENTRA Project Status
 
-## ✅ SYSTEM FULLY OPERATIONAL
+## Positioning
 
-**Date**: Current  
-**Status**: All systems operational  
-**Nodes**: 5/5 active and connected  
-**Training**: Successful across all nodes
+SENTRA is dissertation research and benchmarking software for secure, distributed MNIST training. The repository contains implemented MPC components, local multi-process tests, and non-SGX/SGX benchmark workflows. It should not be described as production ready or as independently security certified.
 
----
+This document describes repository capabilities, not a claim that every configuration is currently running or that every security property has been formally verified.
 
-## Verification Summary
+## Current execution paths
 
-### Network Status: ✅ VERIFIED
-- All 5 nodes connected
-- 4/4 connections per node established
-- No connection errors
-- Network communication active
+- **Local orchestration:** `sentra-node/python/node/start_all_nodes.py`
+- **Per-node secure MNIST runner:** `sentra-node/python/node/run_mnist_batched_secure.py`
+- **Pytest configuration:** `sentra-node/python/pytest.ini`
+- **Detailed local CLI guide:** `sentra-node/python/README.md`
+- **Benchmark entrypoint:** `benchmarking/README.md`
+- **SGX/non-SGX benchmark guide:** `benchmarking/ml-benchmark/README.md`
 
-### Training Status: ✅ VERIFIED
-- All nodes completed 10 epochs
-- All batches committed successfully
-- Version numbers synchronized
-- Secure MPC training active on all nodes
+The launcher creates local node processes and invokes the batched secure runner. The client-owned-data flags can start a separate client distributor so compute nodes receive dataset shares rather than raw MNIST.
 
-### Security Status: ✅ VERIFIED
-- True multi-party mode active
-- Context-based share exchange working
-- Safety bound satisfied: `2*(1+1) = 4 < 5` ✓
-- Versioned KVS preventing rollback
+## Implemented and exercised areas
 
----
+The codebase includes:
 
-## System Architecture
+- Shamir and packed Shamir secret sharing;
+- Beaver-triple-based secure arithmetic;
+- secure comparison, division, and softmax approximation components;
+- context-scoped network share exchange and reconstruction;
+- batched MNIST MLP training;
+- versioned KVS and weight-versioning paths;
+- failure-detection, dropout/join, and proactive-refresh experiments;
+- client-side dataset sharing and optional reconstruction of evaluation results;
+- local unit and integration tests under `sentra-node/python/node/testing/` and `node/tests/`;
+- Docker benchmark profiles for non-SGX, SGX/Occlum, and comparison with CrypTen.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    SENTRA System                         │
-├─────────────────────────────────────────────────────────┤
-│                                                          │
-│  Node 1  ←→  Node 2  ←→  Node 3  ←→  Node 4  ←→  Node 5│
-│    │           │           │           │           │    │
-│    └───────────┴───────────┴───────────┴───────────┘    │
-│                    Secure Network                        │
-│                                                          │
-│  ┌──────────────────────────────────────────────┐      │
-│  │  Training Coordinator                         │      │
-│  │  - Dataset ingestion                          │      │
-│  │  - Mini-batch selection                       │      │
-│  │  - Secure forward/backward pass               │      │
-│  │  - Mini-batch coordination                    │      │
-│  └──────────────────────────────────────────────┘      │
-│                                                          │
-│  ┌──────────────────────────────────────────────┐      │
-│  │  MPC Engine                                   │      │
-│  │  - Secure matrix operations                   │      │
-│  │  - Beaver triple multiplication               │      │
-│  │  - Context-based share exchange               │      │
-│  └──────────────────────────────────────────────┘      │
-│                                                          │
-│  ┌──────────────────────────────────────────────┐      │
-│  │  Versioned KVS                                │      │
-│  │  - Rollback protection                        │      │
-│  │  - Quorum commits                             │      │
-│  │  - Freshness checks                           │      │
-│  └──────────────────────────────────────────────┘      │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
-```
+Whether a feature is suitable for a reported result must be established by running the relevant test or benchmark profile at the source revision being evaluated. Existing historical measurements do not imply universal reliability, performance, or security.
 
----
+## Recommended verification
 
-## Feature Matrix
+Install from the repository root:
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Secret Sharing | ✅ | Shamir & Packed Shamir |
-| Secure Addition | ✅ | Homomorphic |
-| Secure Multiplication | ✅ | Beaver triples with network |
-| Secure Comparison | ✅ | GT, LT, EQ operations |
-| Secure Division | ✅ | Scalar & secure division |
-| Matrix Operations | ✅ | Optimized with GPU support |
-| Network Communication | ✅ | TLS-ready, plain sockets for testing |
-| Share Exchange | ✅ | Context-based, automatic |
-| Reconstruction | ✅ | Multi-node, threshold-based |
-| Batched secure MNIST | ✅ | `node/run_mnist_batched_secure.py` |
-| Versioned KVS | ✅ | Rollback protection |
-| Quorum Commits | ✅ | Majority consensus |
-| Safety Bound | ✅ | Enforced: `2*(t+s) < n_active` |
-| Multi-Node Training | ✅ | 5 nodes verified working |
-
----
-
-## Security Properties
-
-### ✅ Privacy
-- **Threshold**: t=1 (need 2 shares to reconstruct)
-- **Adversarial tolerance**: s=1 (can tolerate 1 corrupted node)
-- **Secret-shared training**: gradients and activations remain shared across parties (MPC)
-
-### ✅ Integrity
-- **Versioning**: All writes use monotonically increasing versions
-- **Rollback protection**: Version checks prevent replay attacks
-- **Quorum**: Requires majority consensus for commits
-
-### ✅ Availability
-- **Fault tolerance**: Works with node failures
-- **Safety bound**: Enforces minimum active nodes
-- **Graceful degradation**: Continues with fewer nodes if possible
-
----
-
-## Performance
-
-- **Training**: 10 epochs completed successfully
-- **Network**: All connections established < 1 second
-- **Throughput**: All batches processed and committed
-- **Reliability**: 100% success rate across all nodes
-
----
-
-## Usage
-
-### Quick Start
 ```powershell
-cd sentra-node\python
-python node/start_all_nodes.py --headless --distribute-dataset-shares
+python -m pip install -r sentra-node/python/node/requirements.txt
 ```
 
-### Testing
+Run the configured tests from `sentra-node/python`:
+
 ```powershell
-cd sentra-node\python
-python -m pytest -v
+Set-Location sentra-node/python
+python -m pytest -q node/testing/test_forward_scaling.py node/testing/test_gradient_scaling.py
+python -m pytest -q node/testing/test_softmax_quick.py -s
+python -m pytest -q node/testing/test_batched_stage_invariants.py -s
 ```
 
----
+For a local smoke run from the repository root:
 
-## Documentation
+```powershell
+python sentra-node/python/node/start_all_nodes.py --n-nodes 3 --base-port 9600 --headless --distribute-dataset-shares --dataset-owner-node 1 --num-epochs 1 --batch-size 8 --mnist-samples 128
+```
 
-- `MULTI_NODE_GUIDE.md` - Multi-node setup guide
-- `HOW_TO_TEST_CONTEXT.md` - Context testing guide
-- `CONTEXT_MULTI_NODE_IMPLEMENTATION.md` - Technical details
-- `QUICK_VERIFICATION.md` - Quick verification steps
-- `REQUIREMENTS_COMPLIANCE.md` - Requirements checklist
+Use the client distributor command in `USAGE_GUIDE.md` when testing the independent data-owner workflow.
 
----
+## Security and operational caveats
 
-## Conclusion
+- The local Python workflow does not run inside SGX.
+- SGX/Occlum benchmarks require compatible Intel SGX hardware, drivers, Occlum, and the Docker workflow documented in `benchmarking/ml-benchmark/README.md`.
+- Benchmark success is not equivalent to remote-attestation assurance, formal protocol verification, penetration testing, key-management review, or production hardening.
+- Some comparison modes deliberately open values or relax the protocol path. In particular, `opened_exact` is an accelerated comparison/ablation mode and must not be reported as equivalent to `secure_approx`.
+- Owner-node dataset distribution is a local simulation convenience; client-owned distribution is the relevant path when compute nodes must not initially load raw data.
+- Fault-recovery and threshold behavior depend on committee size, active membership, and protocol assumptions; they should be reported only for tested configurations.
+- Native Windows is not established as equivalent to the Linux/WSL multi-process benchmark environment.
 
-**SENTRA is fully operational and ready for use!**
+## Deployment boundary
 
-All core features are implemented and verified:
-- ✅ Secure multi-party computation
-- ✅ Context-based share exchange
-- ✅ Network communication
-- ✅ Batched secure training path (`node/start_all_nodes.py`)
-- ✅ Versioned storage
-- ✅ Multi-node training
+Core local training and the self-contained benchmark workflow do not require the legacy web demonstrator backend.
 
-The system successfully demonstrates:
-- Privacy-preserving ML training
-- Distributed secure computation
-- Fault-tolerant architecture
-- Production-ready implementation
+The manifests under `sentra-deployment/` are a separate backend-assisted path and require access to the private image:
 
-**Status: PRODUCTION READY** 🚀
+```text
+registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest
+```
 
+Without registry access and the documented infrastructure prerequisites, that deployment path is not reproducible. The manifests should therefore not be used as evidence of a generally available production deployment.
+
+## Documentation index
+
+- `README.md` — repository overview and supported top-level workflows
+- `documentation/USAGE_GUIDE.md` — concise local runbook
+- `documentation/MULTI_NODE_GUIDE.md` — multi-node launcher and limitations
+- `documentation/HOW_TO_TEST_CONTEXT.md` — current context/network verification
+- `sentra-node/python/README.md` — detailed local CLI and training parameters
+- `benchmarking/README.md` — dissertation benchmark index
+- `benchmarking/ml-benchmark/README.md` — Docker, SGX, and non-SGX benchmark instructions
+
+## Status summary
+
+The repository provides a substantial research prototype and reproducible benchmark tooling for selected environments. Claims should remain scoped to the exact tested configuration, logs, source revision, and threat model. Further security review, deployment hardening, dependency management, observability, and target-environment validation would be required before production use.

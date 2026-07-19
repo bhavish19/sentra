@@ -2,13 +2,15 @@
 
 Occlum **base** image with full `sentra-node/python/node` + `client`, pinned pip deps, YAML profiles, and `start_all_nodes` orchestration.
 
-## MNIST data (local only, no download)
+## MNIST data prerequisite
 
-Bundled file: **`benchmarking/shared/mnist.npz`** (baked into images at **`/mnist.npz`**).
+The repository includes the Keras-format MNIST archive at
+**`benchmarking/shared/mnist.npz`**. Both benchmark Dockerfiles copy it into
+the image as **`/mnist.npz`**.
 
 | Profile | Who loads MNIST |
 |---------|-----------------|
-| `quick.yaml` / `train-export-assets.yaml` | **Owner node** (node 1) from `/mnist.npz` |
+| `quick.yaml` / `standard.yaml` | **Owner node** (node 1) from `/mnist.npz` |
 | `with-client.yaml` | **Client only**; nodes receive secret shares (non-SGX and SGX all-in-one) |
 
 - **Docker:** `MNIST_NPZ_PATH=/mnist.npz` in compose.
@@ -77,7 +79,7 @@ make metrics-collect RUN_DIR=/workspace/node/logs/run_YYYYMMDD_HHMMSS
 - `make run-with-client-fault-5node` / `make sgx-run-with-client-fault-5node` — 5 nodes, 512 samples, 5 epochs; kill node 3 after Epoch 1 Batch 2.
 - Config: `configs/with-client-fault-5node.yaml`. Successful reference: `run_20260527_042846` (~430 s training, ~8 s recovery).
 
-During training, kill one node (`kill -9 <pid>` inside the container). Check `recovery_*` lines in `node_*.log`. Timings: `benchmarking/BENCHMARK_TIMING_COMPARISON.md` §14. Dissertation metrics table: §15 and `benchmarking/MEASURED_SYSTEMS_METRICS.csv`.
+During training, kill one node (`kill -9 <pid>` inside the container). Check `recovery_*` lines in `node_*.log`. Timings and the dissertation metrics table are in `benchmarking/BENCHMARK_TIMING_COMPARISON.md` §§14–15.
 
 Rebuild images after pulling metrics changes: `make build-ml` (and `make build-ml-sgx` for SGX).
 

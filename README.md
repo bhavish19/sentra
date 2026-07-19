@@ -168,12 +168,16 @@ Additional tests under `sentra-node/python/node/tests/` and `testing/`.
 
 ## Deployment
 
-Node images and compose manifests (optional registry backend image for full TEE stack):
+Core MPC training and the self-contained ML benchmark do not use the legacy
+web demonstrator backend. The manifests below are a separate,
+backend-assisted deployment path and require access to the private
+`registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest` image:
 
 - [`sentra-deployment/docker-compose.yaml`](sentra-deployment/docker-compose.yaml)
 - Node images: [`benchmarking/sentra-node/`](benchmarking/sentra-node/README.md)
 
-Secure training and ML benchmark containers do **not** require the legacy web demonstrator backend.
+See [`sentra-deployment/README.md`](sentra-deployment/README.md) for supported
+profiles and prerequisites.
 
 ---
 

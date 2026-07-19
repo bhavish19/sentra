@@ -11,6 +11,6 @@ Overview of the Sentra Framework
    :maxdepth: 2
    :caption: API Reference
 
-   ../_autoapi/node/index
-   ../_autoapi/client/index
+   _autoapi/ml_training/index
+   _autoapi/sentra_client/index
 

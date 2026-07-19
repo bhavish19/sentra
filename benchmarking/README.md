@@ -22,7 +22,7 @@ Reproducible secure MNIST training benchmarks for the dissertation: **SENTRA (no
 
 **Primary thesis profile:** `with-client` — 10,000 train samples, 10 epochs, batch 64, LR 0.002, seed 2026, 100 test samples.  
 **Model:** MNIST MLP 784→128→10.  
-**Shared row indices:** `ml-benchmark/assets/train_indices.npy` and `test_indices.npy` (also exported under `ml-benchmark/assets/with-client/` when using the client profile).
+**Shared row indices:** `ml-benchmark/assets/train_indices.npy` and `ml-benchmark/assets/test_indices.npy`.
 
 ## Quick start — SENTRA (Docker)
 
@@ -66,7 +66,7 @@ Config: `configs/sentra-with-client.yaml`. See **`crypten-benchmark/README.md`**
 | `with-client-2epoch.yaml` | Shorter sanity check (2 epochs, same 10k samples). |
 | `with-client-versioned.yaml` | Per-epoch weight versioning overhead vs baseline. |
 | `with-client-fault-5node.yaml` | 5-node dropout recovery (kill one node after Epoch 1 Batch 2). |
-| `quick.yaml` | Fast smoke (512 samples, 2 epochs, node-owned data). |
+| `quick.yaml` | Fast smoke (256 samples, 1 epoch, node-owned data). |
 | `standard.yaml` | Node-owned MNIST, no client distributor. |
 
 Each config has matching `make run-*` and `make sgx-run-*` targets where applicable.
@@ -101,4 +101,3 @@ CrypTen reads the same `.npy` files via `sentra-with-client.yaml`.
 - ML benchmark details: **`ml-benchmark/README.md`**
 - CrypTen baseline: **`crypten-benchmark/README.md`**
 - Sentra node images: **`sentra-node/README.md`**
-- Sweep result tables (when present): `python benchmarking/compare_benchmarks.py`
