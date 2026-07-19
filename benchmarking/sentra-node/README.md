@@ -1,6 +1,6 @@
-# Sentra node (demonstrator Docker)
+# Sentra node (Docker)
 
-Packaged **Occlum/SGX** node image and legacy **NoSGX** node image used with `sentra-deployment` and the demonstrator backend.
+Packaged **Occlum/SGX** node image and legacy **NoSGX** node image used with `sentra-deployment`.
 
 | File | Role |
 |------|------|

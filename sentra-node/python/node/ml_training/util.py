@@ -23,7 +23,7 @@ def _optional_home_keras_path() -> Path | None:
 def _repo_resource_paths() -> list[Path]:
     here = Path(__file__).resolve()
     for parent in here.parents:
-        candidate = parent / "demonstrator" / "backend" / "resources" / "mnist.npz"
+        candidate = parent / "benchmarking" / "shared" / "mnist.npz"
         if candidate.is_file():
             return [candidate]
     return []
@@ -54,7 +54,7 @@ def resolve_mnist_npz_path() -> Path:
     raise FileNotFoundError(
         "Local MNIST not found (downloads are disabled). "
         "Use Docker (mnist.npz baked at /mnist.npz), set MNIST_NPZ_PATH, "
-        "or place demonstrator/backend/resources/mnist.npz in the image. "
+        "or place benchmarking/shared/mnist.npz in the repo. "
         f"Searched: {searched}"
     )
 

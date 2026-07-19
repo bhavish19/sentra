@@ -4,7 +4,7 @@ Occlum **base** image with full `sentra-node/python/node` + `client`, pinned pip
 
 ## MNIST data (local only, no download)
 
-Bundled file: **`demonstrator/backend/resources/mnist.npz`** (baked into images at **`/mnist.npz`**).
+Bundled file: **`benchmarking/shared/mnist.npz`** (baked into images at **`/mnist.npz`**).
 
 | Profile | Who loads MNIST |
 |---------|-----------------|
@@ -83,4 +83,4 @@ Rebuild images after pulling metrics changes: `make build-ml` (and `make build-m
 
 ## Other
 
-- Packaged **Sentra node** demonstrator (Rust + Occlum package): `../sentra-node/README.md` and `make build-sentra-sgx` from this folder’s Makefile.
+- Packaged **Sentra node** images (Rust + Occlum package): `../sentra-node/README.md` and `make build-sentra-sgx` from this folder’s Makefile.

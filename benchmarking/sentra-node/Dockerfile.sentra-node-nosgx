@@ -1,4 +1,4 @@
-# Legacy demonstrator node (Rust `sentra_node` + wait-for-it), no Occlum package.
+# Legacy Sentra node (Rust `sentra_node` + wait-for-it), no Occlum package.
 # Build from repository root:
 #   docker build -f benchmarking/sentra-node/Dockerfile.sentra-node-nosgx -t <tag> .
 #---------------------------------------------------------------------
@@ -35,7 +35,7 @@ COPY ./sentra-node/rust/Cargo.toml /sentra-node/rust
 COPY ./sentra-node/rust/rust-toolchain.toml /sentra-node/rust
 COPY ./sentra-node/rust/build.rs /sentra-node/rust
 COPY ./sentra-node/rust/SentraInterNode-GRPC-Services.proto /sentra-node/rust/
-COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /sentra-node/rust/
+COPY ./sentra-node/rust/SentraBackend-GRPC-Services.proto /sentra-node/rust/
 
 WORKDIR /sentra-node/rust
 RUN echo 'fn main() {}' > ./src/main.rs
@@ -44,10 +44,10 @@ RUN cargo build --release
 
 COPY ./sentra-node/rust/src /sentra-node/rust/src
 RUN rm SentraBackend-GRPC-Services.proto
-COPY ./demonstrator/backend/SentraBackend-GRPC-Services.proto /sentra-node/rust/
+COPY ./sentra-node/rust/SentraBackend-GRPC-Services.proto /sentra-node/rust/
 
 RUN cargo build --release
-COPY ./demonstrator/ci/docker/config/pebble/pebble.cer /etc/
+COPY ./sentra-node/rust/pebble.cer /etc/
 COPY ./benchmarking/sentra-node/enclave_run_script_sentra_node.sh /bin/enclave_run_script.sh
 COPY ./benchmarking/sentra-node/entrypoint-sentra-node.sh /entrypoint.sh
 RUN cp /sentra-node/rust/target/release/sentra_node /bin/sentra_node

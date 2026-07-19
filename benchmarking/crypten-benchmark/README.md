@@ -63,7 +63,7 @@ pip install .
 ## Run
 
 ```bash
-export MNIST_NPZ_PATH=/path/to/sentra/demonstrator/backend/resources/mnist.npz
+export MNIST_NPZ_PATH=/path/to/sentra/benchmarking/shared/mnist.npz
 make run
 # or
 python3 launcher.py -c configs/sentra-with-client.yaml

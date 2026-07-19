@@ -10,4 +10,4 @@ learning-rate: 0.01
 seed: 2026
 client-eval-samples: 64
 client-test-samples: 64
-# mnist-npz: /path/to/mnist.npz  # optional; defaults to repo demonstrator/resources
+# mnist-npz: /path/to/mnist.npz  # optional; defaults to benchmarking/shared/mnist.npz

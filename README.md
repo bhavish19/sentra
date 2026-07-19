@@ -33,9 +33,8 @@ sentra2/
 │   └── python/
 │       ├── node/         # Training, ml_training/, start_all_nodes.py
 │       └── client/       # client_distributor.py
-├── benchmarking/         # Docker benchmarks, CrypTen baseline, thesis metrics
+├── benchmarking/         # Docker benchmarks, CrypTen baseline, thesis metrics (incl. mnist.npz)
 ├── sentra-deployment/    # Compose / swarm deployment manifests
-├── demonstrator/         # Optional web UI + backend (not required for MPC training)
 ├── documentation/        # Sphinx docs, usage guide, design notes
 └── run_mnist_plaintext.py  # Single-process plaintext baseline (same MLP shape)
 ```
@@ -169,12 +168,12 @@ Additional tests under `sentra-node/python/node/tests/` and `testing/`.
 
 ## Deployment
 
-Full stack (nodes + optional demonstrator backend/UI):
+Node images and compose manifests (optional registry backend image for full TEE stack):
 
 - [`sentra-deployment/docker-compose.yaml`](sentra-deployment/docker-compose.yaml)
 - Node images: [`benchmarking/sentra-node/`](benchmarking/sentra-node/README.md)
 
-The **demonstrator** folder provides a web dashboard and gRPC backend; it is **not** required to run secure training or the ML benchmark containers.
+Secure training and ML benchmark containers do **not** require the legacy web demonstrator backend.
 
 ---
 

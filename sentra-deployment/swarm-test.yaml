@@ -25,9 +25,6 @@ services:
     container_name: sentra-test
 
   sentra-backend:
-    build:
-      context: ../
-      dockerfile: ./demonstrator/ci/docker/SentraBackend.dockerfile
     image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest
     deploy:
       mode: replicated-job

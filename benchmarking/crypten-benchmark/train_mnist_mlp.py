@@ -23,7 +23,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_DEFAULT_MNIST = _REPO_ROOT / "demonstrator" / "backend" / "resources" / "mnist.npz"
+_DEFAULT_MNIST = _REPO_ROOT / "benchmarking" / "shared" / "mnist.npz"
 _DEFAULT_INDICES_DIR = _REPO_ROOT / "benchmarking" / "ml-benchmark" / "assets"
 
 

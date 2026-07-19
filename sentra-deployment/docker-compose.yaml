@@ -87,11 +87,8 @@ services:
     command: /bin/sentra/run_mnist_batched_secure.py --config /bin/sentra/node_config.yaml --auto-close --node-id 5
 
   sentra-backend:
-    build:
-      context: ../
-      dockerfile: ./demonstrator/ci/docker/SentraBackend.dockerfile
-    command: ["--use-acme","--acme-host","127.0.0.1","--acme-server-certificate","/pebble/pebble.cer"]
     image: registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest
+    command: ["--use-acme","--acme-host","127.0.0.1","--acme-server-certificate","/pebble/pebble.cer"]
     deploy:
       mode: replicated-job
       replicas: 1

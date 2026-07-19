@@ -11,9 +11,10 @@ src/libos/target/
 tools/toolchains/dcap_lib/target/
 dcap_c_test
 /ml_training/__pycache__/
-/demonstrator/backend/__pycache__/
 /documentation/sphinx-doc-generation/_build/
-/demonstrator/backend/sentrabackend/__pycache__/
+
+# Optional local web demonstrator (not required for MPC training / benchmarks)
+/demonstrator/
 tmp_bench/
 **/__pycache__/
 /.vscode/

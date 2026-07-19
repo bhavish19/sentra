@@ -1,1 +1,0 @@
-docker build -f SentraBackend.dockerfile -t registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest ../../..

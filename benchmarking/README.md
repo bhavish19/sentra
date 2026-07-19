@@ -8,7 +8,7 @@ Reproducible secure MNIST training benchmarks for the dissertation: **SENTRA (no
 |------|---------|
 | **`ml-benchmark/`** | Docker/Compose orchestration, YAML profiles, SGX and non-SGX images, log collection. Start here for SENTRA runs. |
 | **`crypten-benchmark/`** | CrypTen MPC baseline (784→128→10 MNIST), aligned to the SENTRA `with-client` profile. |
-| **`sentra-node/`** | Packaged Sentra **node** demonstrator images (Occlum/SGX and legacy NoSGX). Used by deployment; separate from the all-in-one ML benchmark container. |
+| **`sentra-node/`** | Packaged Sentra **node** images (Occlum/SGX and legacy NoSGX). Used by deployment; separate from the all-in-one ML benchmark container. |
 | **`shared/`** | Shared MNIST subset helpers (`mnist_benchmark_subset.py`, `export_benchmark_indices.py`). |
 
 **Deployment note:** `sentra-deployment/docker-compose.yaml` builds from **`benchmarking/sentra-node/`** Dockerfiles.

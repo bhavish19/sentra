@@ -1,1 +1,0 @@
-docker run --rm -p 14000:14000 -p 15000:15000 -p 8000:8000 -p 8001:8001 registry.tdp.trustworthy6g.net/tdp/sentra/sentra-backend:latest --use-acme $@

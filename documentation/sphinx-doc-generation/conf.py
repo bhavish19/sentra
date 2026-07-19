@@ -54,7 +54,8 @@ html_css_files = [
 
 autoapi_type = "python"
 autoapi_dirs = [
-    "../../demonstrator/backend"
+    "../../sentra-node/python/node",
+    "../../sentra-node/python/client",
 ]
 autoapi_root = "_autoapi"
 autoapi_add_toctree_entry = False 

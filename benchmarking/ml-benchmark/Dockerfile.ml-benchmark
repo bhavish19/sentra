@@ -42,8 +42,8 @@ COPY benchmarking/ml-benchmark/configs/ /workspace/benchmark-configs/
 COPY benchmarking/ml-benchmark/entrypoint-ml-benchmark.sh /entrypoint.sh
 COPY benchmarking/ml-benchmark/enclave_run_script_ml_benchmark.sh /bin/enclave_run_script.sh
 
-COPY ./demonstrator/backend/resources/mnist.npz /root/.keras/datasets/mnist.npz
-COPY ./demonstrator/backend/resources/mnist.npz /mnist.npz
+COPY ./benchmarking/shared/mnist.npz /root/.keras/datasets/mnist.npz
+COPY ./benchmarking/shared/mnist.npz /mnist.npz
 
 RUN chmod +x /usr/local/bin/run_benchmark_from_config.py /usr/local/bin/collect_run_metrics.py /usr/local/bin/compare_versioning_overhead.py /entrypoint.sh /bin/enclave_run_script.sh \
     && sed -i 's/\r$//' /entrypoint.sh /bin/enclave_run_script.sh /usr/local/bin/run_benchmark_from_config.py /usr/local/bin/collect_run_metrics.py /usr/local/bin/compare_versioning_overhead.py

@@ -1,4 +1,4 @@
-# Packaged Occlum / SGX Sentra node (demonstrator).
+# Packaged Occlum / SGX ML benchmark image.
 # Build from repository root:
 #   docker build -f benchmarking/sentra-node/Dockerfile.sentra-node-sgx -t <tag> .
 #---------------------------------------------------------------------
@@ -21,8 +21,8 @@ RUN /miniconda/bin/conda tos accept --override-channels --channel https://repo.a
 RUN /miniconda/bin/conda create --prefix /python-occlum -y  python==3.10.0 numpy==1.26.4 pyyaml==6.0.3 tensorflow==2.11.0
 
 COPY ./benchmarking/ml-benchmark/sentra-benchmark-sbom.yaml /
-COPY ./demonstrator/backend/resources/mnist.npz /root/.keras/datasets/mnist.npz
-COPY ./demonstrator/backend/resources/mnist.npz /mnist.npz
+COPY ./benchmarking/shared/mnist.npz /root/.keras/datasets/mnist.npz
+COPY ./benchmarking/shared/mnist.npz /mnist.npz
 
 RUN mkdir -p /workspace/node /workspace/client
 COPY sentra-node/python/node/ /workspace/node/
